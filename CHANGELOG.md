@@ -2,6 +2,50 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.2.0] - 2026-01-28
+
+### Added
+- **Database-based User Management**
+  - Migrated user authentication from `config.yaml` to Supabase database
+  - User data now persists across Streamlit Cloud deployments
+  - New database models: `User`, `PendingRegistration`, `SystemSetting`
+  - Auto-migration from config.yaml on first startup
+
+### Security
+- **Cookie Key Security Improvement**
+  - Moved cookie key from `config.yaml` to Streamlit secrets
+  - Cookie key no longer stored in Git repository
+  - Added fallback: random session key if secrets not configured
+
+- **Secrets Management**
+  - Database URL stored only in `secrets.toml` (not in code)
+  - Cookie configuration stored in `secrets.toml`
+  - Removed credentials section from `config.yaml`
+
+### Changed
+- `auth/authenticator.py` - Now reads credentials from database
+- `auth/permissions.py` - Gets user role from database
+- `auth/__init__.py` - Imports from `db_user_manager` instead of `user_manager`
+- `app.py` - Added user migration on startup
+
+### Fixed
+- User registrations no longer lost after Streamlit Cloud redeploy
+- Approved users now persist in database
+
+### Configuration
+Streamlit Cloud secrets now requires only:
+```toml
+[database]
+url = "postgresql://..."
+
+[cookie]
+key = "<random-64-char-hex>"
+name = "bio_dashboard_auth"
+expiry_days = 30
+```
+
+---
+
 ## [1.1.2] - 2026-01-28
 
 ### Added
