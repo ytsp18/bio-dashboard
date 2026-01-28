@@ -55,8 +55,9 @@ def get_overview_stats(start_date, end_date):
             Card.appointment_id.isnot(None), Card.appointment_id != ''
         ).group_by(Card.appointment_id).having(func.count(Card.id) == 1).subquery()
 
-        # 2. นับบัตรที่มีข้อมูลครบ 4 fields และอยู่ใน Appt ที่มี G = 1
-        complete_cards = session.query(func.count(Card.id)).filter(
+        # 2. นับ Unique Serial Number ที่มีข้อมูลครบ 4 fields และอยู่ใน Appt ที่มี G = 1
+        # ใช้ Unique Serial เพื่อไม่นับ Serial ซ้ำ (ตาม Excel logic)
+        complete_cards = session.query(func.count(func.distinct(Card.serial_number))).filter(
             date_filter, Card.print_status == 'G',
             Card.appointment_id.in_(session.query(appt_one_g)),
             # ต้องมี Card ID
