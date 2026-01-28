@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import date, timedelta
+import time
 import sys
 import os
 
@@ -13,6 +14,7 @@ from database.models import Card, Report
 from sqlalchemy import func, and_, or_, case
 from utils.theme import apply_theme
 from utils.auth_check import require_login
+from utils.logger import log_perf, log_info
 
 init_db()
 
@@ -21,6 +23,7 @@ init_db()
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def get_overview_stats(start_date, end_date):
     """Get cached overview statistics."""
+    start_time = time.perf_counter()
     session = get_session()
     try:
         date_filter = and_(Card.print_date >= start_date, Card.print_date <= end_date)
@@ -132,11 +135,14 @@ def get_overview_stats(start_date, end_date):
         }
     finally:
         session.close()
+        duration = (time.perf_counter() - start_time) * 1000
+        log_perf(f"get_overview_stats({start_date} to {end_date})", duration)
 
 
 @st.cache_data(ttl=300)
 def get_daily_stats(start_date, end_date):
     """Get cached daily statistics for chart."""
+    start_time = time.perf_counter()
     session = get_session()
     try:
         date_filter = and_(Card.print_date >= start_date, Card.print_date <= end_date)
@@ -158,14 +164,18 @@ def get_daily_stats(start_date, end_date):
             date_filter, Card.print_date.isnot(None)
         ).group_by(Card.print_date).order_by(Card.print_date).all()
 
-        return [(d.print_date, d.unique_g or 0, d.at_center or 0, d.delivery or 0, d.bad or 0) for d in daily_stats]
+        result = [(d.print_date, d.unique_g or 0, d.at_center or 0, d.delivery or 0, d.bad or 0) for d in daily_stats]
+        return result
     finally:
         session.close()
+        duration = (time.perf_counter() - start_time) * 1000
+        log_perf(f"get_daily_stats({start_date} to {end_date})", duration)
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def get_date_range():
     """Get cached min/max dates."""
+    start_time = time.perf_counter()
     session = get_session()
     try:
         min_date = session.query(func.min(Card.print_date)).scalar()
@@ -173,6 +183,8 @@ def get_date_range():
         return min_date, max_date
     finally:
         session.close()
+        duration = (time.perf_counter() - start_time) * 1000
+        log_perf("get_date_range", duration)
 
 st.set_page_config(page_title="Overview - Bio Dashboard", page_icon="📈", layout="wide")
 

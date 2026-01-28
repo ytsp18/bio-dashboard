@@ -1,5 +1,6 @@
 """Database connection management."""
 import os
+import time
 import streamlit as st
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
@@ -7,6 +8,10 @@ from contextlib import contextmanager
 
 # Track if migrations have been run this session
 _migrations_done = False
+
+# Simple logging (avoid circular import)
+def _log(msg):
+    print(f"[DB] {msg}")
 
 
 def get_database_url():
@@ -73,11 +78,15 @@ def get_session() -> Session:
 @st.cache_resource
 def warm_up_connection():
     """Warm up database connection pool (runs once per app session)."""
+    start = time.perf_counter()
     try:
         with engine.connect() as conn:
             conn.execute(__import__('sqlalchemy').text("SELECT 1"))
+        duration = (time.perf_counter() - start) * 1000
+        _log(f"Connection warm-up: {duration:.0f}ms")
         return True
-    except Exception:
+    except Exception as e:
+        _log(f"Connection warm-up failed: {e}")
         return False
 
 
@@ -107,6 +116,7 @@ def init_db():
     if _migrations_done:
         return
 
+    start = time.perf_counter()
     from .models import Base
 
     Base.metadata.create_all(bind=engine)
@@ -115,7 +125,8 @@ def init_db():
     _run_migrations()
 
     _migrations_done = True
-    print(f"Database initialized successfully! (Using: {'SQLite' if is_sqlite else 'PostgreSQL'})")
+    duration = (time.perf_counter() - start) * 1000
+    _log(f"Database initialized in {duration:.0f}ms (Using: {'SQLite' if is_sqlite else 'PostgreSQL'})")
 
 
 def _run_migrations():
