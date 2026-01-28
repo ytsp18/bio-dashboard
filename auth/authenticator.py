@@ -2,11 +2,12 @@
 
 Uses database for user credentials instead of config.yaml to persist
 user data across Streamlit Cloud deployments.
+
+SECURITY: Cookie key is loaded from Streamlit secrets, not from config.yaml.
 """
 import streamlit as st
 import streamlit_authenticator as stauth
-import yaml
-from yaml.loader import SafeLoader
+import secrets as py_secrets
 import os
 import sys
 
@@ -15,19 +16,38 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.connection import init_db
 from .db_user_manager import get_all_users_for_auth
 
-# Path to config file (for cookie settings only)
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
 
+def get_cookie_config():
+    """Get cookie configuration from Streamlit secrets (secure) or generate random key."""
+    # Default values
+    cookie_name = 'bio_dashboard_auth'
+    expiry_days = 30
 
-def load_cookie_config():
-    """Load cookie config from YAML file."""
-    with open(CONFIG_PATH) as file:
-        config = yaml.load(file, Loader=SafeLoader)
-    return config.get('cookie', {
-        'name': 'bio_dashboard_auth',
-        'key': 'bio_dashboard_secret_key',
-        'expiry_days': 30
-    })
+    # Try to get cookie_key from Streamlit secrets (SECURE)
+    try:
+        if hasattr(st, 'secrets') and 'cookie' in st.secrets:
+            cookie_key = st.secrets['cookie'].get('key', None)
+            cookie_name = st.secrets['cookie'].get('name', cookie_name)
+            expiry_days = st.secrets['cookie'].get('expiry_days', expiry_days)
+            if cookie_key:
+                return {
+                    'name': cookie_name,
+                    'key': cookie_key,
+                    'expiry_days': expiry_days
+                }
+    except Exception:
+        pass
+
+    # Fallback: Generate a random key per session (less ideal but secure)
+    # This means users will need to re-login after app restarts
+    if 'cookie_key' not in st.session_state:
+        st.session_state['cookie_key'] = py_secrets.token_hex(32)
+
+    return {
+        'name': cookie_name,
+        'key': st.session_state['cookie_key'],
+        'expiry_days': expiry_days
+    }
 
 
 def get_authenticator():
@@ -43,14 +63,14 @@ def get_authenticator():
         'usernames': users
     }
 
-    # Load cookie settings from config
-    cookie_config = load_cookie_config()
+    # Load cookie settings from secrets (secure)
+    cookie_config = get_cookie_config()
 
     # streamlit-authenticator v0.4.x API
     authenticator = stauth.Authenticate(
         credentials=credentials,
         cookie_name=cookie_config.get('name', 'bio_dashboard_auth'),
-        cookie_key=cookie_config.get('key', 'bio_dashboard_secret_key'),
+        cookie_key=cookie_config.get('key'),
         cookie_expiry_days=cookie_config.get('expiry_days', 30),
     )
 

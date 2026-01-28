@@ -1,14 +1,24 @@
-# Bio Dashboard Authentication Configuration
+# Bio Dashboard Configuration
+#
+# NOTE: This file is for REFERENCE ONLY.
+# - User credentials are now stored in the DATABASE (not here)
+# - Cookie key is stored in Streamlit secrets (not here)
+# - This file is safe to commit to git
 #
 # Roles:
-#   - admin: ทำได้ทุกอย่าง รวมถึง Admin Panel
-#   - user: ใช้งานได้ทุกอย่าง + อัพโหลดไฟล์ได้ แต่เข้า Admin Panel ไม่ได้
-#   - viewer: ดูข้อมูลได้อย่างเดียว อัพโหลดไม่ได้
-#
-# Default passwords (เปลี่ยนก่อนใช้งานจริง!):
-#   - admin: admin123
-#   - operator: operator123
+#   - admin: Full access including Admin Panel
+#   - user: All features + upload, but no Admin Panel
+#   - viewer: View only, cannot upload
 
+# Settings (reference only - actual settings in database)
+settings:
+  allow_registration: true
+  require_approval: true
+  default_role: viewer
+
+# Default users (for first-time migration to database only)
+# These are migrated to database on first run, then database is used
+# DO NOT put real passwords here - only hashed versions for migration
 credentials:
   usernames:
     admin:
@@ -21,17 +31,3 @@ credentials:
       name: Operator User
       password: $2b$12$alzYTZXstdY2eGN/z6d3ZuH2BoN2gjvBuaVmD3cWTmqOx/0xIoFVS
       role: user
-
-cookie:
-  expiry_days: 30
-  key: bio_dashboard_secret_cookie_key_change_in_production_12345
-  name: bio_dashboard_auth
-
-# Pending registrations (users waiting for approval)
-pending_registrations: {}
-
-# Settings
-settings:
-  allow_registration: true
-  require_approval: true
-  default_role: viewer  # Default role for new users (viewer/user)
