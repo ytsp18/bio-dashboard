@@ -100,6 +100,50 @@ st.markdown("""
         background: #d5f5e3;
         color: #1e8449;
     }
+
+    /* Fix multiselect text color for better contrast */
+    .stMultiSelect [data-baseweb="tag"] {
+        background-color: #1e3c72 !important;
+        color: white !important;
+    }
+    .stMultiSelect [data-baseweb="tag"] span {
+        color: white !important;
+    }
+    .stMultiSelect [data-baseweb="tag"] svg {
+        fill: white !important;
+    }
+
+    /* Summary table styling */
+    .summary-table {
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        border-radius: 12px;
+        padding: 20px;
+        margin: 15px 0;
+        color: white;
+    }
+    .summary-table-header {
+        font-size: 1.1em;
+        font-weight: 600;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(255,255,255,0.3);
+    }
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .summary-row:last-child {
+        border-bottom: none;
+    }
+    .summary-label {
+        color: rgba(255,255,255,0.9);
+    }
+    .summary-value {
+        font-weight: 700;
+        color: #ffd700;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -135,10 +179,110 @@ try:
         # Date filter condition
         date_filter = and_(Card.print_date >= start_date, Card.print_date <= end_date)
 
+        # ==================== SUMMARY STATISTICS TABLE ====================
+        st.markdown('<div class="section-header-blue">📊 สรุปสถิติ Anomaly G>1</div>', unsafe_allow_html=True)
+
+        # Calculate summary statistics
+        # 1. G Unique Appointment ID - นับ appointment_id ที่มีบัตร G
+        g_unique_appt = session.query(func.count(func.distinct(Card.appointment_id))).filter(
+            date_filter, Card.print_status == 'G'
+        ).scalar() or 0
+
+        # 2. Appt ID G>1 - นับ appointment ที่มีบัตร G มากกว่า 1
+        appt_g_more_than_1 = session.query(Card.appointment_id).filter(
+            date_filter, Card.print_status == 'G'
+        ).group_by(Card.appointment_id).having(func.count(Card.id) > 1).count()
+
+        # 3. บัตรไม่สมบูรณ์ - บัตร G ที่ไม่ครบ 4 fields (Card ID, Serial Number, Work Permit No, Print Status = G)
+        # และมี 1 Appt = 1 G
+        appt_one_g = session.query(Card.appointment_id).filter(
+            date_filter, Card.print_status == 'G'
+        ).group_by(Card.appointment_id).having(func.count(Card.id) == 1).subquery()
+
+        incomplete_cards = session.query(func.count(func.distinct(Card.serial_number))).filter(
+            date_filter, Card.print_status == 'G',
+            Card.appointment_id.in_(session.query(appt_one_g)),
+            or_(
+                Card.card_id.is_(None), Card.card_id == '',
+                Card.serial_number.is_(None), Card.serial_number == '',
+                Card.work_permit_no.is_(None), Card.work_permit_no == ''
+            )
+        ).scalar() or 0
+
+        # 4. ออกบัตรหลายใบรวม - นับจำนวนบัตร G ทั้งหมดที่อยู่ใน appointments ที่มี G>1
+        appt_multi_g = session.query(Card.appointment_id).filter(
+            date_filter, Card.print_status == 'G'
+        ).group_by(Card.appointment_id).having(func.count(Card.id) > 1).subquery()
+
+        total_multi_g_cards = session.query(func.count(Card.id)).filter(
+            date_filter, Card.print_status == 'G',
+            Card.appointment_id.in_(session.query(appt_multi_g))
+        ).scalar() or 0
+
+        # 5. Reissue ปกติ = Appt ที่มี G = 1 และ B > 0 (มีบัตรเสียก่อน แล้วออกบัตรดีใหม่ 1 ใบ)
+        # 6. Anomaly G>1 = Appt ที่มี G > 1 ทั้งหมด (ไม่ว่าจะมี B หรือไม่ ต้องตรวจสอบ)
+
+        # Anomaly G>1 = ทุก appointment ที่มี G > 1 (ตาม guide: G > 1 ไม่ว่ามี B หรือไม่ ต้องตรวจสอบ)
+        anomaly_g_more_than_1 = appt_g_more_than_1
+
+        # Reissue ปกติ = Appt ที่มี G = 1 และ B > 0
+        # (ออกบัตรเสียก่อน แล้วออกบัตรดีใหม่ได้แค่ 1 ใบ - ไม่ต้องตรวจสอบ)
+        appt_g_eq_1_with_b = session.query(Card.appointment_id).filter(
+            date_filter, Card.print_status == 'G'
+        ).group_by(Card.appointment_id).having(func.count(Card.id) == 1).subquery()
+
+        reissue_normal = session.query(func.count(func.distinct(Card.appointment_id))).filter(
+            date_filter,
+            Card.print_status == 'B',
+            Card.appointment_id.in_(session.query(appt_g_eq_1_with_b))
+        ).scalar() or 0
+
+        # Display summary table
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown(f"""
+            <div class="summary-table">
+                <div class="summary-table-header">📈 สถิติ Appointment</div>
+                <div class="summary-row">
+                    <span class="summary-label">G Unique Appointment ID</span>
+                    <span class="summary-value">{g_unique_appt:,}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Appt ID G>1 (ออกบัตรหลายใบ)</span>
+                    <span class="summary-value">{appt_g_more_than_1:,}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">บัตรไม่สมบูรณ์ (ข้อมูลไม่ครบ)</span>
+                    <span class="summary-value">{incomplete_cards:,}</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col2:
+            st.markdown(f"""
+            <div class="summary-table">
+                <div class="summary-table-header">🔄 การออกบัตรหลายใบ</div>
+                <div class="summary-row">
+                    <span class="summary-label">ออกบัตรหลายใบรวม (จำนวนบัตร)</span>
+                    <span class="summary-value">{total_multi_g_cards:,}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Reissue ปกติ (มี B ก่อน G)</span>
+                    <span class="summary-value">{reissue_normal:,}</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Anomaly G>1 (ไม่มี B)</span>
+                    <span class="summary-value" style="color: #ff6b6b;">{anomaly_g_more_than_1:,}</span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
         # ==================== SEARCH SECTION ====================
         st.markdown('<div class="section-header-green">🔍 ค้นหาและตรวจสอบ Anomaly</div>', unsafe_allow_html=True)
 
-        col1, col2, col3 = st.columns([2, 1, 1])
+        # Symmetrical layout: search input = button widths combined
+        col1, col2 = st.columns(2)
 
         with col1:
             search_term = st.text_input(
@@ -148,10 +292,13 @@ try:
             )
 
         with col2:
-            search_button = st.button("🔍 ค้นหา", type="primary", use_container_width=True)
-
-        with col3:
-            clear_button = st.button("🔄 ล้างการค้นหา", use_container_width=True)
+            # Add vertical spacing to align with text input
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            btn_col1, btn_col2 = st.columns(2)
+            with btn_col1:
+                search_button = st.button("🔍 ค้นหา", type="primary", use_container_width=True)
+            with btn_col2:
+                clear_button = st.button("🔄 ล้างการค้นหา", use_container_width=True)
 
         if search_button and search_term:
             st.markdown("---")

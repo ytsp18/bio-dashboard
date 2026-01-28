@@ -2,6 +2,23 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.3.1] - 2026-01-28
+
+### Added
+- **Anomaly Page - Summary Statistics Table**
+  - Added summary statistics section at the top of Anomaly page
+  - Shows: G Unique Appointment ID, Appt ID G>1, บัตรไม่สมบูรณ์
+  - Shows: ออกบัตรหลายใบรวม (จำนวนบัตร), Reissue ปกติ (มี B ก่อน G), Anomaly G>1
+  - Beautiful gradient styling with gold-highlighted values
+
+### Fixed
+- **Anomaly Page - Layout Improvements**
+  - Fixed search section layout for better symmetry (search input = button widths)
+  - Fixed multiselect text color to contrast with textbox background
+  - Added CSS styling for multiselect tags (dark blue background, white text)
+
+---
+
 ## [1.3.0] - 2026-01-28
 
 ### Security
