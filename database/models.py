@@ -1,5 +1,5 @@
 """SQLAlchemy models for Bio Unified Report."""
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean, Date, DateTime,
     ForeignKey, Text, Index
@@ -7,6 +7,14 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+
+# Thailand timezone (UTC+7) for default timestamps
+TH_TIMEZONE = timezone(timedelta(hours=7))
+
+
+def now_th():
+    """Get current datetime in Thailand timezone."""
+    return datetime.now(TH_TIMEZONE)
 
 
 class Report(Base):
@@ -16,7 +24,7 @@ class Report(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     filename = Column(String(255), nullable=False)
     report_date = Column(Date, nullable=False)
-    upload_date = Column(DateTime, default=datetime.utcnow)
+    upload_date = Column(DateTime, default=now_th)
     total_good = Column(Integer, default=0)
     total_bad = Column(Integer, default=0)
     total_records = Column(Integer, default=0)
@@ -240,8 +248,8 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     role = Column(String(20), default='viewer')  # admin, user, viewer
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_th)
+    updated_at = Column(DateTime, default=now_th, onupdate=now_th)
 
     __table_args__ = (
         Index('ix_users_username', 'username'),
@@ -258,7 +266,7 @@ class PendingRegistration(Base):
     email = Column(String(255), unique=True, nullable=False)
     name = Column(String(255), nullable=False)
     password_hash = Column(String(255), nullable=False)
-    requested_at = Column(DateTime, default=datetime.utcnow)
+    requested_at = Column(DateTime, default=now_th)
 
 
 class SystemSetting(Base):
@@ -268,4 +276,4 @@ class SystemSetting(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     key = Column(String(100), unique=True, nullable=False)
     value = Column(String(255))
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=now_th, onupdate=now_th)

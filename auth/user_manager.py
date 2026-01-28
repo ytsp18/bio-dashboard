@@ -2,12 +2,16 @@
 import yaml
 from yaml.loader import SafeLoader
 import os
-from datetime import datetime
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     from streamlit_authenticator.utilities import Hasher
 except ImportError:
     from streamlit_authenticator import Hasher
+
+from utils.timezone import now_th
 
 # Path to config file
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
@@ -208,7 +212,7 @@ def submit_registration(username: str, name: str, email: str, password: str) -> 
         'name': name,
         'email': email,
         'password': hashed_password,
-        'requested_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'requested_at': now_th().strftime('%Y-%m-%d %H:%M:%S'),
     }
 
     save_config(config)

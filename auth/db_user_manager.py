@@ -3,20 +3,20 @@
 This module provides user management functions that store data in the database
 instead of config.yaml, making user data persistent across deployments.
 """
-from datetime import datetime
 from typing import Optional, List, Dict, Any
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     from streamlit_authenticator.utilities import Hasher
 except ImportError:
     from streamlit_authenticator import Hasher
 
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from database.connection import get_session
 from database.models import User, PendingRegistration, SystemSetting
+from utils.timezone import now_th
 
 
 def hash_password(password: str) -> str:
@@ -170,7 +170,7 @@ def update_user(username: str, name: str = None, email: str = None, role: str = 
         if role:
             user.role = role
 
-        user.updated_at = datetime.utcnow()
+        user.updated_at = now_th()
         session.commit()
 
         return {'success': True}
@@ -190,7 +190,7 @@ def change_password(username: str, new_password: str) -> Dict[str, Any]:
             return {'success': False, 'error': 'User not found'}
 
         user.password_hash = hash_password(new_password)
-        user.updated_at = datetime.utcnow()
+        user.updated_at = now_th()
         session.commit()
 
         return {'success': True}
@@ -220,7 +220,7 @@ def delete_user(username: str) -> Dict[str, Any]:
 
         # Soft delete
         user.is_active = False
-        user.updated_at = datetime.utcnow()
+        user.updated_at = now_th()
         session.commit()
 
         return {'success': True}
@@ -309,7 +309,7 @@ def submit_registration(username: str, name: str, email: str, password: str) -> 
             name=name,
             email=email,
             password_hash=hashed_password,
-            requested_at=datetime.utcnow(),
+            requested_at=now_th(),
         )
         session.add(pending)
         session.commit()
@@ -449,7 +449,7 @@ def _set_setting(session, key: str, value: str):
     setting = session.query(SystemSetting).filter(SystemSetting.key == key).first()
     if setting:
         setting.value = value
-        setting.updated_at = datetime.utcnow()
+        setting.updated_at = now_th()
     else:
         setting = SystemSetting(key=key, value=value)
         session.add(setting)
