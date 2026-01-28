@@ -180,15 +180,15 @@ try:
         date_filter = and_(Card.print_date >= start_date, Card.print_date <= end_date)
 
         # ==================== SUMMARY STATISTICS TABLE ====================
-        st.markdown('<div class="section-header-blue">📊 สรุปสถิติ Anomaly G>1</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">⚠️ รายการ Anomaly ที่ต้องตรวจสอบ</div>', unsafe_allow_html=True)
 
-        # Calculate summary statistics
+        # Calculate summary statistics (ใช้ Card ID ตาม Excel report)
         # 1. G Unique Appointment ID - นับ appointment_id ที่มีบัตร G
         g_unique_appt = session.query(func.count(func.distinct(Card.appointment_id))).filter(
             date_filter, Card.print_status == 'G'
         ).scalar() or 0
 
-        # 2. Appt ID G>1 - นับ appointment ที่มีบัตร G มากกว่า 1
+        # 2. Appt ID G>1 - นับ appointment ที่มีบัตร G มากกว่า 1 (ต้องตรวจสอบ)
         appt_g_more_than_1 = session.query(Card.appointment_id).filter(
             date_filter, Card.print_status == 'G'
         ).group_by(Card.appointment_id).having(func.count(Card.id) > 1).count()
@@ -209,33 +209,32 @@ try:
             )
         ).scalar() or 0
 
-        # 4. ออกบัตรหลายใบรวม - นับจำนวนบัตร G ทั้งหมดที่อยู่ใน appointments ที่มี G>1
-        appt_multi_g = session.query(Card.appointment_id).filter(
-            date_filter, Card.print_status == 'G'
-        ).group_by(Card.appointment_id).having(func.count(Card.id) > 1).subquery()
+        # 4. ออกบัตรหลายใบรวม - นับ Card ID ที่มีบัตรมากกว่า 1 ใบ (G หรือ B)
+        total_multi_cards = session.query(Card.card_id).filter(
+            date_filter,
+            Card.card_id.isnot(None), Card.card_id != ''
+        ).group_by(Card.card_id).having(func.count(Card.id) > 1).count()
 
-        total_multi_g_cards = session.query(func.count(Card.id)).filter(
+        # 5. Reissue ปกติ = Card ID ที่มี G = 1 และ B > 0 (มีบัตรเสียก่อน แล้วออกบัตรดีใหม่ 1 ใบ)
+        # (ไม่ต้องตรวจสอบ)
+        card_id_g_eq_1 = session.query(Card.card_id).filter(
             date_filter, Card.print_status == 'G',
-            Card.appointment_id.in_(session.query(appt_multi_g))
-        ).scalar() or 0
+            Card.card_id.isnot(None), Card.card_id != ''
+        ).group_by(Card.card_id).having(func.count(Card.id) == 1).subquery()
 
-        # 5. Reissue ปกติ = Appt ที่มี G = 1 และ B > 0 (มีบัตรเสียก่อน แล้วออกบัตรดีใหม่ 1 ใบ)
-        # 6. Anomaly G>1 = Appt ที่มี G > 1 ทั้งหมด (ไม่ว่าจะมี B หรือไม่ ต้องตรวจสอบ)
-
-        # Anomaly G>1 = ทุก appointment ที่มี G > 1 (ตาม guide: G > 1 ไม่ว่ามี B หรือไม่ ต้องตรวจสอบ)
-        anomaly_g_more_than_1 = appt_g_more_than_1
-
-        # Reissue ปกติ = Appt ที่มี G = 1 และ B > 0
-        # (ออกบัตรเสียก่อน แล้วออกบัตรดีใหม่ได้แค่ 1 ใบ - ไม่ต้องตรวจสอบ)
-        appt_g_eq_1_with_b = session.query(Card.appointment_id).filter(
-            date_filter, Card.print_status == 'G'
-        ).group_by(Card.appointment_id).having(func.count(Card.id) == 1).subquery()
-
-        reissue_normal = session.query(func.count(func.distinct(Card.appointment_id))).filter(
+        reissue_normal = session.query(func.count(func.distinct(Card.card_id))).filter(
             date_filter,
             Card.print_status == 'B',
-            Card.appointment_id.in_(session.query(appt_g_eq_1_with_b))
+            Card.card_id.isnot(None), Card.card_id != '',
+            Card.card_id.in_(session.query(card_id_g_eq_1))
         ).scalar() or 0
+
+        # 6. Anomaly G>1 = Card ID ที่มี G > 1 (ต้องตรวจสอบ)
+        # ตาม guide: G > 1 ไม่ว่ามี B หรือไม่ ต้องตรวจสอบ
+        anomaly_g_more_than_1 = session.query(Card.card_id).filter(
+            date_filter, Card.print_status == 'G',
+            Card.card_id.isnot(None), Card.card_id != ''
+        ).group_by(Card.card_id).having(func.count(Card.id) > 1).count()
 
         # Display summary table
         col1, col2 = st.columns(2)
@@ -264,15 +263,15 @@ try:
             <div class="summary-table">
                 <div class="summary-table-header">🔄 การออกบัตรหลายใบ</div>
                 <div class="summary-row">
-                    <span class="summary-label">ออกบัตรหลายใบรวม (จำนวนบัตร)</span>
-                    <span class="summary-value">{total_multi_g_cards:,}</span>
+                    <span class="summary-label">ออกบัตรหลายใบรวม (Card ID)</span>
+                    <span class="summary-value">{total_multi_cards:,}</span>
                 </div>
                 <div class="summary-row">
-                    <span class="summary-label">Reissue ปกติ (มี B ก่อน G)</span>
-                    <span class="summary-value">{reissue_normal:,}</span>
+                    <span class="summary-label">Reissue ปกติ (G=1, มี B ก่อน)</span>
+                    <span class="summary-value" style="color: #90EE90;">{reissue_normal:,}</span>
                 </div>
                 <div class="summary-row">
-                    <span class="summary-label">Anomaly G>1 (ไม่มี B)</span>
+                    <span class="summary-label">⚠️ Anomaly G>1 (ต้องตรวจสอบ)</span>
                     <span class="summary-value" style="color: #ff6b6b;">{anomaly_g_more_than_1:,}</span>
                 </div>
             </div>
