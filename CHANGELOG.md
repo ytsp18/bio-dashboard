@@ -2,6 +2,35 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.3.2] - 2026-01-29
+
+### Changed
+- **Anomaly Page - Simplified and Focused**
+  - Removed comparison table, comparison chart, and anomaly rate sections
+  - Removed SLA-related tabs (SLA>12min, Wait>1hr) - to be handled separately
+  - Removed Serial Number duplicates, bad cards sections
+  - Summary table now shows only items requiring review:
+    - รายการนัดหมายที่มีบัตรดีมากกว่า 1 ใบ (Appt ID G>1)
+    - Card ID ที่มีบัตรดีมากกว่า 1 ใบ (รหัสประจำตัวคนต่างด้าว)
+  - 4 focused tabs: ผิดวัน, ผิดศูนย์, Appt G>1, Card ID G>1
+
+### Added
+- **Anomaly Page - Wrong Branch Tab**
+  - Re-added "ผิดศูนย์" (Wrong Branch) tab
+  - Shows cards issued at different center than appointment
+  - Includes "สรุปตามศูนย์ที่ออกบัตร" summary table
+  - Export to Excel with summary sheet
+
+### Fixed
+- **Anomaly Logic - Match Excel Report**
+  - Changed Anomaly G>1 counting from Appointment ID to Card ID
+  - Now matches Excel report exactly:
+    - ออกบัตรหลายใบรวม: 120 ✓
+    - Reissue ปกติ: 114 ✓
+    - Anomaly G>1: 6 ✓
+
+---
+
 ## [1.3.1] - 2026-01-28
 
 ### Added

@@ -373,6 +373,7 @@ try:
 
         # Count anomalies
         wrong_date_count = session.query(Card).filter(date_filter, Card.wrong_date == True).count()
+        wrong_branch_count = session.query(Card).filter(date_filter, Card.wrong_branch == True).count()
 
         # Multiple cards per appointment (reuse from summary)
         multi_g_count = appt_g_more_than_1
@@ -383,8 +384,9 @@ try:
         # ==================== Detailed Tabs ====================
         st.markdown('<div class="section-header">📋 รายละเอียดแต่ละประเภท</div>', unsafe_allow_html=True)
 
-        tab1, tab2, tab3 = st.tabs([
+        tab1, tab2, tab3, tab4 = st.tabs([
             f"📅 ผิดวัน ({wrong_date_count:,})",
+            f"🏢 ผิดศูนย์ ({wrong_branch_count:,})",
             f"🔄 Appt G>1 ({multi_g_count:,})",
             f"🔄 Card ID G>1 ({card_id_g_count:,})"
         ])
@@ -435,8 +437,57 @@ try:
             else:
                 st.success("✅ ไม่พบรายการนัดหมายผิดวัน")
 
-        # Tab 2: Multiple G per Appointment
+        # Tab 2: Wrong Branch
         with tab2:
+            st.markdown("#### 🏢 ออกบัตรผิดศูนย์")
+            st.caption("บัตรที่ออกที่ศูนย์ไม่ตรงกับศูนย์ที่นัดหมาย")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                wb_branch_filter = st.selectbox("กรองตามศูนย์ที่ออกบัตร", options=['ทั้งหมด'] + branch_list, key="wb_branch")
+            with col2:
+                wb_limit = st.slider("จำนวนแสดง", 100, 5000, 500, key="wb_limit")
+
+            query = session.query(Card).filter(date_filter, Card.wrong_branch == True)
+            if wb_branch_filter != 'ทั้งหมด':
+                query = query.filter(Card.branch_code == wb_branch_filter)
+
+            wrong_branch = query.limit(wb_limit).all()
+
+            if wrong_branch:
+                data = [{
+                    'Appointment ID': c.appointment_id,
+                    'ศูนย์ที่นัด': c.appt_branch or '-',
+                    'ศูนย์ที่ออกบัตร': c.branch_code,
+                    'ชื่อศูนย์': (c.branch_name[:30] + '...' if c.branch_name and len(c.branch_name) > 30 else c.branch_name) or '-',
+                    'Serial Number': c.serial_number,
+                    'Card ID': c.card_id,
+                    'สถานะ': 'บัตรดี' if c.print_status == 'G' else 'บัตรเสีย',
+                    'วันที่พิมพ์': c.print_date,
+                    'ผู้ให้บริการ': c.operator or '-',
+                } for c in wrong_branch]
+
+                df = pd.DataFrame(data)
+                st.dataframe(df, use_container_width=True, hide_index=True, height=400)
+
+                # Summary by center
+                st.markdown("##### 📊 สรุปตามศูนย์ที่ออกบัตร")
+                center_counts = df.groupby('ศูนย์ที่ออกบัตร').size().reset_index(name='จำนวน')
+                center_counts = center_counts.sort_values('จำนวน', ascending=False)
+                st.dataframe(center_counts, use_container_width=True, hide_index=True)
+
+                buffer = BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    df.to_excel(writer, index=False, sheet_name='Wrong Branch')
+                    center_counts.to_excel(writer, index=False, sheet_name='Summary by Center')
+                st.download_button("📥 ดาวน์โหลด Excel", buffer.getvalue(),
+                    f"wrong_branch_{start_date}_{end_date}.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            else:
+                st.success("✅ ไม่พบรายการออกบัตรผิดศูนย์")
+
+        # Tab 3: Multiple G per Appointment
+        with tab3:
             st.markdown("#### 🔄 ออกบัตรดีหลายใบต่อ Appointment (G > 1)")
             st.caption("Appointment ID ที่มีบัตรดี (G) มากกว่า 1 ใบ")
 
@@ -492,8 +543,8 @@ try:
             else:
                 st.success("✅ ไม่พบ Appointment ที่มีบัตรดีมากกว่า 1 ใบ")
 
-        # Tab 3: Card ID G>1
-        with tab3:
+        # Tab 4: Card ID G>1
+        with tab4:
             st.markdown("#### 🔄 Card ID ที่มีบัตรดีมากกว่า 1 ใบ (รหัสประจำตัวคนต่างด้าว)")
             st.caption("Card ID ที่มีบัตรดี (G) มากกว่า 1 ใบ")
 
