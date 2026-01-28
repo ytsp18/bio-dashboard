@@ -114,30 +114,29 @@ def render_daily_chart(start_date, end_date):
 # Cached function for overview stats
 @st.cache_data(ttl=30)  # Cache for 30 seconds
 def get_overview_stats(start_date, end_date):
-    """Get cached overview statistics using optimized single-query aggregation."""
+    """Get cached overview statistics."""
     session = get_session()
     try:
         date_filter = and_(Card.print_date >= start_date, Card.print_date <= end_date)
 
-        # ==================== OPTIMIZED: Single aggregation query for basic counts ====================
-        # Combines 18+ separate COUNT queries into 1 query with conditional aggregation
-        basic_stats = session.query(
-            # Unique serial counts
-            func.count(func.distinct(case(
-                (and_(Card.print_status == 'G', Card.is_mobile_unit == False, Card.is_ob_center == False), Card.serial_number),
-                else_=None
-            ))).label('unique_at_center'),
-            func.count(func.distinct(case(
-                (and_(Card.print_status == 'G', or_(Card.is_mobile_unit == True, Card.is_ob_center == True)), Card.serial_number),
-                else_=None
-            ))).label('unique_delivery'),
-            func.count(func.distinct(case(
-                (Card.print_status == 'G', Card.serial_number),
-                else_=None
-            ))).label('unique_total'),
-            # Bad cards count
+        # Unique Serial counts (simple queries - faster than CASE WHEN for DISTINCT)
+        unique_at_center = session.query(func.count(func.distinct(Card.serial_number))).filter(
+            date_filter, Card.print_status == 'G',
+            Card.is_mobile_unit == False, Card.is_ob_center == False
+        ).scalar() or 0
+
+        unique_delivery = session.query(func.count(func.distinct(Card.serial_number))).filter(
+            date_filter, Card.print_status == 'G',
+            or_(Card.is_mobile_unit == True, Card.is_ob_center == True)
+        ).scalar() or 0
+
+        unique_total = session.query(func.count(func.distinct(Card.serial_number))).filter(
+            date_filter, Card.print_status == 'G'
+        ).scalar() or 0
+
+        # Simple counts with single aggregation query
+        counts = session.query(
             func.sum(case((Card.print_status == 'B', 1), else_=0)).label('bad_cards'),
-            # Incomplete (missing appointment_id or work_permit_no)
             func.sum(case(
                 (and_(
                     Card.print_status == 'G',
@@ -148,23 +147,19 @@ def get_overview_stats(start_date, end_date):
                 ), 1),
                 else_=0
             )).label('incomplete'),
-            # Anomaly flags
             func.sum(case((Card.wrong_branch == True, 1), else_=0)).label('wrong_branch'),
             func.sum(case((Card.wrong_date == True, 1), else_=0)).label('wrong_date'),
             func.sum(case((Card.sla_over_12min == True, 1), else_=0)).label('sla_over_12'),
             func.sum(case((Card.wait_over_1hour == True, 1), else_=0)).label('wait_over_1hr'),
-            # SLA stats
             func.sum(case((and_(Card.print_status == 'G', Card.sla_minutes.isnot(None)), 1), else_=0)).label('sla_total'),
             func.sum(case((and_(Card.print_status == 'G', Card.sla_minutes.isnot(None), Card.sla_minutes <= 12), 1), else_=0)).label('sla_pass'),
             func.avg(case((and_(Card.print_status == 'G', Card.sla_minutes.isnot(None)), Card.sla_minutes), else_=None)).label('avg_sla'),
-            # Wait stats
             func.sum(case((and_(Card.print_status == 'G', Card.wait_time_minutes.isnot(None)), 1), else_=0)).label('wait_total'),
             func.sum(case((and_(Card.print_status == 'G', Card.wait_time_minutes.isnot(None), Card.wait_time_minutes <= 60), 1), else_=0)).label('wait_pass'),
             func.avg(case((and_(Card.print_status == 'G', Card.wait_time_minutes.isnot(None)), Card.wait_time_minutes), else_=None)).label('avg_wait'),
         ).filter(date_filter).first()
 
-        # ==================== OPTIMIZED: Appointment group stats in single query ====================
-        # Get appointment counts grouped by G count
+        # Appointment group stats
         appt_counts = session.query(
             Card.appointment_id,
             func.count(Card.id).label('g_count')
@@ -173,7 +168,6 @@ def get_overview_stats(start_date, end_date):
             Card.appointment_id.isnot(None), Card.appointment_id != ''
         ).group_by(Card.appointment_id).subquery()
 
-        # Count appointments with exactly 1 G (complete) and >1 G (multiple)
         appt_summary = session.query(
             func.sum(case((appt_counts.c.g_count == 1, 1), else_=0)).label('complete_appts'),
             func.sum(case((appt_counts.c.g_count == 1, appt_counts.c.g_count), else_=0)).label('complete_cards'),
@@ -181,7 +175,7 @@ def get_overview_stats(start_date, end_date):
             func.sum(case((appt_counts.c.g_count > 1, appt_counts.c.g_count), else_=0)).label('multiple_records'),
         ).select_from(appt_counts).first()
 
-        # ==================== Duplicate serial count ====================
+        # Duplicate serial count
         duplicate_serial = session.query(func.count()).select_from(
             session.query(Card.serial_number).filter(
                 date_filter, Card.print_status == 'G'
@@ -189,25 +183,25 @@ def get_overview_stats(start_date, end_date):
         ).scalar() or 0
 
         return {
-            'unique_at_center': basic_stats.unique_at_center or 0,
-            'unique_delivery': basic_stats.unique_delivery or 0,
-            'unique_total': basic_stats.unique_total or 0,
-            'bad_cards': basic_stats.bad_cards or 0,
+            'unique_at_center': unique_at_center,
+            'unique_delivery': unique_delivery,
+            'unique_total': unique_total,
+            'bad_cards': counts.bad_cards or 0,
             'complete_cards': appt_summary.complete_cards or 0,
             'appt_multiple_g': appt_summary.multiple_appts or 0,
             'appt_multiple_records': appt_summary.multiple_records or 0,
-            'incomplete': basic_stats.incomplete or 0,
-            'wrong_branch': basic_stats.wrong_branch or 0,
-            'wrong_date': basic_stats.wrong_date or 0,
-            'sla_over_12': basic_stats.sla_over_12 or 0,
-            'wait_over_1hr': basic_stats.wait_over_1hr or 0,
+            'incomplete': counts.incomplete or 0,
+            'wrong_branch': counts.wrong_branch or 0,
+            'wrong_date': counts.wrong_date or 0,
+            'sla_over_12': counts.sla_over_12 or 0,
+            'wait_over_1hr': counts.wait_over_1hr or 0,
             'duplicate_serial': duplicate_serial,
-            'sla_total': basic_stats.sla_total or 0,
-            'sla_pass': basic_stats.sla_pass or 0,
-            'avg_sla': basic_stats.avg_sla or 0,
-            'wait_total': basic_stats.wait_total or 0,
-            'wait_pass': basic_stats.wait_pass or 0,
-            'avg_wait': basic_stats.avg_wait or 0,
+            'sla_total': counts.sla_total or 0,
+            'sla_pass': counts.sla_pass or 0,
+            'avg_sla': counts.avg_sla or 0,
+            'wait_total': counts.wait_total or 0,
+            'wait_pass': counts.wait_pass or 0,
+            'avg_wait': counts.avg_wait or 0,
         }
     finally:
         session.close()
