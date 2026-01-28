@@ -18,7 +18,7 @@ init_db()
 
 
 # Cached function for overview stats
-@st.cache_data(ttl=30)  # Cache for 30 seconds
+@st.cache_data(ttl=300)  # Cache for 5 minutes
 def get_overview_stats(start_date, end_date):
     """Get cached overview statistics."""
     session = get_session()
@@ -134,7 +134,7 @@ def get_overview_stats(start_date, end_date):
         session.close()
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=300)
 def get_daily_stats(start_date, end_date):
     """Get cached daily statistics for chart."""
     session = get_session()
