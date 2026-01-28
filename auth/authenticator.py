@@ -50,13 +50,19 @@ def get_cookie_config():
     }
 
 
+@st.cache_data(ttl=60)  # Cache users for 60 seconds
+def _get_cached_users():
+    """Get users from database with caching."""
+    return get_all_users_for_auth()
+
+
 def get_authenticator():
     """Create and return authenticator instance using database credentials."""
-    # Initialize database
+    # Initialize database (already cached via init_db)
     init_db()
 
-    # Get users from database
-    users = get_all_users_for_auth()
+    # Get users from database (cached)
+    users = _get_cached_users()
 
     # Build credentials structure for streamlit_authenticator
     credentials = {

@@ -9,6 +9,12 @@ import streamlit as st
 from .db_user_manager import get_user
 
 
+@st.cache_data(ttl=60)  # Cache user data for 60 seconds
+def _get_cached_user(username: str):
+    """Get user from database with caching."""
+    return get_user(username)
+
+
 # Permission definitions
 PERMISSIONS = {
     'admin': {
@@ -48,14 +54,15 @@ PERMISSIONS = {
 
 
 def get_user_role(username: str = None) -> str:
-    """Get user role from database."""
+    """Get user role from database (cached)."""
     if username is None:
         username = st.session_state.get('username', '')
 
     if not username:
         return 'viewer'
 
-    user = get_user(username)
+    # Use cached version to avoid repeated DB queries
+    user = _get_cached_user(username)
     if user:
         return user.get('role', 'viewer')
     return 'viewer'
