@@ -5,6 +5,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
 
+# Track if migrations have been run this session
+_migrations_done = False
+
+
 def get_database_url():
     """Get database URL from Streamlit secrets or environment variable."""
     # Try Streamlit secrets first (for Streamlit Cloud)
@@ -66,6 +70,21 @@ def get_session() -> Session:
     return SessionLocal()
 
 
+@st.cache_resource
+def warm_up_connection():
+    """Warm up database connection pool (runs once per app session)."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(__import__('sqlalchemy').text("SELECT 1"))
+        return True
+    except Exception:
+        return False
+
+
+# Warm up connection on module load
+warm_up_connection()
+
+
 @contextmanager
 def session_scope():
     """Provide a transactional scope around a series of operations."""
@@ -81,15 +100,21 @@ def session_scope():
 
 
 def init_db():
-    """Initialize database tables and run migrations."""
+    """Initialize database tables and run migrations (runs only once per app session)."""
+    global _migrations_done
+
+    # Skip if already done
+    if _migrations_done:
+        return
+
     from .models import Base
-    from sqlalchemy import text, inspect
 
     Base.metadata.create_all(bind=engine)
 
     # Run migrations for existing tables (indexes won't be created by create_all)
     _run_migrations()
 
+    _migrations_done = True
     print(f"Database initialized successfully! (Using: {'SQLite' if is_sqlite else 'PostgreSQL'})")
 
 
