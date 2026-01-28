@@ -360,150 +360,80 @@ st.markdown(f"""
 
 st.markdown('<div class="page-header">รายงานผลการออกบัตร</div>', unsafe_allow_html=True)
 
-session = get_session()
+# Use cached date range
+min_date, max_date = get_date_range()
 
-try:
-    min_date = session.query(func.min(Card.print_date)).scalar()
-    max_date = session.query(func.max(Card.print_date)).scalar()
+if not min_date or not max_date:
+    st.info("ยังไม่มีข้อมูล - กรุณาอัพโหลดไฟล์รายงานก่อน")
+else:
+    # Initialize date filter state
+    if 'filter_start' not in st.session_state:
+        st.session_state.filter_start = min_date
+    if 'filter_end' not in st.session_state:
+        st.session_state.filter_end = max_date
 
-    if not min_date or not max_date:
-        st.info("ยังไม่มีข้อมูล - กรุณาอัพโหลดไฟล์รายงานก่อน")
-    else:
-        # Initialize date filter state
-        if 'filter_start' not in st.session_state:
-            st.session_state.filter_start = min_date
-        if 'filter_end' not in st.session_state:
+    # Quick filter buttons
+    col1, col2, col3, col4, col5 = st.columns([2.5, 2.5, 1, 1, 1])
+
+    with col3:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        if st.button("วันนี้", use_container_width=True):
+            st.session_state.filter_start = max_date
             st.session_state.filter_end = max_date
+            st.rerun()
+    with col4:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        if st.button("7 วัน", use_container_width=True):
+            st.session_state.filter_start = max_date - timedelta(days=7)
+            st.session_state.filter_end = max_date
+            st.rerun()
+    with col5:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        if st.button("30 วัน", use_container_width=True):
+            st.session_state.filter_start = max_date - timedelta(days=30)
+            st.session_state.filter_end = max_date
+            st.rerun()
 
-        # Quick filter buttons
-        col1, col2, col3, col4, col5 = st.columns([2.5, 2.5, 1, 1, 1])
+    # Date inputs
+    with col1:
+        start_date = st.date_input("วันที่เริ่มต้น", value=st.session_state.filter_start, min_value=min_date, max_value=max_date, key="overview_start")
+        st.session_state.filter_start = start_date
+    with col2:
+        end_date = st.date_input("วันที่สิ้นสุด", value=st.session_state.filter_end, min_value=min_date, max_value=max_date, key="overview_end")
+        st.session_state.filter_end = end_date
 
-        with col3:
-            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("วันนี้", use_container_width=True):
-                st.session_state.filter_start = max_date
-                st.session_state.filter_end = max_date
-                st.rerun()
-        with col4:
-            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("7 วัน", use_container_width=True):
-                st.session_state.filter_start = max_date - timedelta(days=7)
-                st.session_state.filter_end = max_date
-                st.rerun()
-        with col5:
-            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("30 วัน", use_container_width=True):
-                st.session_state.filter_start = max_date - timedelta(days=30)
-                st.session_state.filter_end = max_date
-                st.rerun()
+    # ==================== Use Cached Stats ====================
+    stats = get_overview_stats(start_date, end_date)
 
-        # Date inputs
-        with col1:
-            start_date = st.date_input("วันที่เริ่มต้น", value=st.session_state.filter_start, min_value=min_date, max_value=max_date, key="overview_start")
-            st.session_state.filter_start = start_date
-        with col2:
-            end_date = st.date_input("วันที่สิ้นสุด", value=st.session_state.filter_end, min_value=min_date, max_value=max_date, key="overview_end")
-            st.session_state.filter_end = end_date
+    # Extract values from cached stats
+    unique_at_center = stats['unique_at_center']
+    unique_delivery = stats['unique_delivery']
+    unique_total = stats['unique_total']
+    bad_cards = stats['bad_cards']
+    complete_cards = stats['complete_cards']
+    appt_multiple_g = stats['appt_multiple_g']
+    appt_multiple_records = stats['appt_multiple_records']
+    incomplete = stats['incomplete']
+    wrong_branch = stats['wrong_branch']
+    wrong_date = stats['wrong_date']
+    sla_over_12 = stats['sla_over_12']
+    wait_over_1hr = stats['wait_over_1hr']
+    duplicate_serial = stats['duplicate_serial']
+    sla_total = stats['sla_total']
+    sla_pass = stats['sla_pass']
+    avg_sla = stats['avg_sla']
+    wait_total = stats['wait_total']
+    wait_pass = stats['wait_pass']
+    avg_wait = stats['avg_wait']
 
-        date_filter = and_(Card.print_date >= start_date, Card.print_date <= end_date)
-
-        # ==================== Calculate All Stats ====================
-
-        # Unique Serial - รับที่ศูนย์
-        unique_at_center = session.query(func.count(func.distinct(Card.serial_number))).filter(
-            date_filter, Card.print_status == 'G',
-            Card.is_mobile_unit == False, Card.is_ob_center == False
-        ).scalar() or 0
-
-        # Unique Serial - จัดส่ง
-        unique_delivery = session.query(func.count(func.distinct(Card.serial_number))).filter(
-            date_filter, Card.print_status == 'G',
-            or_(Card.is_mobile_unit == True, Card.is_ob_center == True)
-        ).scalar() or 0
-
-        # Unique Serial - รวม
-        unique_total = session.query(func.count(func.distinct(Card.serial_number))).filter(
-            date_filter, Card.print_status == 'G'
-        ).scalar() or 0
-
-        # Bad cards
-        bad_cards = session.query(Card).filter(date_filter, Card.print_status == 'B').count()
-
-        # บัตรสมบูรณ์ (1 Appt = 1 G)
-        appt_one_g = session.query(Card.appointment_id).filter(
-            date_filter, Card.print_status == 'G',
-            Card.appointment_id.isnot(None), Card.appointment_id != ''
-        ).group_by(Card.appointment_id).having(func.count(Card.id) == 1).subquery()
-
-        complete_cards = session.query(func.count(Card.id)).filter(
-            date_filter, Card.print_status == 'G',
-            Card.appointment_id.in_(session.query(appt_one_g))
-        ).scalar() or 0
-
-        complete_pct = (complete_cards / unique_total * 100) if unique_total > 0 else 0
-
-        # Appt G > 1
-        appt_multiple_g = session.query(Card.appointment_id).filter(
-            date_filter, Card.print_status == 'G',
-            Card.appointment_id.isnot(None), Card.appointment_id != ''
-        ).group_by(Card.appointment_id).having(func.count(Card.id) > 1).count()
-
-        appt_multiple_records = session.query(func.count(Card.id)).filter(
-            date_filter, Card.print_status == 'G',
-            Card.appointment_id.in_(
-                session.query(Card.appointment_id).filter(
-                    date_filter, Card.print_status == 'G',
-                    Card.appointment_id.isnot(None), Card.appointment_id != ''
-                ).group_by(Card.appointment_id).having(func.count(Card.id) > 1)
-            )
-        ).scalar() or 0
-
-        # บัตรไม่สมบูรณ์
-        incomplete = session.query(Card).filter(
-            date_filter, Card.print_status == 'G',
-            or_(
-                Card.appointment_id.is_(None), Card.appointment_id == '',
-                Card.work_permit_no.is_(None), Card.work_permit_no == ''
-            )
-        ).count()
-
-        # Anomaly stats
-        wrong_branch = session.query(Card).filter(date_filter, Card.wrong_branch == True).count()
-        wrong_date = session.query(Card).filter(date_filter, Card.wrong_date == True).count()
-        sla_over_12 = session.query(Card).filter(date_filter, Card.sla_over_12min == True).count()
-        wait_over_1hr = session.query(Card).filter(date_filter, Card.wait_over_1hour == True).count()
-        duplicate_serial = session.query(Card.serial_number).filter(
-            date_filter, Card.print_status == 'G'
-        ).group_by(Card.serial_number).having(func.count(Card.id) > 1).count()
-
-        total_anomalies = wrong_branch + wrong_date + appt_multiple_g + duplicate_serial + sla_over_12 + wait_over_1hr
-
-        # SLA stats
-        sla_total = session.query(Card).filter(
-            date_filter, Card.print_status == 'G', Card.sla_minutes.isnot(None)
-        ).count()
-        sla_pass = session.query(Card).filter(
-            date_filter, Card.print_status == 'G', Card.sla_minutes.isnot(None), Card.sla_minutes <= 12
-        ).count()
-        sla_fail = sla_total - sla_pass
-        avg_sla = session.query(func.avg(Card.sla_minutes)).filter(
-            date_filter, Card.print_status == 'G', Card.sla_minutes.isnot(None)
-        ).scalar() or 0
-        sla_pass_pct = (sla_pass / sla_total * 100) if sla_total > 0 else 0
-        sla_fail_pct = (sla_fail / sla_total * 100) if sla_total > 0 else 0
-
-        # Wait queue stats
-        wait_total = session.query(Card).filter(
-            date_filter, Card.print_status == 'G', Card.wait_time_minutes.isnot(None)
-        ).count()
-        wait_pass = session.query(Card).filter(
-            date_filter, Card.print_status == 'G', Card.wait_time_minutes.isnot(None), Card.wait_time_minutes <= 60
-        ).count()
-        wait_fail = wait_total - wait_pass
-        avg_wait = session.query(func.avg(Card.wait_time_minutes)).filter(
-            date_filter, Card.print_status == 'G', Card.wait_time_minutes.isnot(None)
-        ).scalar() or 0
-        wait_pass_pct = (wait_pass / wait_total * 100) if wait_total > 0 else 0
+    # Calculate derived values
+    complete_pct = (complete_cards / unique_total * 100) if unique_total > 0 else 0
+    total_anomalies = wrong_branch + wrong_date + appt_multiple_g + duplicate_serial + sla_over_12 + wait_over_1hr
+    sla_fail = sla_total - sla_pass
+    sla_pass_pct = (sla_pass / sla_total * 100) if sla_total > 0 else 0
+    sla_fail_pct = (sla_fail / sla_total * 100) if sla_total > 0 else 0
+    wait_fail = wait_total - wait_pass
+    wait_pass_pct = (wait_pass / wait_total * 100) if wait_total > 0 else 0
 
         # ==================== Summary Cards ====================
         st.markdown(f"""
@@ -542,30 +472,17 @@ try:
             <div class="card-body" style="padding: 10px 20px;">
         """, unsafe_allow_html=True)
 
-        daily_stats = session.query(
-            Card.print_date,
-            func.count(func.distinct(Card.serial_number)).filter(Card.print_status == 'G').label('unique_g'),
-            func.count(func.distinct(Card.serial_number)).filter(
-                Card.print_status == 'G',
-                Card.is_mobile_unit == False,
-                Card.is_ob_center == False
-            ).label('at_center'),
-            func.count(func.distinct(Card.serial_number)).filter(
-                Card.print_status == 'G',
-                or_(Card.is_mobile_unit == True, Card.is_ob_center == True)
-            ).label('delivery'),
-            func.sum(case((Card.print_status == 'B', 1), else_=0)).label('bad')
-        ).filter(
-            date_filter, Card.print_date.isnot(None)
-        ).group_by(Card.print_date).order_by(Card.print_date).all()
+        # Use cached daily stats
+        daily_stats = get_daily_stats(start_date, end_date)
 
         if daily_stats:
+            # daily_stats is now a list of tuples from cache
             daily_data = pd.DataFrame([{
-                'วันที่': d.print_date,
-                'Unique Serial (G)': d.unique_g or 0,
-                'รับที่ศูนย์': d.at_center or 0,
-                'จัดส่ง': d.delivery or 0,
-                'บัตรเสีย': d.bad or 0
+                'วันที่': d[0],
+                'Unique Serial (G)': d[1],
+                'รับที่ศูนย์': d[2],
+                'จัดส่ง': d[3],
+                'บัตรเสีย': d[4]
             } for d in daily_stats])
 
             fig = go.Figure()
@@ -790,6 +707,3 @@ try:
             </div>
         </div>
         """, unsafe_allow_html=True)
-
-finally:
-    session.close()
