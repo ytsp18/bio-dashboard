@@ -9,7 +9,7 @@ import streamlit as st
 from .db_user_manager import get_user
 
 
-@st.cache_data(ttl=60)  # Cache user data for 60 seconds
+@st.cache_data(ttl=300)  # Cache user data for 5 minutes
 def _get_cached_user(username: str):
     """Get user from database with caching."""
     return get_user(username)

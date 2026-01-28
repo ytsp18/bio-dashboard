@@ -50,7 +50,7 @@ def get_cookie_config():
     }
 
 
-@st.cache_data(ttl=60)  # Cache users for 60 seconds
+@st.cache_data(ttl=300)  # Cache users for 5 minutes
 def _get_cached_users():
     """Get users from database with caching."""
     return get_all_users_for_auth()
