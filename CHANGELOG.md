@@ -2,6 +2,50 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.3.0] - 2026-01-28
+
+### Security
+- **Audit Logging System**
+  - Added `AuditLog` table for tracking user actions (login, logout, upload, delete)
+  - Added `LoginAttempt` table for brute force protection
+  - Login locked after 5 failed attempts for 15 minutes
+  - All security events logged with Thailand timezone
+
+- **Session Security**
+  - Reduced cookie expiry from 30 days to 7 days
+
+### Fixed
+- **Overview Page Logic Corrections**
+  - Fixed "บัตรจัดส่ง" count - now uses `DeliveryCard` table (Sheet 7) correctly
+  - Fixed "บัตรสมบูรณ์" count - now uses Unique Serial instead of row count
+  - Fixed "ข้อมูลไม่ครบ" - checks all 4 required fields (Appt ID, Card ID, Serial, Work Permit)
+  - All metrics now match Excel report exactly:
+    - Unique SN รับที่ศูนย์: 2,880 ✓
+    - Unique SN จัดส่ง: 3 ✓
+    - รวม Unique SN (G): 2,883 ✓
+    - บัตรสมบูรณ์: 2,874 ✓
+    - Appt G > 1: 3 ✓
+    - ข้อมูลไม่ครบ: 0 ✓
+    - Unique Work Permit: 2,872 ✓
+
+- **By Center Page**
+  - Fixed slider error when center count < 5 (StreamlitAPIException)
+
+### Added
+- **Admin Panel - Audit Logs Tab**
+  - View all system activity logs
+  - Filter by action type (login, logout, upload, delete)
+  - Filter by username
+  - Export logs to CSV
+
+### Changed
+- **Overview Summary Cards Redesign**
+  - Row 1: Unique SN (รับที่ศูนย์, จัดส่ง, รวม), บัตรเสีย
+  - Row 2: บัตรสมบูรณ์, Appt G>1, ข้อมูลไม่ครบ, Unique Work Permit
+  - Added "สรุปบัตรสมบูรณ์" detail section
+
+---
+
 ## [1.2.2] - 2026-01-28
 
 ### Performance
