@@ -12,6 +12,34 @@ from auth import check_authentication, logout_button
 # Initialize database on startup
 init_db()
 
+
+# Cached functions for better performance
+@st.cache_data(ttl=60)  # Cache for 60 seconds
+def get_quick_stats():
+    """Get cached quick statistics."""
+    from database.connection import get_session
+    from database.models import Report, Card
+
+    session = get_session()
+    try:
+        report_count = session.query(Report).count()
+        card_count = session.query(Card).count()
+        good_count = session.query(Card).filter(Card.print_status == 'G').count()
+        bad_count = session.query(Card).filter(Card.print_status == 'B').count()
+
+        recent_reports = session.query(Report).order_by(Report.report_date.desc()).limit(5).all()
+        recent_data = [(r.filename, str(r.report_date), r.total_good, r.total_bad) for r in recent_reports]
+
+        return {
+            'report_count': report_count,
+            'card_count': card_count,
+            'good_count': good_count,
+            'bad_count': bad_count,
+            'recent_reports': recent_data
+        }
+    finally:
+        session.close()
+
 # Page configuration
 st.set_page_config(
     page_title="Bio Unified Report Dashboard",
@@ -73,43 +101,30 @@ st.markdown("""
 3. **ค้นหา** - ใช้หน้า Search เพื่อค้นหารายการเฉพาะ
 """)
 
-# Show quick stats if data exists
-from database.connection import get_session
-from database.models import Report, Card
+# Show quick stats if data exists (with caching)
+stats = get_quick_stats()
 
-session = get_session()
-try:
-    report_count = session.query(Report).count()
-    card_count = session.query(Card).count()
+if stats['report_count'] > 0:
+    st.markdown("---")
+    st.subheader("📊 สถิติเบื้องต้น")
 
-    if report_count > 0:
-        st.markdown("---")
-        st.subheader("📊 สถิติเบื้องต้น")
+    col1, col2, col3 = st.columns(3)
 
-        col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("จำนวนรายงาน", f"{stats['report_count']:,}")
 
-        with col1:
-            st.metric("จำนวนรายงาน", f"{report_count:,}")
+    with col2:
+        st.metric("จำนวนบัตรทั้งหมด", f"{stats['card_count']:,}")
 
-        with col2:
-            st.metric("จำนวนบัตรทั้งหมด", f"{card_count:,}")
+    with col3:
+        printed_count = stats['good_count'] + stats['bad_count']
+        good_rate = stats['good_count'] / printed_count * 100 if printed_count > 0 else 0
+        st.metric("อัตราบัตรดี", f"{good_rate:.1f}%", help="คำนวณจากบัตรที่พิมพ์แล้วเท่านั้น (G+B)")
 
-        with col3:
-            good_count = session.query(Card).filter(Card.print_status == 'G').count()
-            bad_count = session.query(Card).filter(Card.print_status == 'B').count()
-            printed_count = good_count + bad_count  # Only count printed cards
-            good_rate = good_count / printed_count * 100 if printed_count > 0 else 0
-            st.metric("อัตราบัตรดี", f"{good_rate:.1f}%", help="คำนวณจากบัตรที่พิมพ์แล้วเท่านั้น (G+B)")
-
-        # Recent reports
-        st.subheader("📅 รายงานล่าสุด")
-        recent_reports = session.query(Report).order_by(Report.report_date.desc()).limit(5).all()
-
-        if recent_reports:
-            for r in recent_reports:
-                st.text(f"• {r.filename} ({r.report_date}) - บัตรดี: {r.total_good:,}, บัตรเสีย: {r.total_bad:,}")
-    else:
-        st.info("💡 ยังไม่มีข้อมูล กรุณาไปที่หน้า **Upload** เพื่ออัพโหลดไฟล์รายงาน")
-
-finally:
-    session.close()
+    # Recent reports
+    st.subheader("📅 รายงานล่าสุด")
+    if stats['recent_reports']:
+        for filename, report_date, total_good, total_bad in stats['recent_reports']:
+            st.text(f"• {filename} ({report_date}) - บัตรดี: {total_good:,}, บัตรเสีย: {total_bad:,}")
+else:
+    st.info("💡 ยังไม่มีข้อมูล กรุณาไปที่หน้า **Upload** เพื่ออัพโหลดไฟล์รายงาน")

@@ -16,6 +16,164 @@ from utils.auth_check import require_login
 
 init_db()
 
+
+# Cached function for overview stats
+@st.cache_data(ttl=30)  # Cache for 30 seconds
+def get_overview_stats(start_date, end_date):
+    """Get cached overview statistics."""
+    session = get_session()
+    try:
+        date_filter = and_(Card.print_date >= start_date, Card.print_date <= end_date)
+
+        # Unique Serial counts
+        unique_at_center = session.query(func.count(func.distinct(Card.serial_number))).filter(
+            date_filter, Card.print_status == 'G',
+            Card.is_mobile_unit == False, Card.is_ob_center == False
+        ).scalar() or 0
+
+        unique_delivery = session.query(func.count(func.distinct(Card.serial_number))).filter(
+            date_filter, Card.print_status == 'G',
+            or_(Card.is_mobile_unit == True, Card.is_ob_center == True)
+        ).scalar() or 0
+
+        unique_total = session.query(func.count(func.distinct(Card.serial_number))).filter(
+            date_filter, Card.print_status == 'G'
+        ).scalar() or 0
+
+        bad_cards = session.query(Card).filter(date_filter, Card.print_status == 'B').count()
+
+        # Complete cards
+        appt_one_g = session.query(Card.appointment_id).filter(
+            date_filter, Card.print_status == 'G',
+            Card.appointment_id.isnot(None), Card.appointment_id != ''
+        ).group_by(Card.appointment_id).having(func.count(Card.id) == 1).subquery()
+
+        complete_cards = session.query(func.count(Card.id)).filter(
+            date_filter, Card.print_status == 'G',
+            Card.appointment_id.in_(session.query(appt_one_g))
+        ).scalar() or 0
+
+        # Appt G > 1
+        appt_multiple_g = session.query(Card.appointment_id).filter(
+            date_filter, Card.print_status == 'G',
+            Card.appointment_id.isnot(None), Card.appointment_id != ''
+        ).group_by(Card.appointment_id).having(func.count(Card.id) > 1).count()
+
+        appt_multiple_records = session.query(func.count(Card.id)).filter(
+            date_filter, Card.print_status == 'G',
+            Card.appointment_id.in_(
+                session.query(Card.appointment_id).filter(
+                    date_filter, Card.print_status == 'G',
+                    Card.appointment_id.isnot(None), Card.appointment_id != ''
+                ).group_by(Card.appointment_id).having(func.count(Card.id) > 1)
+            )
+        ).scalar() or 0
+
+        # Incomplete
+        incomplete = session.query(Card).filter(
+            date_filter, Card.print_status == 'G',
+            or_(
+                Card.appointment_id.is_(None), Card.appointment_id == '',
+                Card.work_permit_no.is_(None), Card.work_permit_no == ''
+            )
+        ).count()
+
+        # Anomaly stats
+        wrong_branch = session.query(Card).filter(date_filter, Card.wrong_branch == True).count()
+        wrong_date = session.query(Card).filter(date_filter, Card.wrong_date == True).count()
+        sla_over_12 = session.query(Card).filter(date_filter, Card.sla_over_12min == True).count()
+        wait_over_1hr = session.query(Card).filter(date_filter, Card.wait_over_1hour == True).count()
+        duplicate_serial = session.query(Card.serial_number).filter(
+            date_filter, Card.print_status == 'G'
+        ).group_by(Card.serial_number).having(func.count(Card.id) > 1).count()
+
+        # SLA stats
+        sla_total = session.query(Card).filter(
+            date_filter, Card.print_status == 'G', Card.sla_minutes.isnot(None)
+        ).count()
+        sla_pass = session.query(Card).filter(
+            date_filter, Card.print_status == 'G', Card.sla_minutes.isnot(None), Card.sla_minutes <= 12
+        ).count()
+        avg_sla = session.query(func.avg(Card.sla_minutes)).filter(
+            date_filter, Card.print_status == 'G', Card.sla_minutes.isnot(None)
+        ).scalar() or 0
+
+        # Wait stats
+        wait_total = session.query(Card).filter(
+            date_filter, Card.print_status == 'G', Card.wait_time_minutes.isnot(None)
+        ).count()
+        wait_pass = session.query(Card).filter(
+            date_filter, Card.print_status == 'G', Card.wait_time_minutes.isnot(None), Card.wait_time_minutes <= 60
+        ).count()
+        avg_wait = session.query(func.avg(Card.wait_time_minutes)).filter(
+            date_filter, Card.print_status == 'G', Card.wait_time_minutes.isnot(None)
+        ).scalar() or 0
+
+        return {
+            'unique_at_center': unique_at_center,
+            'unique_delivery': unique_delivery,
+            'unique_total': unique_total,
+            'bad_cards': bad_cards,
+            'complete_cards': complete_cards,
+            'appt_multiple_g': appt_multiple_g,
+            'appt_multiple_records': appt_multiple_records,
+            'incomplete': incomplete,
+            'wrong_branch': wrong_branch,
+            'wrong_date': wrong_date,
+            'sla_over_12': sla_over_12,
+            'wait_over_1hr': wait_over_1hr,
+            'duplicate_serial': duplicate_serial,
+            'sla_total': sla_total,
+            'sla_pass': sla_pass,
+            'avg_sla': avg_sla,
+            'wait_total': wait_total,
+            'wait_pass': wait_pass,
+            'avg_wait': avg_wait,
+        }
+    finally:
+        session.close()
+
+
+@st.cache_data(ttl=30)
+def get_daily_stats(start_date, end_date):
+    """Get cached daily statistics for chart."""
+    session = get_session()
+    try:
+        date_filter = and_(Card.print_date >= start_date, Card.print_date <= end_date)
+
+        daily_stats = session.query(
+            Card.print_date,
+            func.count(func.distinct(Card.serial_number)).filter(Card.print_status == 'G').label('unique_g'),
+            func.count(func.distinct(Card.serial_number)).filter(
+                Card.print_status == 'G',
+                Card.is_mobile_unit == False,
+                Card.is_ob_center == False
+            ).label('at_center'),
+            func.count(func.distinct(Card.serial_number)).filter(
+                Card.print_status == 'G',
+                or_(Card.is_mobile_unit == True, Card.is_ob_center == True)
+            ).label('delivery'),
+            func.sum(case((Card.print_status == 'B', 1), else_=0)).label('bad')
+        ).filter(
+            date_filter, Card.print_date.isnot(None)
+        ).group_by(Card.print_date).order_by(Card.print_date).all()
+
+        return [(d.print_date, d.unique_g or 0, d.at_center or 0, d.delivery or 0, d.bad or 0) for d in daily_stats]
+    finally:
+        session.close()
+
+
+@st.cache_data(ttl=60)
+def get_date_range():
+    """Get cached min/max dates."""
+    session = get_session()
+    try:
+        min_date = session.query(func.min(Card.print_date)).scalar()
+        max_date = session.query(func.max(Card.print_date)).scalar()
+        return min_date, max_date
+    finally:
+        session.close()
+
 st.set_page_config(page_title="Overview - Bio Dashboard", page_icon="📈", layout="wide")
 
 # Check authentication
