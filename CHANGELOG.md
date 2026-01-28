@@ -2,6 +2,16 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.2.1] - 2026-01-28
+
+### Performance
+- **User Authentication Caching**
+  - Added caching for user authentication queries (5 minutes TTL)
+  - Added caching for user role/permission checks (5 minutes TTL)
+  - Reduces database queries from every page load to once per 5 minutes
+
+---
+
 ## [1.2.0] - 2026-01-28
 
 ### Added
