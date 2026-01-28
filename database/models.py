@@ -111,6 +111,10 @@ class Card(Base):
         Index('ix_cards_appointment', 'appointment_id'),
         Index('ix_cards_serial', 'serial_number'),
         Index('ix_cards_branch_date', 'branch_code', 'print_date'),
+        # Composite index for Overview page queries (print_date + print_status)
+        Index('ix_cards_date_status', 'print_date', 'print_status'),
+        # Composite index for serial unique count with status
+        Index('ix_cards_status_serial', 'print_status', 'serial_number'),
     )
 
 

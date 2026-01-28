@@ -98,28 +98,30 @@ def _run_migrations():
     from sqlalchemy import text, inspect
 
     inspector = inspect(engine)
-
-    # Check if users table exists
-    if 'users' not in inspector.get_table_names():
-        return
-
-    # Get existing indexes on users table
-    existing_indexes = {idx['name'] for idx in inspector.get_indexes('users')}
-
+    tables = inspector.get_table_names()
     migrations = []
 
-    # Add missing indexes
-    if 'ix_users_username' not in existing_indexes:
-        if is_sqlite:
-            migrations.append("CREATE INDEX IF NOT EXISTS ix_users_username ON users (username)")
-        else:
+    # ========== Users table indexes ==========
+    if 'users' in tables:
+        existing_indexes = {idx['name'] for idx in inspector.get_indexes('users')}
+
+        if 'ix_users_username' not in existing_indexes:
             migrations.append("CREATE INDEX IF NOT EXISTS ix_users_username ON users (username)")
 
-    if 'ix_users_email' not in existing_indexes:
-        if is_sqlite:
+        if 'ix_users_email' not in existing_indexes:
             migrations.append("CREATE INDEX IF NOT EXISTS ix_users_email ON users (email)")
-        else:
-            migrations.append("CREATE INDEX IF NOT EXISTS ix_users_email ON users (email)")
+
+    # ========== Cards table indexes (for Overview page performance) ==========
+    if 'cards' in tables:
+        existing_indexes = {idx['name'] for idx in inspector.get_indexes('cards')}
+
+        # Composite index for date range + status queries
+        if 'ix_cards_date_status' not in existing_indexes:
+            migrations.append("CREATE INDEX IF NOT EXISTS ix_cards_date_status ON cards (print_date, print_status)")
+
+        # Composite index for status + serial (unique serial count)
+        if 'ix_cards_status_serial' not in existing_indexes:
+            migrations.append("CREATE INDEX IF NOT EXISTS ix_cards_status_serial ON cards (print_status, serial_number)")
 
     # Execute migrations
     if migrations:
