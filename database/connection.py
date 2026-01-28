@@ -168,4 +168,4 @@ def _run_migrations():
             for sql in migrations:
                 conn.execute(text(sql))
             conn.commit()
-        print(f"Migrations applied: {len(migrations)} index(es) created")
+        _log(f"Migrations applied: {len(migrations)} index(es) created")
