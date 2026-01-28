@@ -29,24 +29,22 @@ def get_overview_stats(start_date, end_date):
         date_filter = and_(Card.print_date >= start_date, Card.print_date <= end_date)
 
         # Unique Serial counts
-        # Get report IDs for date range
-        report_ids = session.query(Report.id).filter(
-            Report.report_date >= start_date, Report.report_date <= end_date
-        ).subquery()
-
-        # Delivery cards from DeliveryCard table (Sheet 7)
-        unique_delivery = session.query(func.count(func.distinct(DeliveryCard.serial_number))).filter(
-            DeliveryCard.report_id.in_(session.query(report_ids)),
-            DeliveryCard.print_status == 'G'
-        ).scalar() or 0
-
-        # Total unique G from Cards table
-        unique_total = session.query(func.count(func.distinct(Card.serial_number))).filter(
+        # Total unique G from Cards table (รับที่ศูนย์)
+        unique_at_center = session.query(func.count(func.distinct(Card.serial_number))).filter(
             date_filter, Card.print_status == 'G'
         ).scalar() or 0
 
-        # At center = Total - Delivery
-        unique_at_center = unique_total - unique_delivery
+        # Delivery cards - นับจาก DeliveryCard table โดยตรง (Sheet 7)
+        # หา report IDs ที่มี cards ในช่วงวันที่เลือก
+        report_ids_with_data = session.query(Card.report_id).filter(date_filter).distinct().subquery()
+
+        unique_delivery = session.query(func.count(func.distinct(DeliveryCard.serial_number))).filter(
+            DeliveryCard.print_status == 'G',
+            DeliveryCard.report_id.in_(session.query(report_ids_with_data))
+        ).scalar() or 0
+
+        # Total = At center + Delivery
+        unique_total = unique_at_center + unique_delivery
 
         bad_cards = session.query(Card).filter(date_filter, Card.print_status == 'B').count()
 
