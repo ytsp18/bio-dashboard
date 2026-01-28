@@ -1,0 +1,37 @@
+# Bio Dashboard Authentication Configuration
+#
+# Roles:
+#   - admin: ทำได้ทุกอย่าง รวมถึง Admin Panel
+#   - user: ใช้งานได้ทุกอย่าง + อัพโหลดไฟล์ได้ แต่เข้า Admin Panel ไม่ได้
+#   - viewer: ดูข้อมูลได้อย่างเดียว อัพโหลดไม่ได้
+#
+# Default passwords (เปลี่ยนก่อนใช้งานจริง!):
+#   - admin: admin123
+#   - operator: operator123
+
+credentials:
+  usernames:
+    admin:
+      email: admin@bio-dashboard.local
+      name: Administrator
+      password: $2b$12$ns/BFECtN89fYf1Rnk5MFOBhqSBls.Ht8yPUssmtEltdUJeVg0CyG
+      role: admin
+    operator:
+      email: operator@bio-dashboard.local
+      name: Operator User
+      password: $2b$12$alzYTZXstdY2eGN/z6d3ZuH2BoN2gjvBuaVmD3cWTmqOx/0xIoFVS
+      role: user
+
+cookie:
+  expiry_days: 30
+  key: bio_dashboard_secret_cookie_key_change_in_production_12345
+  name: bio_dashboard_auth
+
+# Pending registrations (users waiting for approval)
+pending_registrations: {}
+
+# Settings
+settings:
+  allow_registration: true
+  require_approval: true
+  default_role: viewer  # Default role for new users (viewer/user)
