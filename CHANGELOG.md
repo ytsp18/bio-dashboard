@@ -2,6 +2,28 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.1.0] - 2026-01-28
+
+### Added
+- **Supabase PostgreSQL Cloud Database Support**
+  - Migrated from local SQLite to Supabase cloud database
+  - Data now stored on cloud for better accessibility and reliability
+  - Supports Session Pooler connection for IPv4 networks
+
+### Configuration
+- Added `.streamlit/secrets.toml` for database configuration
+- Database URL format: `postgresql://postgres.xxx:password@aws-xxx.pooler.supabase.com:5432/postgres`
+
+### Changed
+- `database/connection.py` now supports both SQLite (local) and PostgreSQL (cloud)
+- Automatic fallback to SQLite if no cloud database configured
+
+### How to Switch Database
+1. **Use Supabase (cloud)**: Add `secrets.toml` with database URL
+2. **Use SQLite (local)**: Remove `secrets.toml` file
+
+---
+
 ## [1.0.4] - 2026-01-28
 
 ### Fixed
