@@ -109,6 +109,7 @@ class DataService:
             session.flush()
 
             cards_imported = 0
+            BATCH_SIZE = 500  # Commit every 500 records to avoid timeout
 
             # Helper function to get enriched values from Sheet 13 row (pandas Series)
             def get_enriched_value(enriched_row, key, default=None):
@@ -174,6 +175,10 @@ class DataService:
                     session.add(card)
                     cards_imported += 1
 
+                    # Commit in batches to avoid timeout
+                    if cards_imported % BATCH_SIZE == 0:
+                        session.flush()
+
                 # Import from Sheet 3 (bad cards) with Sheet 13 enrichment
                 for _, row in bad_cards_df.iterrows():
                     appt_id = str(row.get('appointment_id', '')) if pd.notna(row.get('appointment_id')) else None
@@ -205,6 +210,10 @@ class DataService:
                     )
                     session.add(card)
                     cards_imported += 1
+
+                    # Commit in batches to avoid timeout
+                    if cards_imported % BATCH_SIZE == 0:
+                        session.flush()
 
             else:
                 # Import from Sheet 13 (all data) - preferred source with full details
@@ -267,6 +276,10 @@ class DataService:
                     )
                     session.add(card)
                     cards_imported += 1
+
+                    # Commit in batches to avoid timeout
+                    if cards_imported % BATCH_SIZE == 0:
+                        session.flush()
 
             # Import to BadCard table (separate table for bad cards summary)
             bad_imported = 0
