@@ -95,7 +95,17 @@ def check_authentication():
     Returns True if authenticated, False otherwise.
     Shows login form if not authenticated.
     """
+    from utils.security import audit_login, check_login_allowed
+
     authenticator, config = get_authenticator()
+
+    # Check for lockout before showing login
+    username_input = st.session_state.get('username', '')
+    if username_input:
+        allowed, message = check_login_allowed(username_input)
+        if not allowed:
+            st.error(f'🔒 {message}')
+            return False
 
     # Render login widget (v0.4.x API)
     try:
@@ -109,10 +119,28 @@ def check_authentication():
     if st.session_state.get('authentication_status'):
         # Store authenticator in session state
         st.session_state['authenticator'] = authenticator
+
+        # Log successful login (only once per session)
+        if not st.session_state.get('_login_logged'):
+            audit_login(st.session_state.get('username', ''), success=True)
+            st.session_state['_login_logged'] = True
+
         return True
 
     elif st.session_state.get('authentication_status') is False:
         st.error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
+
+        # Log failed login attempt
+        failed_username = st.session_state.get('username', '')
+        if failed_username and not st.session_state.get('_last_failed_user') == failed_username:
+            audit_login(failed_username, success=False)
+            st.session_state['_last_failed_user'] = failed_username
+
+            # Show remaining attempts
+            allowed, message = check_login_allowed(failed_username)
+            if message:
+                st.warning(message)
+
         return False
 
     elif st.session_state.get('authentication_status') is None:
@@ -122,6 +150,8 @@ def check_authentication():
 
 def logout_button():
     """Render logout button in sidebar."""
+    from utils.security import audit_logout
+
     if 'authenticator' in st.session_state:
         authenticator = st.session_state['authenticator']
 
@@ -131,7 +161,16 @@ def logout_button():
 
         # Logout button (v0.4.x API)
         try:
+            # Check if logout was clicked
+            was_authenticated = st.session_state.get('authentication_status')
+
             authenticator.logout(location='sidebar')
+
+            # Log logout if status changed
+            if was_authenticated and not st.session_state.get('authentication_status'):
+                audit_logout(st.session_state.get('username', ''))
+                st.session_state['_login_logged'] = False
+
         except TypeError:
             # Fallback to old API
             authenticator.logout('Logout', 'sidebar')

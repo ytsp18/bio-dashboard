@@ -97,7 +97,7 @@ st.markdown("""
 st.markdown('<div class="admin-header"><h2>👤 Admin Panel - จัดการผู้ใช้</h2></div>', unsafe_allow_html=True)
 
 # Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["📋 รายชื่อผู้ใช้", "➕ เพิ่มผู้ใช้ใหม่", "📝 คำขอสมัคร", "⚙️ ตั้งค่า"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 รายชื่อผู้ใช้", "➕ เพิ่มผู้ใช้ใหม่", "📝 คำขอสมัคร", "⚙️ ตั้งค่า", "📜 Audit Logs"])
 
 # ============== Tab 1: User List ==============
 with tab1:
@@ -162,6 +162,12 @@ with tab1:
                     if st.button("💾 บันทึกการแก้ไข", type="primary"):
                         result = update_user(selected_user, name=new_name, email=new_email, role=new_role)
                         if result['success']:
+                            from utils.security import audit_user_action
+                            audit_user_action('user_updated', selected_user, {
+                                'name': new_name,
+                                'email': new_email,
+                                'role': new_role
+                            })
                             st.success("✅ อัพเดทข้อมูลสำเร็จ")
                             st.rerun()
                         else:
@@ -181,6 +187,8 @@ with tab1:
                         else:
                             result = change_password(selected_user, new_password)
                             if result['success']:
+                                from utils.security import audit_user_action
+                                audit_user_action('password_changed', selected_user)
                                 st.success("✅ เปลี่ยนรหัสผ่านสำเร็จ")
                             else:
                                 st.error(f"❌ {result['error']}")
@@ -195,6 +203,8 @@ with tab1:
                         if st.button("🗑️ ลบผู้ใช้", type="secondary", disabled=not confirm_delete):
                             result = delete_user(selected_user)
                             if result['success']:
+                                from utils.security import audit_user_action
+                                audit_user_action('user_deleted', selected_user)
                                 st.success("✅ ลบผู้ใช้สำเร็จ")
                                 st.rerun()
                             else:
@@ -245,6 +255,8 @@ with tab2:
                     role=new_user_role
                 )
                 if result['success']:
+                    from utils.security import audit_user_action
+                    audit_user_action('user_created', new_username, {'role': new_user_role})
                     st.success(f"✅ สร้างผู้ใช้ **{new_username}** สำเร็จ")
                     st.balloons()
                 else:
@@ -275,6 +287,8 @@ with tab3:
                     if st.button("✅ อนุมัติ", key=f"approve_{reg['username']}", type="primary"):
                         result = approve_registration(reg['username'])
                         if result['success']:
+                            from utils.security import audit_user_action
+                            audit_user_action('registration_approved', reg['username'])
                             st.success(f"อนุมัติ {reg['username']} แล้ว")
                             st.rerun()
                         else:
@@ -284,6 +298,8 @@ with tab3:
                     if st.button("❌ ปฏิเสธ", key=f"reject_{reg['username']}"):
                         result = reject_registration(reg['username'])
                         if result['success']:
+                            from utils.security import audit_user_action
+                            audit_user_action('registration_rejected', reg['username'])
                             st.warning(f"ปฏิเสธ {reg['username']} แล้ว")
                             st.rerun()
                         else:
@@ -340,6 +356,90 @@ with tab4:
         st.metric("รอการอนุมัติ", len(pending))
     with col3:
         st.metric("Admin", sum(1 for u in users if u['role'] == 'admin'))
+
+# ============== Tab 5: Audit Logs ==============
+with tab5:
+    st.markdown('<div class="section-header">บันทึกกิจกรรมระบบ (Audit Logs)</div>', unsafe_allow_html=True)
+
+    from utils.security import get_recent_audit_logs
+
+    # Filters
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        filter_action = st.selectbox(
+            "ประเภทกิจกรรม",
+            options=['ทั้งหมด', 'login', 'logout', 'login_failed', 'upload', 'delete'],
+            index=0
+        )
+
+    with col2:
+        filter_user = st.text_input("ค้นหาตาม Username", placeholder="เช่น admin")
+
+    with col3:
+        limit = st.selectbox("จำนวนรายการ", options=[50, 100, 200, 500], index=1)
+
+    # Get logs
+    action_filter = None if filter_action == 'ทั้งหมด' else filter_action
+    user_filter = filter_user if filter_user else None
+
+    logs = get_recent_audit_logs(
+        limit=limit,
+        username=user_filter,
+        action=action_filter
+    )
+
+    if logs:
+        st.info(f"📋 พบ **{len(logs)}** รายการ")
+
+        # Summary stats
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            login_count = sum(1 for l in logs if l['action'] == 'login')
+            st.metric("🔓 Login", login_count)
+        with col2:
+            failed_count = sum(1 for l in logs if l['action'] == 'login_failed')
+            st.metric("🔒 Login Failed", failed_count)
+        with col3:
+            upload_count = sum(1 for l in logs if l['action'] == 'upload')
+            st.metric("📤 Upload", upload_count)
+        with col4:
+            delete_count = sum(1 for l in logs if l['action'] == 'delete')
+            st.metric("🗑️ Delete", delete_count)
+
+        st.markdown("---")
+
+        # Display logs table
+        log_data = []
+        for log in logs:
+            details_str = ""
+            if log['details']:
+                details = log['details']
+                if isinstance(details, dict):
+                    details_str = ", ".join(f"{k}: {v}" for k, v in details.items() if v)
+
+            log_data.append({
+                'เวลา': log['timestamp'],
+                'ผู้ใช้': log['username'] or '-',
+                'กิจกรรม': log['action'],
+                'รายละเอียด': details_str[:50] + '...' if len(details_str) > 50 else details_str,
+                'สถานะ': '✅' if log['success'] else '❌',
+            })
+
+        df_logs = pd.DataFrame(log_data)
+        st.dataframe(df_logs, use_container_width=True, hide_index=True)
+
+        # Export option
+        if st.button("📥 Export to CSV"):
+            csv = df_logs.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="ดาวน์โหลด CSV",
+                data=csv,
+                file_name="audit_logs.csv",
+                mime="text/csv"
+            )
+    else:
+        st.info("ยังไม่มีบันทึกกิจกรรม")
 
 # Footer
 st.markdown("---")

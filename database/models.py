@@ -281,3 +281,35 @@ class SystemSetting(Base):
     key = Column(String(100), unique=True, nullable=False)
     value = Column(String(255))
     updated_at = Column(DateTime, default=now_th, onupdate=now_th)
+
+
+class AuditLog(Base):
+    """Audit log for tracking user actions."""
+    __tablename__ = 'audit_logs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=now_th, index=True)
+    username = Column(String(50), index=True)
+    action = Column(String(50), nullable=False)  # login, logout, upload, delete, etc.
+    details = Column(Text)  # JSON or additional info
+    ip_address = Column(String(50))
+    success = Column(Boolean, default=True)
+
+    __table_args__ = (
+        Index('ix_audit_logs_user_time', 'username', 'timestamp'),
+    )
+
+
+class LoginAttempt(Base):
+    """Track failed login attempts for brute force protection."""
+    __tablename__ = 'login_attempts'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), index=True)
+    ip_address = Column(String(50), index=True)
+    timestamp = Column(DateTime, default=now_th)
+    success = Column(Boolean, default=False)
+
+    __table_args__ = (
+        Index('ix_login_attempts_ip_time', 'ip_address', 'timestamp'),
+    )

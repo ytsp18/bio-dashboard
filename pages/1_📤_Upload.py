@@ -203,6 +203,13 @@ if uploaded_file is not None:
                     progress_bar.progress(100)
                     status_text.empty()
 
+                    # Audit log for upload
+                    from utils.security import audit_upload
+                    audit_upload(
+                        filename=uploaded_file.name,
+                        report_date=str(result.get('report_date', ''))
+                    )
+
                     st.success("✅ นำเข้าข้อมูลสำเร็จ!")
 
                     # Show import results
@@ -349,6 +356,14 @@ try:
                         try:
                             report = session.query(Report).filter(Report.id == report_to_delete[0]).first()
                             if report:
+                                # Audit log for delete
+                                from utils.security import audit_delete
+                                audit_delete(
+                                    item_type='report',
+                                    item_id=str(report.id),
+                                    item_name=report.filename
+                                )
+
                                 session.delete(report)
                                 session.commit()
                                 st.success(f"✅ ลบรายงาน {report_to_delete[1]} สำเร็จ")
