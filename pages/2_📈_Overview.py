@@ -45,15 +45,23 @@ def get_overview_stats(start_date, end_date):
 
         bad_cards = session.query(Card).filter(date_filter, Card.print_status == 'B').count()
 
-        # Complete cards
+        # Complete cards - ต้องมีข้อมูลครบ 4 fields และ 1 Appt = 1 G
+        # 1. หา Appt ID ที่มี G = 1 เท่านั้น
         appt_one_g = session.query(Card.appointment_id).filter(
             date_filter, Card.print_status == 'G',
             Card.appointment_id.isnot(None), Card.appointment_id != ''
         ).group_by(Card.appointment_id).having(func.count(Card.id) == 1).subquery()
 
+        # 2. นับบัตรที่มีข้อมูลครบ 4 fields และอยู่ใน Appt ที่มี G = 1
         complete_cards = session.query(func.count(Card.id)).filter(
             date_filter, Card.print_status == 'G',
-            Card.appointment_id.in_(session.query(appt_one_g))
+            Card.appointment_id.in_(session.query(appt_one_g)),
+            # ต้องมี Card ID
+            Card.card_id.isnot(None), Card.card_id != '',
+            # ต้องมี Serial Number
+            Card.serial_number.isnot(None), Card.serial_number != '',
+            # ต้องมี Work Permit No
+            Card.work_permit_no.isnot(None), Card.work_permit_no != ''
         ).scalar() or 0
 
         # Appt G > 1
@@ -72,11 +80,14 @@ def get_overview_stats(start_date, end_date):
             )
         ).scalar() or 0
 
-        # Incomplete
+        # Incomplete - บัตรดีที่ขาดข้อมูลใดข้อมูลหนึ่งใน 4 fields
+        # (Appointment ID, Card ID, Serial Number, Work Permit No)
         incomplete = session.query(Card).filter(
             date_filter, Card.print_status == 'G',
             or_(
                 Card.appointment_id.is_(None), Card.appointment_id == '',
+                Card.card_id.is_(None), Card.card_id == '',
+                Card.serial_number.is_(None), Card.serial_number == '',
                 Card.work_permit_no.is_(None), Card.work_permit_no == ''
             )
         ).count()
