@@ -375,250 +375,40 @@ try:
             else:
                 st.info("🔍 ไม่พบข้อมูลที่ตรงกับคำค้นหา")
 
-        # ==================== COMPARISON SECTION ====================
-        st.markdown('<div class="section-header-blue">📊 เปรียบเทียบ Anomaly ระหว่างศูนย์</div>', unsafe_allow_html=True)
-
-        # Get branch list
+        # Get branch list for filters
         branches = session.query(Card.branch_code).filter(
             date_filter, Card.branch_code.isnot(None)
         ).distinct().all()
         branch_list = sorted([b.branch_code for b in branches])
 
-        col1, col2 = st.columns(2)
-        with col1:
-            compare_branches = st.multiselect(
-                "เลือกศูนย์เพื่อเปรียบเทียบ (เลือกได้หลายศูนย์)",
-                options=branch_list,
-                default=branch_list[:min(5, len(branch_list))] if branch_list else [],
-                help="เลือกศูนย์ที่ต้องการเปรียบเทียบ Anomaly"
-            )
-
-        with col2:
-            compare_metric = st.selectbox(
-                "เปรียบเทียบตาม",
-                options=['ทุกประเภท', 'SLA>12นาที', 'ผิดศูนย์', 'บัตรเสีย', 'รอ>1ชม', 'ผิดวัน'],
-                key="compare_metric"
-            )
-
-        if compare_branches and len(compare_branches) >= 1:
-            comparison_data = []
-
-            for branch in compare_branches:
-                branch_filter = and_(date_filter, Card.branch_code == branch)
-
-                total = session.query(Card).filter(branch_filter).count()
-                sla_over = session.query(Card).filter(branch_filter, Card.sla_over_12min == True).count()
-                wrong_branch = session.query(Card).filter(branch_filter, Card.wrong_branch == True).count()
-                bad_cards = session.query(Card).filter(branch_filter, Card.print_status == 'B').count()
-                wait_over = session.query(Card).filter(branch_filter, Card.wait_over_1hour == True).count()
-                wrong_date = session.query(Card).filter(branch_filter, Card.wrong_date == True).count()
-
-                comparison_data.append({
-                    'ศูนย์': branch,
-                    'บัตรทั้งหมด': total,
-                    'SLA>12': sla_over,
-                    'ผิดศูนย์': wrong_branch,
-                    'บัตรเสีย': bad_cards,
-                    'รอ>1ชม': wait_over,
-                    'ผิดวัน': wrong_date,
-                    'รวม Anomaly': sla_over + wrong_branch + bad_cards + wait_over + wrong_date,
-                    'อัตรา Anomaly (%)': round((sla_over + wrong_branch + bad_cards + wait_over + wrong_date) / total * 100, 2) if total > 0 else 0
-                })
-
-            df_compare = pd.DataFrame(comparison_data)
-
-            # Display comparison table
-            st.markdown("#### 📋 ตารางเปรียบเทียบ")
-            st.dataframe(df_compare, use_container_width=True, hide_index=True)
-
-            # Comparison chart
-            st.markdown("#### 📊 กราฟเปรียบเทียบ")
-
-            if compare_metric == 'ทุกประเภท':
-                # Stacked bar chart
-                fig = go.Figure()
-                fig.add_trace(go.Bar(name='SLA>12', x=df_compare['ศูนย์'], y=df_compare['SLA>12'], marker_color='#e74c3c'))
-                fig.add_trace(go.Bar(name='ผิดศูนย์', x=df_compare['ศูนย์'], y=df_compare['ผิดศูนย์'], marker_color='#f39c12'))
-                fig.add_trace(go.Bar(name='บัตรเสีย', x=df_compare['ศูนย์'], y=df_compare['บัตรเสีย'], marker_color='#9b59b6'))
-                fig.add_trace(go.Bar(name='รอ>1ชม', x=df_compare['ศูนย์'], y=df_compare['รอ>1ชม'], marker_color='#3498db'))
-                fig.add_trace(go.Bar(name='ผิดวัน', x=df_compare['ศูนย์'], y=df_compare['ผิดวัน'], marker_color='#1abc9c'))
-                fig.update_layout(barmode='stack', title='เปรียบเทียบ Anomaly ทุกประเภท', xaxis_tickangle=-45)
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                metric_col = compare_metric.replace('นาที', '')
-                fig = px.bar(
-                    df_compare,
-                    x='ศูนย์',
-                    y=metric_col,
-                    title=f'เปรียบเทียบ {compare_metric}',
-                    color=metric_col,
-                    color_continuous_scale='Reds',
-                    text=metric_col
-                )
-                fig.update_traces(texttemplate='%{text:,}', textposition='outside')
-                fig.update_layout(xaxis_tickangle=-45)
-                st.plotly_chart(fig, use_container_width=True)
-
-            # Anomaly rate comparison
-            st.markdown("#### 📈 อัตรา Anomaly ต่อบัตรทั้งหมด")
-            fig_rate = px.bar(
-                df_compare.sort_values('อัตรา Anomaly (%)', ascending=False),
-                x='ศูนย์',
-                y='อัตรา Anomaly (%)',
-                title='อัตรา Anomaly (%)',
-                color='อัตรา Anomaly (%)',
-                color_continuous_scale='RdYlGn_r',
-                text='อัตรา Anomaly (%)'
-            )
-            fig_rate.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-            fig_rate.update_layout(xaxis_tickangle=-45)
-            st.plotly_chart(fig_rate, use_container_width=True)
-
-            # Export comparison
-            buffer = BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df_compare.to_excel(writer, index=False, sheet_name='Comparison')
-            st.download_button("📥 ดาวน์โหลดข้อมูลเปรียบเทียบ", buffer.getvalue(),
-                f"anomaly_comparison_{start_date}_{end_date}.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-        # ==================== Summary Dashboard ====================
-        st.markdown('<div class="section-header">📊 สรุปภาพรวมความผิดปกติ</div>', unsafe_allow_html=True)
-
-        # Count all anomalies
-        sla_over_count = session.query(Card).filter(date_filter, Card.sla_over_12min == True).count()
+        # Count anomalies (ไม่รวม SLA)
         wrong_branch_count = session.query(Card).filter(date_filter, Card.wrong_branch == True).count()
         bad_cards_count = session.query(Card).filter(date_filter, Card.print_status == 'B').count()
-        wait_over_count = session.query(Card).filter(date_filter, Card.wait_over_1hour == True).count()
         wrong_date_count = session.query(Card).filter(date_filter, Card.wrong_date == True).count()
 
-        # Multiple cards per appointment
-        multi_g_count = session.query(Card.appointment_id).filter(
-            date_filter, Card.print_status == 'G'
-        ).group_by(Card.appointment_id).having(func.count(Card.id) > 1).count()
+        # Multiple cards per appointment (reuse from summary)
+        multi_g_count = appt_g_more_than_1
 
-        # Duplicate serial
-        dup_serial_count = session.query(Card.serial_number).filter(
-            date_filter, Card.print_status == 'G'
-        ).group_by(Card.serial_number).having(func.count(Card.id) > 1).count()
+        # Duplicate serial (reuse from summary)
+        dup_serial_count = duplicate_serial
 
-        total_anomalies = sla_over_count + wrong_branch_count + bad_cards_count + wait_over_count + wrong_date_count
-
-        # Display summary cards
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("🚨 รวมความผิดปกติ", f"{total_anomalies:,}", help="ไม่รวม Multi-G และ Duplicate Serial")
-        with col2:
-            st.metric("🕐 SLA เกิน 12 นาที", f"{sla_over_count:,}")
-        with col3:
-            st.metric("🏢 ออกบัตรผิดศูนย์", f"{wrong_branch_count:,}")
-        with col4:
-            st.metric("❌ บัตรเสีย", f"{bad_cards_count:,}")
-
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("⏰ รอคิวเกิน 1 ชม.", f"{wait_over_count:,}")
-        with col2:
-            st.metric("📅 นัดหมายผิดวัน", f"{wrong_date_count:,}")
-        with col3:
-            st.metric("🔄 ออกบัตรหลายใบ (G>1)", f"{multi_g_count:,}")
-        with col4:
-            st.metric("⚠️ Serial ซ้ำ", f"{dup_serial_count:,}")
-
-        # Summary chart
-        anomaly_data = pd.DataFrame({
-            'ประเภท': ['SLA>12นาที', 'ผิดศูนย์', 'บัตรเสีย', 'รอ>1ชม', 'ผิดวัน', 'G>1', 'Serialซ้ำ'],
-            'จำนวน': [sla_over_count, wrong_branch_count, bad_cards_count, wait_over_count, wrong_date_count, multi_g_count, dup_serial_count]
-        })
-
-        fig = px.bar(
-            anomaly_data,
-            x='ประเภท',
-            y='จำนวน',
-            title='จำนวนความผิดปกติแต่ละประเภท',
-            color='จำนวน',
-            color_continuous_scale='Reds',
-            text='จำนวน'
-        )
-        fig.update_traces(texttemplate='%{text:,}', textposition='outside')
-        fig.update_layout(showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        # Card ID G>1 (reuse from summary)
+        card_id_g_count = card_id_g_more_than_1
 
         # ==================== Detailed Tabs ====================
         st.markdown('<div class="section-header">📋 รายละเอียดแต่ละประเภท</div>', unsafe_allow_html=True)
 
-        tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-            f"🕐 SLA>12นาที ({sla_over_count:,})",
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             f"🏢 ผิดศูนย์ ({wrong_branch_count:,})",
             f"❌ บัตรเสีย ({bad_cards_count:,})",
-            f"⏰ รอ>1ชม ({wait_over_count:,})",
             f"📅 ผิดวัน ({wrong_date_count:,})",
-            f"🔄 G>1 ({multi_g_count:,})",
+            f"🔄 Appt G>1 ({multi_g_count:,})",
+            f"🔄 Card ID G>1 ({card_id_g_count:,})",
             f"⚠️ Serialซ้ำ ({dup_serial_count:,})"
         ])
 
-        # Tab 1: SLA over 12 minutes
+        # Tab 1: Wrong Branch
         with tab1:
-            st.markdown("#### 🕐 SLA ออกบัตรเกิน 12 นาที")
-            st.caption("บัตรดี (G) ที่ใช้เวลา SLA มากกว่า 12 นาที")
-
-            # Filter for this tab
-            col1, col2 = st.columns(2)
-            with col1:
-                sla_branch_filter = st.selectbox("กรองตามศูนย์", options=['ทั้งหมด'] + branch_list, key="sla_branch")
-            with col2:
-                sla_limit = st.slider("จำนวนแสดง", 100, 5000, 500, key="sla_limit")
-
-            query = session.query(Card).filter(date_filter, Card.sla_over_12min == True)
-            if sla_branch_filter != 'ทั้งหมด':
-                query = query.filter(Card.branch_code == sla_branch_filter)
-
-            sla_over = query.order_by(Card.sla_minutes.desc()).limit(sla_limit).all()
-
-            if sla_over:
-                data = [{
-                    'Appointment ID': c.appointment_id,
-                    'รหัสศูนย์': c.branch_code,
-                    'ชื่อศูนย์': (c.branch_name[:30] + '...' if c.branch_name and len(c.branch_name) > 30 else c.branch_name) or '-',
-                    'Serial Number': c.serial_number,
-                    'Card ID': c.card_id,
-                    'SLA Start': c.sla_start,
-                    'SLA Stop': c.sla_stop,
-                    'SLA (นาที)': round(c.sla_minutes, 2) if c.sla_minutes else 0,
-                    'ผู้ให้บริการ': c.operator or '-',
-                    'วันที่': c.print_date,
-                } for c in sla_over]
-
-                df = pd.DataFrame(data)
-                st.dataframe(df, use_container_width=True, hide_index=True, height=400)
-
-                # Analysis
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown("##### 📊 สรุปตามศูนย์ (Top 15)")
-                    center_counts = df.groupby('รหัสศูนย์').size().reset_index(name='จำนวน')
-                    center_counts = center_counts.sort_values('จำนวน', ascending=False).head(15)
-                    st.dataframe(center_counts, use_container_width=True, hide_index=True)
-
-                with col2:
-                    st.markdown("##### 📊 สรุปตามผู้ให้บริการ (Top 15)")
-                    op_counts = df.groupby('ผู้ให้บริการ').size().reset_index(name='จำนวน')
-                    op_counts = op_counts.sort_values('จำนวน', ascending=False).head(15)
-                    st.dataframe(op_counts, use_container_width=True, hide_index=True)
-
-                # Export
-                buffer = BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False, sheet_name='SLA Over 12min')
-                    center_counts.to_excel(writer, index=False, sheet_name='By Center')
-                st.download_button("📥 ดาวน์โหลด Excel", buffer.getvalue(),
-                    f"sla_over_12min_{start_date}_{end_date}.xlsx",
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            else:
-                st.success("✅ ไม่พบรายการ SLA เกิน 12 นาที")
-
-        # Tab 2: Wrong Branch
-        with tab2:
             st.markdown("#### 🏢 ออกบัตรผิดศูนย์")
             st.caption("บัตรที่ออกที่ศูนย์ไม่ตรงกับศูนย์ที่นัดหมาย")
 
@@ -666,8 +456,8 @@ try:
             else:
                 st.success("✅ ไม่พบรายการออกบัตรผิดศูนย์")
 
-        # Tab 3: Bad Cards
-        with tab3:
+        # Tab 2: Bad Cards
+        with tab2:
             st.markdown("#### ❌ บัตรเสีย (Print Status = B)")
             st.caption("รายการบัตรที่มีสถานะเสีย พร้อมสาเหตุ")
 
@@ -727,56 +517,8 @@ try:
             else:
                 st.success("✅ ไม่พบรายการบัตรเสีย")
 
-        # Tab 4: Wait over 1 hour
-        with tab4:
-            st.markdown("#### ⏰ รอคิวเกิน 1 ชั่วโมง")
-            st.caption("ลูกค้าที่รอคิวนานกว่า 60 นาที")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                wait_branch_filter = st.selectbox("กรองตามศูนย์", options=['ทั้งหมด'] + branch_list, key="wait_branch")
-            with col2:
-                wait_limit = st.slider("จำนวนแสดง", 100, 5000, 500, key="wait_limit")
-
-            query = session.query(Card).filter(date_filter, Card.wait_over_1hour == True)
-            if wait_branch_filter != 'ทั้งหมด':
-                query = query.filter(Card.branch_code == wait_branch_filter)
-
-            wait_over = query.order_by(Card.wait_time_minutes.desc()).limit(wait_limit).all()
-
-            if wait_over:
-                data = [{
-                    'Appointment ID': c.appointment_id,
-                    'รหัสศูนย์': c.branch_code,
-                    'ชื่อศูนย์': (c.branch_name[:30] + '...' if c.branch_name and len(c.branch_name) > 30 else c.branch_name) or '-',
-                    'Serial Number': c.serial_number,
-                    'Queue No': c.qlog_queue_no,
-                    'Time In': c.qlog_time_in,
-                    'Time Call': c.qlog_time_call,
-                    'เวลารอ (นาที)': round(c.wait_time_minutes, 2) if c.wait_time_minutes else 0,
-                    'เวลารอ (HMS)': c.wait_time_hms or '-',
-                    'วันที่': c.print_date,
-                } for c in wait_over]
-
-                df = pd.DataFrame(data)
-                st.dataframe(df, use_container_width=True, hide_index=True, height=400)
-
-                st.markdown("##### 📊 สรุปตามศูนย์")
-                center_counts = df.groupby('รหัสศูนย์').size().reset_index(name='จำนวน')
-                center_counts = center_counts.sort_values('จำนวน', ascending=False).head(15)
-                st.dataframe(center_counts, use_container_width=True, hide_index=True)
-
-                buffer = BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False, sheet_name='Wait Over 1hr')
-                st.download_button("📥 ดาวน์โหลด Excel", buffer.getvalue(),
-                    f"wait_over_1hr_{start_date}_{end_date}.xlsx",
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            else:
-                st.success("✅ ไม่พบรายการรอคิวเกิน 1 ชั่วโมง")
-
-        # Tab 5: Wrong Date
-        with tab5:
+        # Tab 3: Wrong Date
+        with tab3:
             st.markdown("#### 📅 นัดหมายผิดวัน")
             st.caption("บัตรที่ออกวันไม่ตรงกับวันที่นัดหมาย")
 
@@ -821,8 +563,8 @@ try:
             else:
                 st.success("✅ ไม่พบรายการนัดหมายผิดวัน")
 
-        # Tab 6: Multiple G per Appointment
-        with tab6:
+        # Tab 4: Multiple G per Appointment
+        with tab4:
             st.markdown("#### 🔄 ออกบัตรดีหลายใบต่อ Appointment (G > 1)")
             st.caption("Appointment ID ที่มีบัตรดี (G) มากกว่า 1 ใบ")
 
@@ -878,8 +620,65 @@ try:
             else:
                 st.success("✅ ไม่พบ Appointment ที่มีบัตรดีมากกว่า 1 ใบ")
 
-        # Tab 7: Duplicate Serial
-        with tab7:
+        # Tab 5: Card ID G>1
+        with tab5:
+            st.markdown("#### 🔄 Card ID ที่มีบัตรดีมากกว่า 1 ใบ")
+            st.caption("Card ID ที่มีบัตรดี (G) มากกว่า 1 ใบ")
+
+            cg_limit = st.slider("จำนวน Card ID แสดง", 50, 500, 100, key="cg_limit")
+
+            # Get Card IDs with multiple G cards
+            multi_g_card_ids = session.query(
+                Card.card_id,
+                func.count(Card.id).label('count')
+            ).filter(
+                date_filter, Card.print_status == 'G',
+                Card.card_id.isnot(None), Card.card_id != ''
+            ).group_by(Card.card_id).having(func.count(Card.id) > 1).order_by(
+                func.count(Card.id).desc()
+            ).limit(cg_limit).all()
+
+            if multi_g_card_ids:
+                card_id_list = [c.card_id for c in multi_g_card_ids]
+                multi_g_by_card = session.query(Card).filter(
+                    date_filter,
+                    Card.print_status == 'G',
+                    Card.card_id.in_(card_id_list)
+                ).order_by(Card.card_id).all()
+
+                data = [{
+                    'Card ID': c.card_id,
+                    'Appointment ID': c.appointment_id,
+                    'รหัสศูนย์': c.branch_code,
+                    'ชื่อศูนย์': (c.branch_name[:25] + '...' if c.branch_name and len(c.branch_name) > 25 else c.branch_name) or '-',
+                    'Serial Number': c.serial_number,
+                    'Work Permit': c.work_permit_no,
+                    'ผู้ให้บริการ': c.operator or '-',
+                    'วันที่': c.print_date,
+                } for c in multi_g_by_card]
+
+                df = pd.DataFrame(data)
+                st.info(f"พบ **{card_id_g_count:,}** Card ID ที่มีบัตรดีมากกว่า 1 ใบ (แสดง {len(multi_g_card_ids)} รายการ รวม **{len(df):,}** บัตร)")
+                st.dataframe(df, use_container_width=True, hide_index=True, height=400)
+
+                # Summary by Card ID
+                st.markdown("##### 📊 สรุปจำนวนบัตรต่อ Card ID")
+                card_summary = df.groupby('Card ID').size().reset_index(name='จำนวนบัตร')
+                card_summary = card_summary.sort_values('จำนวนบัตร', ascending=False)
+                st.dataframe(card_summary.head(20), use_container_width=True, hide_index=True)
+
+                buffer = BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    df.to_excel(writer, index=False, sheet_name='Card ID G More Than 1')
+                    card_summary.to_excel(writer, index=False, sheet_name='By Card ID')
+                st.download_button("📥 ดาวน์โหลด Excel", buffer.getvalue(),
+                    f"card_id_g_more_than_1_{start_date}_{end_date}.xlsx",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            else:
+                st.success("✅ ไม่พบ Card ID ที่มีบัตรดีมากกว่า 1 ใบ")
+
+        # Tab 6: Duplicate Serial
+        with tab6:
             st.markdown("#### ⚠️ Serial Number ซ้ำ")
             st.caption("Serial Number ที่ปรากฏมากกว่า 1 ครั้งในบัตรดี (G)")
 
@@ -942,28 +741,18 @@ try:
             with st.spinner("กำลังสร้างไฟล์..."):
                 buffer = BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    # Summary sheet
+                    # Summary sheet (ไม่รวม SLA)
                     summary_df = pd.DataFrame({
                         'ประเภทความผิดปกติ': [
-                            'SLA เกิน 12 นาที', 'ออกบัตรผิดศูนย์', 'บัตรเสีย',
-                            'รอคิวเกิน 1 ชม.', 'นัดหมายผิดวัน', 'G > 1 per Appt', 'Serial ซ้ำ'
+                            'ออกบัตรผิดศูนย์', 'บัตรเสีย', 'นัดหมายผิดวัน',
+                            'Appt ID G > 1', 'Card ID G > 1', 'Serial ซ้ำ'
                         ],
                         'จำนวน': [
-                            sla_over_count, wrong_branch_count, bad_cards_count,
-                            wait_over_count, wrong_date_count, multi_g_count, dup_serial_count
+                            wrong_branch_count, bad_cards_count, wrong_date_count,
+                            multi_g_count, card_id_g_count, dup_serial_count
                         ]
                     })
                     summary_df.to_excel(writer, index=False, sheet_name='Summary')
-
-                    # Each anomaly type
-                    # SLA Over
-                    sla_data = session.query(Card).filter(date_filter, Card.sla_over_12min == True).all()
-                    if sla_data:
-                        pd.DataFrame([{
-                            'Appointment ID': c.appointment_id, 'รหัสศูนย์': c.branch_code,
-                            'Serial Number': c.serial_number, 'SLA (นาที)': c.sla_minutes,
-                            'ผู้ให้บริการ': c.operator, 'วันที่': c.print_date
-                        } for c in sla_data]).to_excel(writer, index=False, sheet_name='SLA Over 12min')
 
                     # Wrong Branch
                     wrong_data = session.query(Card).filter(date_filter, Card.wrong_branch == True).all()
@@ -980,6 +769,15 @@ try:
                             'Appointment ID': c.appointment_id, 'รหัสศูนย์': c.branch_code,
                             'สาเหตุ': c.reject_type, 'ผู้ให้บริการ': c.operator, 'วันที่': c.print_date
                         } for c in bad_data]).to_excel(writer, index=False, sheet_name='Bad Cards')
+
+                    # Wrong Date
+                    wrong_date_data = session.query(Card).filter(date_filter, Card.wrong_date == True).all()
+                    if wrong_date_data:
+                        pd.DataFrame([{
+                            'Appointment ID': c.appointment_id, 'รหัสศูนย์': c.branch_code,
+                            'วันที่นัด': c.appt_date, 'วันที่ออกบัตร': c.print_date,
+                            'ผู้ให้บริการ': c.operator
+                        } for c in wrong_date_data]).to_excel(writer, index=False, sheet_name='Wrong Date')
 
                 st.download_button("📥 ดาวน์โหลด", buffer.getvalue(),
                     f"all_anomalies_{start_date}_{end_date}.xlsx",
