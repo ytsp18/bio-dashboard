@@ -2,6 +2,20 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.1.1] - 2026-01-28
+
+### Fixed
+- **Critical: Database timeout on large imports**
+  - Problem: Uploading files with 50K+ records caused Supabase timeout, cards table stayed empty
+  - Solution: Added batch flush every 500 records to prevent connection timeout
+  - Files: `services/data_service.py`
+
+### Changed
+- Migrated to new Supabase project (`bio-dashboard-fts`) for clean database
+- Updated Session Pooler URL to `aws-1-ap-southeast-1`
+
+---
+
 ## [1.1.0] - 2026-01-28
 
 ### Added
