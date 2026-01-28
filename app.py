@@ -12,6 +12,19 @@ from auth import check_authentication, logout_button
 # Initialize database on startup
 init_db()
 
+# Warm up database connection on first load
+@st.cache_resource
+def warm_up_connection():
+    """Warm up database connection pool."""
+    from database.connection import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+    return True
+
+# Call on startup (cached, so only runs once per session)
+warm_up_connection()
+
 
 # Cached functions for better performance
 @st.cache_data(ttl=60)  # Cache for 60 seconds

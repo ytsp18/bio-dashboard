@@ -37,13 +37,19 @@ if is_sqlite:
         connect_args={"check_same_thread": False}
     )
 else:
-    # PostgreSQL settings
+    # PostgreSQL settings optimized for Streamlit Cloud
     engine = create_engine(
         DATABASE_URL,
         echo=False,
         pool_pre_ping=True,  # Check connection health
-        pool_size=5,
-        max_overflow=10
+        pool_size=3,  # Smaller pool for serverless
+        max_overflow=5,
+        pool_recycle=300,  # Recycle connections every 5 minutes
+        pool_timeout=30,  # Wait up to 30s for connection
+        connect_args={
+            "connect_timeout": 10,  # Connection timeout
+            "options": "-c statement_timeout=30000"  # 30s query timeout
+        }
     )
 
 # Session factory
