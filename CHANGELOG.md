@@ -2,6 +2,34 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.1.2] - 2026-01-28
+
+### Added
+- **Database Indexes for Performance Optimization**
+  - Added 9 indexes on `cards` table for faster queries:
+    - `ix_cards_print_date` - Date range filtering
+    - `ix_cards_print_status` - Status filtering (G/B/NULL)
+    - `ix_cards_status_date` - Combined status + date queries
+    - `ix_cards_serial` - Serial number search
+    - `ix_cards_appt` - Appointment ID search
+    - `ix_cards_branch` - Branch code filtering
+    - `ix_cards_sla_over` - Partial index for SLA violations
+    - `ix_cards_wrong_branch` - Partial index for wrong branch anomalies
+    - `ix_cards_wrong_date` - Partial index for wrong date anomalies
+
+### Performance
+- **Query Performance Improvements**:
+  - Count by status: Uses Index Only Scan (~20ms for 81K records)
+  - Date range filter: Uses Index Only Scan (~0.05ms)
+  - Anomaly queries: Use partial indexes for efficient filtering
+
+### Changed
+- Added `@st.cache_data` decorators for query caching (TTL: 30-60 seconds)
+- Added `@st.cache_resource` for database connection warming
+- Optimized connection pool settings for Streamlit Cloud serverless environment
+
+---
+
 ## [1.1.1] - 2026-01-28
 
 ### Fixed
