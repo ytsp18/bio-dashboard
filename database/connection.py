@@ -9,9 +9,12 @@ from contextlib import contextmanager
 # Track if migrations have been run this session
 _migrations_done = False
 
-# Simple logging (avoid circular import)
+# Simple logging with Thailand timezone (avoid circular import)
 def _log(msg):
-    print(f"[DB] {msg}")
+    from datetime import datetime, timezone, timedelta
+    th_tz = timezone(timedelta(hours=7))
+    th_time = datetime.now(th_tz).strftime('%Y-%m-%d %H:%M:%S')
+    print(f"[{th_time}] [DB] {msg}")
 
 
 def get_database_url():
