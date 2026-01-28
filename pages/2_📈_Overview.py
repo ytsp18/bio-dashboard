@@ -435,8 +435,8 @@ else:
     wait_fail = wait_total - wait_pass
     wait_pass_pct = (wait_pass / wait_total * 100) if wait_total > 0 else 0
 
-        # ==================== Summary Cards ====================
-        st.markdown(f"""
+    # ==================== Summary Cards ====================
+    st.markdown(f"""
         <div class="summary-row">
             <div class="summary-card">
                 <div class="summary-label">บัตรดี (Unique G)</div>
@@ -463,247 +463,247 @@ else:
                 <div class="summary-value" style="color: #f59e0b;">{incomplete:,}</div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-        # ==================== Line Chart ====================
-        st.markdown(f"""
-        <div class="card-section">
-            <div class="card-header">สรุปจำนวนบัตร</div>
-            <div class="card-body" style="padding: 10px 20px;">
-        """, unsafe_allow_html=True)
+    # ==================== Line Chart ====================
+    st.markdown(f"""
+    <div class="card-section">
+        <div class="card-header">สรุปจำนวนบัตร</div>
+        <div class="card-body" style="padding: 10px 20px;">
+    """, unsafe_allow_html=True)
 
-        # Use cached daily stats
-        daily_stats = get_daily_stats(start_date, end_date)
+    # Use cached daily stats
+    daily_stats = get_daily_stats(start_date, end_date)
 
-        if daily_stats:
-            # daily_stats is now a list of tuples from cache
-            daily_data = pd.DataFrame([{
-                'วันที่': d[0],
-                'Unique Serial (G)': d[1],
-                'รับที่ศูนย์': d[2],
-                'จัดส่ง': d[3],
-                'บัตรเสีย': d[4]
-            } for d in daily_stats])
+    if daily_stats:
+        # daily_stats is now a list of tuples from cache
+        daily_data = pd.DataFrame([{
+            'วันที่': d[0],
+            'Unique Serial (G)': d[1],
+            'รับที่ศูนย์': d[2],
+            'จัดส่ง': d[3],
+            'บัตรเสีย': d[4]
+        } for d in daily_stats])
 
-            fig = go.Figure()
+        fig = go.Figure()
 
-            # Line 1: Unique Serial (G) รวม
-            fig.add_trace(go.Scatter(
-                x=daily_data['วันที่'],
-                y=daily_data['Unique Serial (G)'],
-                name='Unique Serial (G)',
-                mode='lines+markers+text',
-                line=dict(color='#3b82f6', width=2),
-                marker=dict(size=7),
-                text=daily_data['Unique Serial (G)'],
-                textposition='top center',
-                textfont=dict(size=9, color=chart_text)
-            ))
+        # Line 1: Unique Serial (G) รวม
+        fig.add_trace(go.Scatter(
+            x=daily_data['วันที่'],
+            y=daily_data['Unique Serial (G)'],
+            name='Unique Serial (G)',
+            mode='lines+markers+text',
+            line=dict(color='#3b82f6', width=2),
+            marker=dict(size=7),
+            text=daily_data['Unique Serial (G)'],
+            textposition='top center',
+            textfont=dict(size=9, color=chart_text)
+        ))
 
-            # Line 2: รับที่ศูนย์
-            fig.add_trace(go.Scatter(
-                x=daily_data['วันที่'],
-                y=daily_data['รับที่ศูนย์'],
-                name='รับที่ศูนย์',
-                mode='lines+markers',
-                line=dict(color='#3fb950', width=2),
-                marker=dict(size=6)
-            ))
+        # Line 2: รับที่ศูนย์
+        fig.add_trace(go.Scatter(
+            x=daily_data['วันที่'],
+            y=daily_data['รับที่ศูนย์'],
+            name='รับที่ศูนย์',
+            mode='lines+markers',
+            line=dict(color='#3fb950', width=2),
+            marker=dict(size=6)
+        ))
 
-            # Line 3: จัดส่ง
-            fig.add_trace(go.Scatter(
-                x=daily_data['วันที่'],
-                y=daily_data['จัดส่ง'],
-                name='จัดส่ง',
-                mode='lines+markers',
-                line=dict(color='#a855f7', width=2),
-                marker=dict(size=6)
-            ))
+        # Line 3: จัดส่ง
+        fig.add_trace(go.Scatter(
+            x=daily_data['วันที่'],
+            y=daily_data['จัดส่ง'],
+            name='จัดส่ง',
+            mode='lines+markers',
+            line=dict(color='#a855f7', width=2),
+            marker=dict(size=6)
+        ))
 
-            # Line 4: บัตรเสีย
-            fig.add_trace(go.Scatter(
-                x=daily_data['วันที่'],
-                y=daily_data['บัตรเสีย'],
-                name='บัตรเสีย',
-                mode='lines+markers+text',
-                line=dict(color='#f85149', width=2),
-                marker=dict(size=6),
-                text=daily_data['บัตรเสีย'],
-                textposition='bottom center',
-                textfont=dict(size=9, color=chart_text)
-            ))
+        # Line 4: บัตรเสีย
+        fig.add_trace(go.Scatter(
+            x=daily_data['วันที่'],
+            y=daily_data['บัตรเสีย'],
+            name='บัตรเสีย',
+            mode='lines+markers+text',
+            line=dict(color='#f85149', width=2),
+            marker=dict(size=6),
+            text=daily_data['บัตรเสีย'],
+            textposition='bottom center',
+            textfont=dict(size=9, color=chart_text)
+        ))
 
-            fig.update_layout(
-                height=380,
-                margin=dict(l=10, r=10, t=20, b=10),
-                plot_bgcolor=chart_bg,
-                paper_bgcolor=chart_bg,
-                font_color=chart_text,
-                xaxis=dict(gridcolor=chart_grid, title='', showgrid=True),
-                yaxis=dict(gridcolor=chart_grid, title='', showgrid=True),
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=-0.2,
-                    xanchor="center",
-                    x=0.5,
-                    font=dict(size=11)
-                ),
-                hovermode='x unified'
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("ไม่มีข้อมูลในช่วงเวลาที่เลือก")
+        fig.update_layout(
+            height=380,
+            margin=dict(l=10, r=10, t=20, b=10),
+            plot_bgcolor=chart_bg,
+            paper_bgcolor=chart_bg,
+            font_color=chart_text,
+            xaxis=dict(gridcolor=chart_grid, title='', showgrid=True),
+            yaxis=dict(gridcolor=chart_grid, title='', showgrid=True),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.2,
+                xanchor="center",
+                x=0.5,
+                font=dict(size=11)
+            ),
+            hovermode='x unified'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("ไม่มีข้อมูลในช่วงเวลาที่เลือก")
 
-        st.markdown("</div></div>", unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
 
-        # ==================== Unique Serial Number ====================
-        st.markdown(f"""
-        <div class="card-section">
-            <div class="card-header">Unique Serial Number</div>
-            <div class="card-body">
-                <div class="metric-grid">
-                    <div class="metric-item">
-                        <div class="metric-label">รับที่ศูนย์</div>
-                        <div class="metric-value">{unique_at_center:,}</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">จัดส่ง</div>
-                        <div class="metric-value">{unique_delivery:,}</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">รวม</div>
-                        <div class="metric-value">{unique_total:,}</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">บัตรสมบูรณ์</div>
-                        <div class="metric-value">{complete_cards:,}</div>
-                        <div class="metric-delta">{complete_pct:.2f}%</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">Appt ID ที่มี G > 1</div>
-                        <div class="metric-value" style="color: #f59e0b;">{appt_multiple_g:,}</div>
-                        <div class="metric-delta" style="color: {text_muted};">{appt_multiple_records:,} รายการ</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">บัตรไม่สมบูรณ์ (ข้อมูลไม่ครบ)</div>
-                        <div class="metric-value" style="color: #f59e0b;">{incomplete:,}</div>
-                    </div>
+    # ==================== Unique Serial Number ====================
+    st.markdown(f"""
+    <div class="card-section">
+        <div class="card-header">Unique Serial Number</div>
+        <div class="card-body">
+            <div class="metric-grid">
+                <div class="metric-item">
+                    <div class="metric-label">รับที่ศูนย์</div>
+                    <div class="metric-value">{unique_at_center:,}</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">จัดส่ง</div>
+                    <div class="metric-value">{unique_delivery:,}</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">รวม</div>
+                    <div class="metric-value">{unique_total:,}</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">บัตรสมบูรณ์</div>
+                    <div class="metric-value">{complete_cards:,}</div>
+                    <div class="metric-delta">{complete_pct:.2f}%</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">Appt ID ที่มี G > 1</div>
+                    <div class="metric-value" style="color: #f59e0b;">{appt_multiple_g:,}</div>
+                    <div class="metric-delta" style="color: {text_muted};">{appt_multiple_records:,} รายการ</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">บัตรไม่สมบูรณ์ (ข้อมูลไม่ครบ)</div>
+                    <div class="metric-value" style="color: #f59e0b;">{incomplete:,}</div>
                 </div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+    </div>
+    """, unsafe_allow_html=True)
 
-        # ==================== Anomaly ====================
-        st.markdown(f"""
-        <div class="card-section">
-            <div class="card-header-warning">การออกบัตรผิดปกติ (Anomaly)</div>
-            <div class="card-body">
-                <div class="metric-grid">
-                    <div class="metric-item">
-                        <div class="metric-label">ออกบัตรผิดศูนย์</div>
-                        <div class="metric-value">{wrong_branch:,}</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">ออกบัตรหลายใบ (G>1)</div>
-                        <div class="metric-value">{appt_multiple_g:,}</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">SLA เกิน 12 นาที</div>
-                        <div class="metric-value">{sla_over_12:,}</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">นัดหมายผิดวัน</div>
-                        <div class="metric-value">{wrong_date:,}</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">Serial ซ้ำ</div>
-                        <div class="metric-value">{duplicate_serial:,}</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">รอคิวเกิน 1 ชม.</div>
-                        <div class="metric-value">{wait_over_1hr:,}</div>
-                    </div>
+    # ==================== Anomaly ====================
+    st.markdown(f"""
+    <div class="card-section">
+        <div class="card-header-warning">การออกบัตรผิดปกติ (Anomaly)</div>
+        <div class="card-body">
+            <div class="metric-grid">
+                <div class="metric-item">
+                    <div class="metric-label">ออกบัตรผิดศูนย์</div>
+                    <div class="metric-value">{wrong_branch:,}</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">ออกบัตรหลายใบ (G>1)</div>
+                    <div class="metric-value">{appt_multiple_g:,}</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">SLA เกิน 12 นาที</div>
+                    <div class="metric-value">{sla_over_12:,}</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">นัดหมายผิดวัน</div>
+                    <div class="metric-value">{wrong_date:,}</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">Serial ซ้ำ</div>
+                    <div class="metric-value">{duplicate_serial:,}</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">รอคิวเกิน 1 ชม.</div>
+                    <div class="metric-value">{wait_over_1hr:,}</div>
                 </div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+    </div>
+    """, unsafe_allow_html=True)
 
-        if total_anomalies > 0:
-            st.warning(f"พบความผิดปกติรวม {total_anomalies:,} รายการ - กรุณาตรวจสอบในหน้า Anomaly")
+    if total_anomalies > 0:
+        st.warning(f"พบความผิดปกติรวม {total_anomalies:,} รายการ - กรุณาตรวจสอบในหน้า Anomaly")
 
-        # ==================== SLA ออกบัตร ====================
-        st.markdown(f"""
-        <div class="card-section">
-            <div class="card-header-blue">SLA ออกบัตร (เกณฑ์ 12 นาที)</div>
-            <div class="card-body">
-                <div class="metric-grid">
-                    <div class="metric-item">
-                        <div class="metric-label">รายที่ตรวจสอบ</div>
-                        <div class="metric-value">{sla_total:,}</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">ผ่าน SLA (≤12 นาที)</div>
-                        <div class="metric-value" style="color: #3fb950;">{sla_pass:,}</div>
-                        <div class="metric-delta">+{sla_pass_pct:.1f}%</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">ไม่ผ่าน SLA (>12 นาที)</div>
-                        <div class="metric-value" style="color: #f85149;">{sla_fail:,}</div>
-                        <div class="metric-delta metric-delta-red">-{sla_fail_pct:.1f}%</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">SLA เฉลี่ย</div>
-                        <div class="metric-value">{avg_sla:.2f} นาที</div>
-                    </div>
+    # ==================== SLA ออกบัตร ====================
+    st.markdown(f"""
+    <div class="card-section">
+        <div class="card-header-blue">SLA ออกบัตร (เกณฑ์ 12 นาที)</div>
+        <div class="card-body">
+            <div class="metric-grid">
+                <div class="metric-item">
+                    <div class="metric-label">รายที่ตรวจสอบ</div>
+                    <div class="metric-value">{sla_total:,}</div>
                 </div>
-                <div class="progress-container">
-                    <div class="progress-header">
-                        <span style="color: {text_muted};">SLA Performance</span>
-                        <span style="color: {text_color};">{sla_pass_pct:.1f}% ผ่านเกณฑ์</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: {sla_pass_pct}%;"></div>
-                    </div>
+                <div class="metric-item">
+                    <div class="metric-label">ผ่าน SLA (≤12 นาที)</div>
+                    <div class="metric-value" style="color: #3fb950;">{sla_pass:,}</div>
+                    <div class="metric-delta">+{sla_pass_pct:.1f}%</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">ไม่ผ่าน SLA (>12 นาที)</div>
+                    <div class="metric-value" style="color: #f85149;">{sla_fail:,}</div>
+                    <div class="metric-delta metric-delta-red">-{sla_fail_pct:.1f}%</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">SLA เฉลี่ย</div>
+                    <div class="metric-value">{avg_sla:.2f} นาที</div>
+                </div>
+            </div>
+            <div class="progress-container">
+                <div class="progress-header">
+                    <span style="color: {text_muted};">SLA Performance</span>
+                    <span style="color: {text_color};">{sla_pass_pct:.1f}% ผ่านเกณฑ์</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {sla_pass_pct}%;"></div>
                 </div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+    </div>
+    """, unsafe_allow_html=True)
 
-        # ==================== SLA รอคิว ====================
-        st.markdown(f"""
-        <div class="card-section">
-            <div class="card-header-blue">SLA รอคิว (เกณฑ์ 1 ชั่วโมง)</div>
-            <div class="card-body">
-                <div class="metric-grid">
-                    <div class="metric-item">
-                        <div class="metric-label">รายที่ตรวจสอบ</div>
-                        <div class="metric-value">{wait_total:,}</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">ผ่าน (≤1 ชม.)</div>
-                        <div class="metric-value" style="color: #3fb950;">{wait_pass:,}</div>
-                        <div class="metric-delta">+{wait_pass_pct:.1f}%</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">ไม่ผ่าน (>1 ชม.)</div>
-                        <div class="metric-value" style="color: #f85149;">{wait_fail:,}</div>
-                        <div class="metric-delta metric-delta-red">-{100-wait_pass_pct:.1f}%</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">เวลารอเฉลี่ย</div>
-                        <div class="metric-value">{avg_wait:.2f} นาที</div>
-                    </div>
+    # ==================== SLA รอคิว ====================
+    st.markdown(f"""
+    <div class="card-section">
+        <div class="card-header-blue">SLA รอคิว (เกณฑ์ 1 ชั่วโมง)</div>
+        <div class="card-body">
+            <div class="metric-grid">
+                <div class="metric-item">
+                    <div class="metric-label">รายที่ตรวจสอบ</div>
+                    <div class="metric-value">{wait_total:,}</div>
                 </div>
-                <div class="progress-container">
-                    <div class="progress-header">
-                        <span style="color: {text_muted};">Queue Performance</span>
-                        <span style="color: {text_color};">{wait_pass_pct:.1f}% ผ่านเกณฑ์</span>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: {wait_pass_pct}%;"></div>
-                    </div>
+                <div class="metric-item">
+                    <div class="metric-label">ผ่าน (≤1 ชม.)</div>
+                    <div class="metric-value" style="color: #3fb950;">{wait_pass:,}</div>
+                    <div class="metric-delta">+{wait_pass_pct:.1f}%</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">ไม่ผ่าน (>1 ชม.)</div>
+                    <div class="metric-value" style="color: #f85149;">{wait_fail:,}</div>
+                    <div class="metric-delta metric-delta-red">-{100-wait_pass_pct:.1f}%</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">เวลารอเฉลี่ย</div>
+                    <div class="metric-value">{avg_wait:.2f} นาที</div>
+                </div>
+            </div>
+            <div class="progress-container">
+                <div class="progress-header">
+                    <span style="color: {text_muted};">Queue Performance</span>
+                    <span style="color: {text_color};">{wait_pass_pct:.1f}% ผ่านเกณฑ์</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {wait_pass_pct}%;"></div>
                 </div>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+    </div>
+    """, unsafe_allow_html=True)
