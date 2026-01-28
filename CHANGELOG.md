@@ -2,6 +2,16 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.2.2] - 2026-01-28
+
+### Performance
+- **Partial Re-render with st.fragment**
+  - Added `@st.fragment` decorator for Overview page chart section
+  - Chart now renders independently from other page sections
+  - Reduces unnecessary re-renders when interacting with chart elements
+
+---
+
 ## [1.2.1] - 2026-01-28
 
 ### Performance

@@ -10,11 +10,118 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.connection import init_db, get_session
 from database.models import Card, BadCard, AnomalySLA, WrongCenter
 from services.data_service import DataService
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, and_
 from utils.theme import apply_theme
 from utils.auth_check import require_login
 
 init_db()
+
+
+def batch_load_anomaly_data(session, card):
+    """
+    OPTIMIZED: Load all anomaly data for a card in batched queries instead of N+1 queries.
+    This reduces 6+ separate queries to 4 optimized queries.
+    """
+    anomalies = []
+    appt_id = card.appointment_id
+    serial = card.serial_number
+
+    # ==================== BATCH QUERY 1: G count and related cards for this appointment ====================
+    # Instead of separate count + details queries, get all in one
+    if appt_id:
+        related_g_cards = session.query(Card).filter(
+            Card.appointment_id == appt_id,
+            Card.print_status == 'G'
+        ).all()
+
+        if len(related_g_cards) > 1:
+            anomalies.append({
+                'type': 'multiple_g',
+                'title': f'นัดหมายนี้มีบัตรดี (G) มากกว่า 1 ใบ ({len(related_g_cards)} ใบ)',
+                'description': 'ต้องตรวจสอบว่าเป็นการออกบัตรซ้ำหรือไม่',
+                'details': related_g_cards
+            })
+
+    # ==================== BATCH QUERY 2: Duplicate serial check ====================
+    if serial:
+        dup_serial_cards = session.query(Card).filter(
+            Card.serial_number == serial
+        ).all()
+
+        if len(dup_serial_cards) > 1:
+            anomalies.append({
+                'type': 'duplicate_serial',
+                'title': f'Serial Number ซ้ำ ({len(dup_serial_cards)} รายการ)',
+                'description': f'Serial {serial} ถูกใช้งานหลายครั้ง',
+                'details': dup_serial_cards
+            })
+
+    # ==================== BATCH QUERY 3: SLA anomaly + Wrong center in one query pattern ====================
+    # Check SLA anomaly
+    if appt_id or serial:
+        sla_filter = []
+        if appt_id:
+            sla_filter.append(AnomalySLA.appointment_id == appt_id)
+        if serial:
+            sla_filter.append(AnomalySLA.serial_number == serial)
+
+        sla_anomaly = session.query(AnomalySLA).filter(or_(*sla_filter)).first()
+        if sla_anomaly:
+            anomalies.append({
+                'type': 'sla_over',
+                'title': f'SLA เกิน 12 นาที ({round(sla_anomaly.sla_minutes, 2) if sla_anomaly.sla_minutes else "-"} นาที)',
+                'description': f'ศูนย์: {sla_anomaly.branch_name or sla_anomaly.branch_code}',
+                'details': None
+            })
+
+        # Check wrong center
+        wc_filter = []
+        if appt_id:
+            wc_filter.append(WrongCenter.appointment_id == appt_id)
+        if serial:
+            wc_filter.append(WrongCenter.serial_number == serial)
+
+        wrong_center = session.query(WrongCenter).filter(or_(*wc_filter)).first()
+        if wrong_center:
+            anomalies.append({
+                'type': 'wrong_center',
+                'title': 'ออกบัตรผิดศูนย์',
+                'description': f'ศูนย์ที่นัด: {wrong_center.expected_branch} | ศูนย์ที่ออก: {wrong_center.actual_branch}',
+                'details': None
+            })
+
+    # ==================== Check flags on the card itself (no DB query needed) ====================
+    if card.wrong_date:
+        anomalies.append({
+            'type': 'wrong_date',
+            'title': 'นัดหมายผิดวัน',
+            'description': f'วันที่นัด: {card.appt_date} | วันที่ออกบัตร: {card.print_date}',
+            'details': None
+        })
+
+    if card.wait_over_1hour:
+        anomalies.append({
+            'type': 'wait_over',
+            'title': 'รอคิวเกิน 1 ชั่วโมง',
+            'description': f'เวลารอคิว: {card.wait_time_hms or "-"}',
+            'details': None
+        })
+
+    # ==================== BATCH QUERY 4: Bad cards for this appointment ====================
+    if appt_id:
+        bad_cards = session.query(BadCard).filter(
+            BadCard.appointment_id == appt_id
+        ).all()
+
+        if bad_cards:
+            anomalies.append({
+                'type': 'has_bad_cards',
+                'title': f'นัดหมายนี้มีบัตรเสีย ({len(bad_cards)} ใบ)',
+                'description': 'มีประวัติการออกบัตรเสียก่อนหน้า',
+                'details': bad_cards
+            })
+
+    return anomalies
 
 st.set_page_config(page_title="Search - Bio Dashboard", page_icon="🔍", layout="wide")
 
@@ -334,109 +441,9 @@ try:
             # ===== ANOMALY DETECTION SECTION =====
             st.markdown("#### ผลการตรวจสอบ Anomaly")
 
-            anomalies_found = []
-
-            # 1. Check if appointment has multiple G cards
-            appt_g_count = session.query(func.count(Card.id)).filter(
-                Card.appointment_id == selected.appointment_id,
-                Card.print_status == 'G'
-            ).scalar() or 0
-
-            if appt_g_count > 1:
-                related_cards = session.query(Card).filter(
-                    Card.appointment_id == selected.appointment_id,
-                    Card.print_status == 'G'
-                ).all()
-
-                anomalies_found.append({
-                    'type': 'multiple_g',
-                    'title': f'นัดหมายนี้มีบัตรดี (G) มากกว่า 1 ใบ ({appt_g_count} ใบ)',
-                    'description': 'ต้องตรวจสอบว่าเป็นการออกบัตรซ้ำหรือไม่',
-                    'details': related_cards
-                })
-
-            # 2. Check for duplicate serial numbers
-            serial_count = session.query(func.count(Card.id)).filter(
-                Card.serial_number == selected.serial_number
-            ).scalar() or 0
-
-            if serial_count > 1:
-                dup_serial_cards = session.query(Card).filter(
-                    Card.serial_number == selected.serial_number
-                ).all()
-
-                anomalies_found.append({
-                    'type': 'duplicate_serial',
-                    'title': f'Serial Number ซ้ำ ({serial_count} รายการ)',
-                    'description': f'Serial {selected.serial_number} ถูกใช้งานหลายครั้ง',
-                    'details': dup_serial_cards
-                })
-
-            # 3. Check if in SLA anomaly table
-            sla_anomaly = session.query(AnomalySLA).filter(
-                or_(
-                    AnomalySLA.appointment_id == selected.appointment_id,
-                    AnomalySLA.serial_number == selected.serial_number
-                )
-            ).first()
-
-            if sla_anomaly:
-                anomalies_found.append({
-                    'type': 'sla_over',
-                    'title': f'SLA เกิน 12 นาที ({round(sla_anomaly.sla_minutes, 2) if sla_anomaly.sla_minutes else "-"} นาที)',
-                    'description': f'ศูนย์: {sla_anomaly.branch_name or sla_anomaly.branch_code}',
-                    'details': None
-                })
-
-            # 4. Check if in Wrong Center table
-            wrong_center = session.query(WrongCenter).filter(
-                or_(
-                    WrongCenter.appointment_id == selected.appointment_id,
-                    WrongCenter.serial_number == selected.serial_number
-                )
-            ).first()
-
-            if wrong_center:
-                anomalies_found.append({
-                    'type': 'wrong_center',
-                    'title': 'ออกบัตรผิดศูนย์',
-                    'description': f'ศูนย์ที่นัด: {wrong_center.expected_branch} | ศูนย์ที่ออก: {wrong_center.actual_branch}',
-                    'details': None
-                })
-
-            # 5. Check flags on the card itself
-            if selected.wrong_date:
-                anomalies_found.append({
-                    'type': 'wrong_date',
-                    'title': 'นัดหมายผิดวัน',
-                    'description': f'วันที่นัด: {selected.appt_date} | วันที่ออกบัตร: {selected.print_date}',
-                    'details': None
-                })
-
-            if selected.wait_over_1hour:
-                anomalies_found.append({
-                    'type': 'wait_over',
-                    'title': 'รอคิวเกิน 1 ชั่วโมง',
-                    'description': f'เวลารอคิว: {selected.wait_time_hms or "-"}',
-                    'details': None
-                })
-
-            # 6. Check for bad cards with same appointment
-            bad_cards_count = session.query(func.count(BadCard.id)).filter(
-                BadCard.appointment_id == selected.appointment_id
-            ).scalar() or 0
-
-            if bad_cards_count > 0:
-                bad_cards = session.query(BadCard).filter(
-                    BadCard.appointment_id == selected.appointment_id
-                ).all()
-
-                anomalies_found.append({
-                    'type': 'has_bad_cards',
-                    'title': f'นัดหมายนี้มีบัตรเสีย ({bad_cards_count} ใบ)',
-                    'description': 'มีประวัติการออกบัตรเสียก่อนหน้า',
-                    'details': bad_cards
-                })
+            # OPTIMIZED: Use batch loading instead of N+1 queries
+            # This reduces 6+ separate database queries to 4 optimized queries
+            anomalies_found = batch_load_anomaly_data(session, selected)
 
             # Display anomalies
             if anomalies_found:

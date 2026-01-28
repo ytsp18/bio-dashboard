@@ -1,4 +1,7 @@
-"""Overview page - Summary statistics matching the report format."""
+"""Overview page - Summary statistics matching the report format.
+
+Uses st.fragment for partial re-renders of chart sections.
+"""
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -17,118 +20,194 @@ from utils.auth_check import require_login
 init_db()
 
 
+# Chart colors (defined here for fragment access)
+chart_bg = 'rgba(0,0,0,0)'
+chart_text = '#c9d1d9'
+chart_grid = 'rgba(255,255,255,0.1)'
+
+
+@st.fragment
+def render_daily_chart(start_date, end_date):
+    """Render daily stats chart as a fragment for partial re-renders."""
+    daily_stats = get_daily_stats(start_date, end_date)
+
+    if daily_stats:
+        daily_data = pd.DataFrame([{
+            'วันที่': d[0],
+            'Unique Serial (G)': d[1],
+            'รับที่ศูนย์': d[2],
+            'จัดส่ง': d[3],
+            'บัตรเสีย': d[4]
+        } for d in daily_stats])
+
+        fig = go.Figure()
+
+        # Line 1: Unique Serial (G) รวม
+        fig.add_trace(go.Scatter(
+            x=daily_data['วันที่'],
+            y=daily_data['Unique Serial (G)'],
+            name='Unique Serial (G)',
+            mode='lines+markers+text',
+            line=dict(color='#3b82f6', width=2),
+            marker=dict(size=7),
+            text=daily_data['Unique Serial (G)'],
+            textposition='top center',
+            textfont=dict(size=9, color=chart_text)
+        ))
+
+        # Line 2: รับที่ศูนย์
+        fig.add_trace(go.Scatter(
+            x=daily_data['วันที่'],
+            y=daily_data['รับที่ศูนย์'],
+            name='รับที่ศูนย์',
+            mode='lines+markers',
+            line=dict(color='#3fb950', width=2),
+            marker=dict(size=6)
+        ))
+
+        # Line 3: จัดส่ง
+        fig.add_trace(go.Scatter(
+            x=daily_data['วันที่'],
+            y=daily_data['จัดส่ง'],
+            name='จัดส่ง',
+            mode='lines+markers',
+            line=dict(color='#a855f7', width=2),
+            marker=dict(size=6)
+        ))
+
+        # Line 4: บัตรเสีย
+        fig.add_trace(go.Scatter(
+            x=daily_data['วันที่'],
+            y=daily_data['บัตรเสีย'],
+            name='บัตรเสีย',
+            mode='lines+markers+text',
+            line=dict(color='#f85149', width=2),
+            marker=dict(size=6),
+            text=daily_data['บัตรเสีย'],
+            textposition='bottom center',
+            textfont=dict(size=9, color=chart_text)
+        ))
+
+        fig.update_layout(
+            height=380,
+            margin=dict(l=10, r=10, t=20, b=10),
+            plot_bgcolor=chart_bg,
+            paper_bgcolor=chart_bg,
+            font_color=chart_text,
+            xaxis=dict(gridcolor=chart_grid, title='', showgrid=True),
+            yaxis=dict(gridcolor=chart_grid, title='', showgrid=True),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.2,
+                xanchor="center",
+                x=0.5,
+                font=dict(size=11)
+            ),
+            hovermode='x unified'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("ไม่มีข้อมูลในช่วงเวลาที่เลือก")
+
+
 # Cached function for overview stats
 @st.cache_data(ttl=30)  # Cache for 30 seconds
 def get_overview_stats(start_date, end_date):
-    """Get cached overview statistics."""
+    """Get cached overview statistics using optimized single-query aggregation."""
     session = get_session()
     try:
         date_filter = and_(Card.print_date >= start_date, Card.print_date <= end_date)
 
-        # Unique Serial counts
-        unique_at_center = session.query(func.count(func.distinct(Card.serial_number))).filter(
-            date_filter, Card.print_status == 'G',
-            Card.is_mobile_unit == False, Card.is_ob_center == False
-        ).scalar() or 0
+        # ==================== OPTIMIZED: Single aggregation query for basic counts ====================
+        # Combines 18+ separate COUNT queries into 1 query with conditional aggregation
+        basic_stats = session.query(
+            # Unique serial counts
+            func.count(func.distinct(case(
+                (and_(Card.print_status == 'G', Card.is_mobile_unit == False, Card.is_ob_center == False), Card.serial_number),
+                else_=None
+            ))).label('unique_at_center'),
+            func.count(func.distinct(case(
+                (and_(Card.print_status == 'G', or_(Card.is_mobile_unit == True, Card.is_ob_center == True)), Card.serial_number),
+                else_=None
+            ))).label('unique_delivery'),
+            func.count(func.distinct(case(
+                (Card.print_status == 'G', Card.serial_number),
+                else_=None
+            ))).label('unique_total'),
+            # Bad cards count
+            func.sum(case((Card.print_status == 'B', 1), else_=0)).label('bad_cards'),
+            # Incomplete (missing appointment_id or work_permit_no)
+            func.sum(case(
+                (and_(
+                    Card.print_status == 'G',
+                    or_(
+                        Card.appointment_id.is_(None), Card.appointment_id == '',
+                        Card.work_permit_no.is_(None), Card.work_permit_no == ''
+                    )
+                ), 1),
+                else_=0
+            )).label('incomplete'),
+            # Anomaly flags
+            func.sum(case((Card.wrong_branch == True, 1), else_=0)).label('wrong_branch'),
+            func.sum(case((Card.wrong_date == True, 1), else_=0)).label('wrong_date'),
+            func.sum(case((Card.sla_over_12min == True, 1), else_=0)).label('sla_over_12'),
+            func.sum(case((Card.wait_over_1hour == True, 1), else_=0)).label('wait_over_1hr'),
+            # SLA stats
+            func.sum(case((and_(Card.print_status == 'G', Card.sla_minutes.isnot(None)), 1), else_=0)).label('sla_total'),
+            func.sum(case((and_(Card.print_status == 'G', Card.sla_minutes.isnot(None), Card.sla_minutes <= 12), 1), else_=0)).label('sla_pass'),
+            func.avg(case((and_(Card.print_status == 'G', Card.sla_minutes.isnot(None)), Card.sla_minutes), else_=None)).label('avg_sla'),
+            # Wait stats
+            func.sum(case((and_(Card.print_status == 'G', Card.wait_time_minutes.isnot(None)), 1), else_=0)).label('wait_total'),
+            func.sum(case((and_(Card.print_status == 'G', Card.wait_time_minutes.isnot(None), Card.wait_time_minutes <= 60), 1), else_=0)).label('wait_pass'),
+            func.avg(case((and_(Card.print_status == 'G', Card.wait_time_minutes.isnot(None)), Card.wait_time_minutes), else_=None)).label('avg_wait'),
+        ).filter(date_filter).first()
 
-        unique_delivery = session.query(func.count(func.distinct(Card.serial_number))).filter(
-            date_filter, Card.print_status == 'G',
-            or_(Card.is_mobile_unit == True, Card.is_ob_center == True)
-        ).scalar() or 0
-
-        unique_total = session.query(func.count(func.distinct(Card.serial_number))).filter(
-            date_filter, Card.print_status == 'G'
-        ).scalar() or 0
-
-        bad_cards = session.query(Card).filter(date_filter, Card.print_status == 'B').count()
-
-        # Complete cards
-        appt_one_g = session.query(Card.appointment_id).filter(
+        # ==================== OPTIMIZED: Appointment group stats in single query ====================
+        # Get appointment counts grouped by G count
+        appt_counts = session.query(
+            Card.appointment_id,
+            func.count(Card.id).label('g_count')
+        ).filter(
             date_filter, Card.print_status == 'G',
             Card.appointment_id.isnot(None), Card.appointment_id != ''
-        ).group_by(Card.appointment_id).having(func.count(Card.id) == 1).subquery()
+        ).group_by(Card.appointment_id).subquery()
 
-        complete_cards = session.query(func.count(Card.id)).filter(
-            date_filter, Card.print_status == 'G',
-            Card.appointment_id.in_(session.query(appt_one_g))
-        ).scalar() or 0
+        # Count appointments with exactly 1 G (complete) and >1 G (multiple)
+        appt_summary = session.query(
+            func.sum(case((appt_counts.c.g_count == 1, 1), else_=0)).label('complete_appts'),
+            func.sum(case((appt_counts.c.g_count == 1, appt_counts.c.g_count), else_=0)).label('complete_cards'),
+            func.sum(case((appt_counts.c.g_count > 1, 1), else_=0)).label('multiple_appts'),
+            func.sum(case((appt_counts.c.g_count > 1, appt_counts.c.g_count), else_=0)).label('multiple_records'),
+        ).select_from(appt_counts).first()
 
-        # Appt G > 1
-        appt_multiple_g = session.query(Card.appointment_id).filter(
-            date_filter, Card.print_status == 'G',
-            Card.appointment_id.isnot(None), Card.appointment_id != ''
-        ).group_by(Card.appointment_id).having(func.count(Card.id) > 1).count()
-
-        appt_multiple_records = session.query(func.count(Card.id)).filter(
-            date_filter, Card.print_status == 'G',
-            Card.appointment_id.in_(
-                session.query(Card.appointment_id).filter(
-                    date_filter, Card.print_status == 'G',
-                    Card.appointment_id.isnot(None), Card.appointment_id != ''
-                ).group_by(Card.appointment_id).having(func.count(Card.id) > 1)
-            )
-        ).scalar() or 0
-
-        # Incomplete
-        incomplete = session.query(Card).filter(
-            date_filter, Card.print_status == 'G',
-            or_(
-                Card.appointment_id.is_(None), Card.appointment_id == '',
-                Card.work_permit_no.is_(None), Card.work_permit_no == ''
-            )
-        ).count()
-
-        # Anomaly stats
-        wrong_branch = session.query(Card).filter(date_filter, Card.wrong_branch == True).count()
-        wrong_date = session.query(Card).filter(date_filter, Card.wrong_date == True).count()
-        sla_over_12 = session.query(Card).filter(date_filter, Card.sla_over_12min == True).count()
-        wait_over_1hr = session.query(Card).filter(date_filter, Card.wait_over_1hour == True).count()
-        duplicate_serial = session.query(Card.serial_number).filter(
-            date_filter, Card.print_status == 'G'
-        ).group_by(Card.serial_number).having(func.count(Card.id) > 1).count()
-
-        # SLA stats
-        sla_total = session.query(Card).filter(
-            date_filter, Card.print_status == 'G', Card.sla_minutes.isnot(None)
-        ).count()
-        sla_pass = session.query(Card).filter(
-            date_filter, Card.print_status == 'G', Card.sla_minutes.isnot(None), Card.sla_minutes <= 12
-        ).count()
-        avg_sla = session.query(func.avg(Card.sla_minutes)).filter(
-            date_filter, Card.print_status == 'G', Card.sla_minutes.isnot(None)
-        ).scalar() or 0
-
-        # Wait stats
-        wait_total = session.query(Card).filter(
-            date_filter, Card.print_status == 'G', Card.wait_time_minutes.isnot(None)
-        ).count()
-        wait_pass = session.query(Card).filter(
-            date_filter, Card.print_status == 'G', Card.wait_time_minutes.isnot(None), Card.wait_time_minutes <= 60
-        ).count()
-        avg_wait = session.query(func.avg(Card.wait_time_minutes)).filter(
-            date_filter, Card.print_status == 'G', Card.wait_time_minutes.isnot(None)
+        # ==================== Duplicate serial count ====================
+        duplicate_serial = session.query(func.count()).select_from(
+            session.query(Card.serial_number).filter(
+                date_filter, Card.print_status == 'G'
+            ).group_by(Card.serial_number).having(func.count(Card.id) > 1).subquery()
         ).scalar() or 0
 
         return {
-            'unique_at_center': unique_at_center,
-            'unique_delivery': unique_delivery,
-            'unique_total': unique_total,
-            'bad_cards': bad_cards,
-            'complete_cards': complete_cards,
-            'appt_multiple_g': appt_multiple_g,
-            'appt_multiple_records': appt_multiple_records,
-            'incomplete': incomplete,
-            'wrong_branch': wrong_branch,
-            'wrong_date': wrong_date,
-            'sla_over_12': sla_over_12,
-            'wait_over_1hr': wait_over_1hr,
+            'unique_at_center': basic_stats.unique_at_center or 0,
+            'unique_delivery': basic_stats.unique_delivery or 0,
+            'unique_total': basic_stats.unique_total or 0,
+            'bad_cards': basic_stats.bad_cards or 0,
+            'complete_cards': appt_summary.complete_cards or 0,
+            'appt_multiple_g': appt_summary.multiple_appts or 0,
+            'appt_multiple_records': appt_summary.multiple_records or 0,
+            'incomplete': basic_stats.incomplete or 0,
+            'wrong_branch': basic_stats.wrong_branch or 0,
+            'wrong_date': basic_stats.wrong_date or 0,
+            'sla_over_12': basic_stats.sla_over_12 or 0,
+            'wait_over_1hr': basic_stats.wait_over_1hr or 0,
             'duplicate_serial': duplicate_serial,
-            'sla_total': sla_total,
-            'sla_pass': sla_pass,
-            'avg_sla': avg_sla,
-            'wait_total': wait_total,
-            'wait_pass': wait_pass,
-            'avg_wait': avg_wait,
+            'sla_total': basic_stats.sla_total or 0,
+            'sla_pass': basic_stats.sla_pass or 0,
+            'avg_sla': basic_stats.avg_sla or 0,
+            'wait_total': basic_stats.wait_total or 0,
+            'wait_pass': basic_stats.wait_pass or 0,
+            'avg_wait': basic_stats.avg_wait or 0,
         }
     finally:
         session.close()
@@ -189,9 +268,6 @@ card_header_bg = '#21262d'
 card_border = '#30363d'
 text_color = '#c9d1d9'
 text_muted = '#8b949e'
-chart_bg = 'rgba(0,0,0,0)'
-chart_text = '#c9d1d9'
-chart_grid = 'rgba(255,255,255,0.1)'
 warning_header_bg = 'linear-gradient(90deg, #3d2d1f 0%, #2d2418 100%)'
 warning_text = '#fbbf24'
 blue_header_bg = 'linear-gradient(90deg, #1e3a5f 0%, #162d4d 100%)'
@@ -465,95 +541,15 @@ else:
         </div>
     """, unsafe_allow_html=True)
 
-    # ==================== Line Chart ====================
+    # ==================== Line Chart (Fragment) ====================
     st.markdown(f"""
     <div class="card-section">
         <div class="card-header">สรุปจำนวนบัตร</div>
         <div class="card-body" style="padding: 10px 20px;">
     """, unsafe_allow_html=True)
 
-    # Use cached daily stats
-    daily_stats = get_daily_stats(start_date, end_date)
-
-    if daily_stats:
-        # daily_stats is now a list of tuples from cache
-        daily_data = pd.DataFrame([{
-            'วันที่': d[0],
-            'Unique Serial (G)': d[1],
-            'รับที่ศูนย์': d[2],
-            'จัดส่ง': d[3],
-            'บัตรเสีย': d[4]
-        } for d in daily_stats])
-
-        fig = go.Figure()
-
-        # Line 1: Unique Serial (G) รวม
-        fig.add_trace(go.Scatter(
-            x=daily_data['วันที่'],
-            y=daily_data['Unique Serial (G)'],
-            name='Unique Serial (G)',
-            mode='lines+markers+text',
-            line=dict(color='#3b82f6', width=2),
-            marker=dict(size=7),
-            text=daily_data['Unique Serial (G)'],
-            textposition='top center',
-            textfont=dict(size=9, color=chart_text)
-        ))
-
-        # Line 2: รับที่ศูนย์
-        fig.add_trace(go.Scatter(
-            x=daily_data['วันที่'],
-            y=daily_data['รับที่ศูนย์'],
-            name='รับที่ศูนย์',
-            mode='lines+markers',
-            line=dict(color='#3fb950', width=2),
-            marker=dict(size=6)
-        ))
-
-        # Line 3: จัดส่ง
-        fig.add_trace(go.Scatter(
-            x=daily_data['วันที่'],
-            y=daily_data['จัดส่ง'],
-            name='จัดส่ง',
-            mode='lines+markers',
-            line=dict(color='#a855f7', width=2),
-            marker=dict(size=6)
-        ))
-
-        # Line 4: บัตรเสีย
-        fig.add_trace(go.Scatter(
-            x=daily_data['วันที่'],
-            y=daily_data['บัตรเสีย'],
-            name='บัตรเสีย',
-            mode='lines+markers+text',
-            line=dict(color='#f85149', width=2),
-            marker=dict(size=6),
-            text=daily_data['บัตรเสีย'],
-            textposition='bottom center',
-            textfont=dict(size=9, color=chart_text)
-        ))
-
-        fig.update_layout(
-            height=380,
-            margin=dict(l=10, r=10, t=20, b=10),
-            plot_bgcolor=chart_bg,
-            paper_bgcolor=chart_bg,
-            font_color=chart_text,
-            xaxis=dict(gridcolor=chart_grid, title='', showgrid=True),
-            yaxis=dict(gridcolor=chart_grid, title='', showgrid=True),
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=-0.2,
-                xanchor="center",
-                x=0.5,
-                font=dict(size=11)
-            ),
-            hovermode='x unified'
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("ไม่มีข้อมูลในช่วงเวลาที่เลือก")
+    # Use fragment for chart rendering (partial re-render support)
+    render_daily_chart(start_date, end_date)
 
     st.markdown("</div></div>", unsafe_allow_html=True)
 
