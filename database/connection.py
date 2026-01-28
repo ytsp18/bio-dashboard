@@ -81,7 +81,50 @@ def session_scope():
 
 
 def init_db():
-    """Initialize database tables."""
+    """Initialize database tables and run migrations."""
     from .models import Base
+    from sqlalchemy import text, inspect
+
     Base.metadata.create_all(bind=engine)
+
+    # Run migrations for existing tables (indexes won't be created by create_all)
+    _run_migrations()
+
     print(f"Database initialized successfully! (Using: {'SQLite' if is_sqlite else 'PostgreSQL'})")
+
+
+def _run_migrations():
+    """Run database migrations for existing tables."""
+    from sqlalchemy import text, inspect
+
+    inspector = inspect(engine)
+
+    # Check if users table exists
+    if 'users' not in inspector.get_table_names():
+        return
+
+    # Get existing indexes on users table
+    existing_indexes = {idx['name'] for idx in inspector.get_indexes('users')}
+
+    migrations = []
+
+    # Add missing indexes
+    if 'ix_users_username' not in existing_indexes:
+        if is_sqlite:
+            migrations.append("CREATE INDEX IF NOT EXISTS ix_users_username ON users (username)")
+        else:
+            migrations.append("CREATE INDEX IF NOT EXISTS ix_users_username ON users (username)")
+
+    if 'ix_users_email' not in existing_indexes:
+        if is_sqlite:
+            migrations.append("CREATE INDEX IF NOT EXISTS ix_users_email ON users (email)")
+        else:
+            migrations.append("CREATE INDEX IF NOT EXISTS ix_users_email ON users (email)")
+
+    # Execute migrations
+    if migrations:
+        with engine.connect() as conn:
+            for sql in migrations:
+                conn.execute(text(sql))
+            conn.commit()
+        print(f"Migrations applied: {len(migrations)} index(es) created")
