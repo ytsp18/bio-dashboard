@@ -225,3 +225,51 @@ class DeliveryCard(Base):
     __table_args__ = (
         Index('ix_delivery_cards_serial', 'serial_number'),
     )
+
+
+# ============== User Management Models ==============
+
+class User(Base):
+    """User accounts for authentication."""
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(255), unique=True, nullable=False)
+    name = Column(String(255), nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(String(20), default='viewer')  # admin, user, viewer
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index('ix_users_username', 'username'),
+        Index('ix_users_email', 'email'),
+    )
+
+
+class PendingRegistration(Base):
+    """Pending user registrations awaiting approval."""
+    __tablename__ = 'pending_registrations'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(255), unique=True, nullable=False)
+    name = Column(String(255), nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    requested_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('ix_pending_username', 'username'),
+    )
+
+
+class SystemSetting(Base):
+    """System settings stored in database."""
+    __tablename__ = 'system_settings'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key = Column(String(100), unique=True, nullable=False)
+    value = Column(String(255))
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -1,8 +1,14 @@
-"""Authentication module for Bio Dashboard."""
+"""Authentication module for Bio Dashboard.
+
+User management functions now use database storage (Supabase) instead of
+config.yaml to persist user data across Streamlit Cloud deployments.
+"""
 from .authenticator import check_authentication, get_authenticator, logout_button
-from .user_manager import (
+from .db_user_manager import (
     get_all_users,
     get_user,
+    get_user_for_auth,
+    get_all_users_for_auth,
     create_user,
     update_user,
     change_password,
@@ -14,6 +20,7 @@ from .user_manager import (
     reject_registration,
     get_settings,
     update_settings,
+    migrate_users_from_config,
 )
 from .permissions import (
     get_user_role,
@@ -33,9 +40,11 @@ __all__ = [
     'check_authentication',
     'get_authenticator',
     'logout_button',
-    # User management
+    # User management (database-based)
     'get_all_users',
     'get_user',
+    'get_user_for_auth',
+    'get_all_users_for_auth',
     'create_user',
     'update_user',
     'change_password',
@@ -47,6 +56,7 @@ __all__ = [
     'reject_registration',
     'get_settings',
     'update_settings',
+    'migrate_users_from_config',
     # Permissions
     'get_user_role',
     'has_permission',

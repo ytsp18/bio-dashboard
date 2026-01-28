@@ -7,10 +7,30 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database.connection import init_db
-from auth import check_authentication, logout_button
+from auth import check_authentication, logout_button, migrate_users_from_config
 
 # Initialize database on startup
 init_db()
+
+
+# Migrate users from config.yaml to database (run once)
+@st.cache_resource
+def run_user_migration():
+    """Migrate users from config.yaml to database if needed."""
+    try:
+        result = migrate_users_from_config()
+        if result.get('success'):
+            migrated = result.get('migrated', 0)
+            if migrated > 0:
+                print(f"Migrated {migrated} users from config.yaml to database")
+        return True
+    except Exception as e:
+        print(f"Migration error (non-fatal): {e}")
+        return True  # Return True anyway to not block app startup
+
+
+# Run migration on startup
+run_user_migration()
 
 # Warm up database connection on first load
 @st.cache_resource

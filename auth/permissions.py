@@ -6,7 +6,7 @@ Roles:
     - viewer: View only, cannot upload files
 """
 import streamlit as st
-from .user_manager import load_config
+from .db_user_manager import get_user
 
 
 # Permission definitions
@@ -48,16 +48,16 @@ PERMISSIONS = {
 
 
 def get_user_role(username: str = None) -> str:
-    """Get user role from config."""
+    """Get user role from database."""
     if username is None:
         username = st.session_state.get('username', '')
 
     if not username:
         return 'viewer'
 
-    config = load_config()
-    if username in config['credentials']['usernames']:
-        return config['credentials']['usernames'][username].get('role', 'viewer')
+    user = get_user(username)
+    if user:
+        return user.get('role', 'viewer')
     return 'viewer'
 
 

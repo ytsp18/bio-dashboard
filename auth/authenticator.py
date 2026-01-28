@@ -1,38 +1,64 @@
-"""Authentication utilities for Bio Dashboard."""
+"""Authentication utilities for Bio Dashboard.
+
+Uses database for user credentials instead of config.yaml to persist
+user data across Streamlit Cloud deployments.
+"""
 import streamlit as st
 import streamlit_authenticator as stauth
 import yaml
 from yaml.loader import SafeLoader
 import os
+import sys
 
-# Path to config file
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from database.connection import init_db
+from .db_user_manager import get_all_users_for_auth
+
+# Path to config file (for cookie settings only)
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
 
 
-def load_config():
-    """Load authentication config from YAML file."""
+def load_cookie_config():
+    """Load cookie config from YAML file."""
     with open(CONFIG_PATH) as file:
         config = yaml.load(file, Loader=SafeLoader)
-    return config
-
-
-def save_config(config):
-    """Save authentication config to YAML file."""
-    with open(CONFIG_PATH, 'w') as file:
-        yaml.dump(config, file, default_flow_style=False, allow_unicode=True)
+    return config.get('cookie', {
+        'name': 'bio_dashboard_auth',
+        'key': 'bio_dashboard_secret_key',
+        'expiry_days': 30
+    })
 
 
 def get_authenticator():
-    """Create and return authenticator instance."""
-    config = load_config()
+    """Create and return authenticator instance using database credentials."""
+    # Initialize database
+    init_db()
+
+    # Get users from database
+    users = get_all_users_for_auth()
+
+    # Build credentials structure for streamlit_authenticator
+    credentials = {
+        'usernames': users
+    }
+
+    # Load cookie settings from config
+    cookie_config = load_cookie_config()
 
     # streamlit-authenticator v0.4.x API
     authenticator = stauth.Authenticate(
-        credentials=config['credentials'],
-        cookie_name=config['cookie']['name'],
-        cookie_key=config['cookie']['key'],
-        cookie_expiry_days=config['cookie']['expiry_days'],
+        credentials=credentials,
+        cookie_name=cookie_config.get('name', 'bio_dashboard_auth'),
+        cookie_key=cookie_config.get('key', 'bio_dashboard_secret_key'),
+        cookie_expiry_days=cookie_config.get('expiry_days', 30),
     )
+
+    # Return authenticator and credentials (for compatibility)
+    config = {
+        'credentials': credentials,
+        'cookie': cookie_config
+    }
 
     return authenticator, config
 
