@@ -182,100 +182,43 @@ try:
         # ==================== SUMMARY STATISTICS TABLE ====================
         st.markdown('<div class="section-header">⚠️ รายการ Anomaly ที่ต้องตรวจสอบ</div>', unsafe_allow_html=True)
 
-        # Calculate summary statistics (ใช้ Card ID ตาม Excel report)
-        # 1. G Unique Appointment ID - นับ appointment_id ที่มีบัตร G
-        g_unique_appt = session.query(func.count(func.distinct(Card.appointment_id))).filter(
-            date_filter, Card.print_status == 'G'
-        ).scalar() or 0
+        # Calculate summary statistics - เฉพาะรายการที่ต้องตรวจสอบ
 
-        # 2. Appt ID G>1 - นับ appointment ที่มีบัตร G มากกว่า 1 (ต้องตรวจสอบ)
+        # 1. Appt ID G>1 - นับ appointment ที่มีบัตร G มากกว่า 1 (ต้องตรวจสอบ)
         appt_g_more_than_1 = session.query(Card.appointment_id).filter(
             date_filter, Card.print_status == 'G'
         ).group_by(Card.appointment_id).having(func.count(Card.id) > 1).count()
 
-        # 3. บัตรไม่สมบูรณ์ - บัตร G ที่ไม่ครบ 4 fields (Card ID, Serial Number, Work Permit No, Print Status = G)
-        # และมี 1 Appt = 1 G
-        appt_one_g = session.query(Card.appointment_id).filter(
-            date_filter, Card.print_status == 'G'
-        ).group_by(Card.appointment_id).having(func.count(Card.id) == 1).subquery()
-
-        incomplete_cards = session.query(func.count(func.distinct(Card.serial_number))).filter(
-            date_filter, Card.print_status == 'G',
-            Card.appointment_id.in_(session.query(appt_one_g)),
-            or_(
-                Card.card_id.is_(None), Card.card_id == '',
-                Card.serial_number.is_(None), Card.serial_number == '',
-                Card.work_permit_no.is_(None), Card.work_permit_no == ''
-            )
-        ).scalar() or 0
-
-        # 4. ออกบัตรหลายใบรวม - นับ Card ID ที่มีบัตรมากกว่า 1 ใบ (G หรือ B)
-        total_multi_cards = session.query(Card.card_id).filter(
-            date_filter,
-            Card.card_id.isnot(None), Card.card_id != ''
-        ).group_by(Card.card_id).having(func.count(Card.id) > 1).count()
-
-        # 5. Reissue ปกติ = Card ID ที่มี G = 1 และ B > 0 (มีบัตรเสียก่อน แล้วออกบัตรดีใหม่ 1 ใบ)
-        # (ไม่ต้องตรวจสอบ)
-        card_id_g_eq_1 = session.query(Card.card_id).filter(
-            date_filter, Card.print_status == 'G',
-            Card.card_id.isnot(None), Card.card_id != ''
-        ).group_by(Card.card_id).having(func.count(Card.id) == 1).subquery()
-
-        reissue_normal = session.query(func.count(func.distinct(Card.card_id))).filter(
-            date_filter,
-            Card.print_status == 'B',
-            Card.card_id.isnot(None), Card.card_id != '',
-            Card.card_id.in_(session.query(card_id_g_eq_1))
-        ).scalar() or 0
-
-        # 6. Anomaly G>1 = Card ID ที่มี G > 1 (ต้องตรวจสอบ)
-        # ตาม guide: G > 1 ไม่ว่ามี B หรือไม่ ต้องตรวจสอบ
-        anomaly_g_more_than_1 = session.query(Card.card_id).filter(
+        # 2. Card ID G>1 = Card ID ที่มี G > 1 (ต้องตรวจสอบ)
+        card_id_g_more_than_1 = session.query(Card.card_id).filter(
             date_filter, Card.print_status == 'G',
             Card.card_id.isnot(None), Card.card_id != ''
         ).group_by(Card.card_id).having(func.count(Card.id) > 1).count()
+
+        # 3. Serial Number ที่ซ้ำกัน - Serial ที่มีมากกว่า 1 record ในบัตรดี (G)
+        duplicate_serial = session.query(Card.serial_number).filter(
+            date_filter, Card.print_status == 'G',
+            Card.serial_number.isnot(None), Card.serial_number != ''
+        ).group_by(Card.serial_number).having(func.count(Card.id) > 1).count()
 
         # Display summary table
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown(f"""
-            <div class="summary-table">
-                <div class="summary-table-header">📈 สถิติ Appointment</div>
-                <div class="summary-row">
-                    <span class="summary-label">G Unique Appointment ID</span>
-                    <span class="summary-value">{g_unique_appt:,}</span>
-                </div>
-                <div class="summary-row">
-                    <span class="summary-label">Appt ID G>1 (ออกบัตรหลายใบ)</span>
-                    <span class="summary-value">{appt_g_more_than_1:,}</span>
-                </div>
-                <div class="summary-row">
-                    <span class="summary-label">บัตรไม่สมบูรณ์ (ข้อมูลไม่ครบ)</span>
-                    <span class="summary-value">{incomplete_cards:,}</span>
-                </div>
+        st.markdown(f"""
+        <div class="summary-table">
+            <div class="summary-table-header">🔍 รายการที่ต้องตรวจสอบ</div>
+            <div class="summary-row">
+                <span class="summary-label">รายการนัดหมายที่มีบัตรดีมากกว่า 1 ใบ (Appt ID)</span>
+                <span class="summary-value" style="color: #ff6b6b;">{appt_g_more_than_1:,}</span>
             </div>
-            """, unsafe_allow_html=True)
-
-        with col2:
-            st.markdown(f"""
-            <div class="summary-table">
-                <div class="summary-table-header">🔄 การออกบัตรหลายใบ</div>
-                <div class="summary-row">
-                    <span class="summary-label">ออกบัตรหลายใบรวม (Card ID)</span>
-                    <span class="summary-value">{total_multi_cards:,}</span>
-                </div>
-                <div class="summary-row">
-                    <span class="summary-label">Reissue ปกติ (G=1, มี B ก่อน)</span>
-                    <span class="summary-value" style="color: #90EE90;">{reissue_normal:,}</span>
-                </div>
-                <div class="summary-row">
-                    <span class="summary-label">⚠️ Anomaly G>1 (ต้องตรวจสอบ)</span>
-                    <span class="summary-value" style="color: #ff6b6b;">{anomaly_g_more_than_1:,}</span>
-                </div>
+            <div class="summary-row">
+                <span class="summary-label">Card ID ที่มีบัตรดีมากกว่า 1 ใบ</span>
+                <span class="summary-value" style="color: #ff6b6b;">{card_id_g_more_than_1:,}</span>
             </div>
-            """, unsafe_allow_html=True)
+            <div class="summary-row">
+                <span class="summary-label">Serial Number ที่ซ้ำกัน</span>
+                <span class="summary-value" style="color: #ff6b6b;">{duplicate_serial:,}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
         # ==================== SEARCH SECTION ====================
         st.markdown('<div class="section-header-green">🔍 ค้นหาและตรวจสอบ Anomaly</div>', unsafe_allow_html=True)
