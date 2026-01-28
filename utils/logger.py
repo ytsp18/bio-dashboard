@@ -1,6 +1,7 @@
 """Logging utilities for Bio Dashboard.
 
 Provides structured logging with performance timing.
+All timestamps are in Thailand timezone (UTC+7).
 """
 import logging
 import time
@@ -8,17 +9,28 @@ from functools import wraps
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 
-# Thailand timezone
+# Thailand timezone (UTC+7)
 TH_TIMEZONE = timezone(timedelta(hours=7))
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+
+class ThailandFormatter(logging.Formatter):
+    """Custom formatter that uses Thailand timezone."""
+
+    def formatTime(self, record, datefmt=None):
+        # Convert to Thailand timezone
+        dt = datetime.fromtimestamp(record.created, tz=TH_TIMEZONE)
+        if datefmt:
+            return dt.strftime(datefmt)
+        return dt.strftime('%Y-%m-%d %H:%M:%S')
+
+
+# Configure logging with Thailand timezone
+handler = logging.StreamHandler()
+handler.setFormatter(ThailandFormatter('%(asctime)s | %(levelname)s | %(message)s'))
 
 logger = logging.getLogger('bio_dashboard')
+logger.setLevel(logging.INFO)
+logger.handlers = [handler]  # Replace default handlers
 
 
 def get_th_time():
