@@ -377,7 +377,13 @@ try:
                             key="center_metric"
                         )
                     with col2:
-                        top_n = st.slider("แสดงกี่ศูนย์", min_value=5, max_value=min(50, len(df)), value=min(20, len(df)), key="center_topn")
+                        # Handle case when df has fewer rows than min slider value
+                        df_len = len(df)
+                        if df_len <= 5:
+                            top_n = df_len  # Show all if 5 or fewer
+                            st.info(f"แสดงทั้งหมด {df_len} ศูนย์")
+                        else:
+                            top_n = st.slider("แสดงกี่ศูนย์", min_value=5, max_value=min(50, df_len), value=min(20, df_len), key="center_topn")
 
                     # Top N chart
                     top_df = df.nlargest(top_n, chart_metric)
