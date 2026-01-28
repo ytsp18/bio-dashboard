@@ -10,7 +10,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import init_db, get_session
-from database.models import Card, Report
+from database.models import Card, Report, DeliveryCard
 from sqlalchemy import func, and_, or_, case
 from utils.theme import apply_theme
 from utils.auth_check import require_login
@@ -29,19 +29,24 @@ def get_overview_stats(start_date, end_date):
         date_filter = and_(Card.print_date >= start_date, Card.print_date <= end_date)
 
         # Unique Serial counts
-        unique_at_center = session.query(func.count(func.distinct(Card.serial_number))).filter(
-            date_filter, Card.print_status == 'G',
-            Card.is_mobile_unit == False, Card.is_ob_center == False
+        # Get report IDs for date range
+        report_ids = session.query(Report.id).filter(
+            Report.report_date >= start_date, Report.report_date <= end_date
+        ).subquery()
+
+        # Delivery cards from DeliveryCard table (Sheet 7)
+        unique_delivery = session.query(func.count(func.distinct(DeliveryCard.serial_number))).filter(
+            DeliveryCard.report_id.in_(session.query(report_ids)),
+            DeliveryCard.print_status == 'G'
         ).scalar() or 0
 
-        unique_delivery = session.query(func.count(func.distinct(Card.serial_number))).filter(
-            date_filter, Card.print_status == 'G',
-            or_(Card.is_mobile_unit == True, Card.is_ob_center == True)
-        ).scalar() or 0
-
+        # Total unique G from Cards table
         unique_total = session.query(func.count(func.distinct(Card.serial_number))).filter(
             date_filter, Card.print_status == 'G'
         ).scalar() or 0
+
+        # At center = Total - Delivery
+        unique_at_center = unique_total - unique_delivery
 
         bad_cards = session.query(Card).filter(date_filter, Card.print_status == 'B').count()
 
@@ -61,6 +66,15 @@ def get_overview_stats(start_date, end_date):
             # ต้องมี Serial Number
             Card.serial_number.isnot(None), Card.serial_number != '',
             # ต้องมี Work Permit No
+            Card.work_permit_no.isnot(None), Card.work_permit_no != ''
+        ).scalar() or 0
+
+        # 3. Unique Work Permit No จากบัตรสมบูรณ์
+        unique_work_permit = session.query(func.count(func.distinct(Card.work_permit_no))).filter(
+            date_filter, Card.print_status == 'G',
+            Card.appointment_id.in_(session.query(appt_one_g)),
+            Card.card_id.isnot(None), Card.card_id != '',
+            Card.serial_number.isnot(None), Card.serial_number != '',
             Card.work_permit_no.isnot(None), Card.work_permit_no != ''
         ).scalar() or 0
 
@@ -129,6 +143,7 @@ def get_overview_stats(start_date, end_date):
             'unique_total': unique_total,
             'bad_cards': bad_cards,
             'complete_cards': complete_cards,
+            'unique_work_permit': unique_work_permit,
             'appt_multiple_g': appt_multiple_g,
             'appt_multiple_records': appt_multiple_records,
             'incomplete': incomplete,
@@ -434,6 +449,7 @@ else:
     unique_total = stats['unique_total']
     bad_cards = stats['bad_cards']
     complete_cards = stats['complete_cards']
+    unique_work_permit = stats['unique_work_permit']
     appt_multiple_g = stats['appt_multiple_g']
     appt_multiple_records = stats['appt_multiple_records']
     incomplete = stats['incomplete']
@@ -459,31 +475,46 @@ else:
     wait_pass_pct = (wait_pass / wait_total * 100) if wait_total > 0 else 0
 
     # ==================== Summary Cards ====================
+    # Row 1: Unique Serial Numbers
     st.markdown(f"""
         <div class="summary-row">
             <div class="summary-card">
-                <div class="summary-label">บัตรดี (Unique G)</div>
-                <div class="summary-value">{unique_total:,}</div>
+                <div class="summary-label">Unique SN รับที่ศูนย์</div>
+                <div class="summary-value">{unique_at_center:,}</div>
             </div>
             <div class="summary-card">
-                <div class="summary-label">บัตรจัดส่ง (G)</div>
+                <div class="summary-label">Unique SN จัดส่ง</div>
                 <div class="summary-value">{unique_delivery:,}</div>
             </div>
             <div class="summary-card">
-                <div class="summary-label">บัตรสมบูรณ์</div>
-                <div class="summary-value">{complete_cards:,}</div>
+                <div class="summary-label">รวม Unique SN (G)</div>
+                <div class="summary-value" style="color: #58a6ff;">{unique_total:,}</div>
             </div>
             <div class="summary-card">
-                <div class="summary-label">บัตรเสีย</div>
+                <div class="summary-label">บัตรเสีย (B)</div>
                 <div class="summary-value" style="color: #f85149;">{bad_cards:,}</div>
             </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Row 2: Complete Cards Summary
+    st.markdown(f"""
+        <div class="summary-row">
             <div class="summary-card">
-                <div class="summary-label">Appt G>1</div>
+                <div class="summary-label">✅ บัตรสมบูรณ์</div>
+                <div class="summary-value" style="color: #3fb950;">{complete_cards:,}</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">⚠️ Appt G>1</div>
                 <div class="summary-value" style="color: #f59e0b;">{appt_multiple_g:,}</div>
             </div>
             <div class="summary-card">
-                <div class="summary-label">ข้อมูลไม่ครบ</div>
+                <div class="summary-label">⚠️ ข้อมูลไม่ครบ</div>
                 <div class="summary-value" style="color: #f59e0b;">{incomplete:,}</div>
+            </div>
+            <div class="summary-card">
+                <div class="summary-label">Unique Work Permit</div>
+                <div class="summary-value">{unique_work_permit:,}</div>
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -580,37 +611,41 @@ else:
 
     st.markdown("</div></div>", unsafe_allow_html=True)
 
-    # ==================== Unique Serial Number ====================
+    # ==================== สรุปบัตรสมบูรณ์ ====================
     st.markdown(f"""
     <div class="card-section">
-        <div class="card-header">Unique Serial Number</div>
+        <div class="card-header">สรุปบัตรสมบูรณ์</div>
         <div class="card-body">
             <div class="metric-grid">
                 <div class="metric-item">
-                    <div class="metric-label">รับที่ศูนย์</div>
+                    <div class="metric-label">Unique SN รับที่ศูนย์</div>
                     <div class="metric-value">{unique_at_center:,}</div>
                 </div>
                 <div class="metric-item">
-                    <div class="metric-label">จัดส่ง</div>
+                    <div class="metric-label">Unique SN จัดส่ง</div>
                     <div class="metric-value">{unique_delivery:,}</div>
                 </div>
                 <div class="metric-item">
-                    <div class="metric-label">รวม</div>
-                    <div class="metric-value">{unique_total:,}</div>
+                    <div class="metric-label">รวม Unique SN (G)</div>
+                    <div class="metric-value" style="color: #58a6ff;">{unique_total:,}</div>
                 </div>
                 <div class="metric-item">
-                    <div class="metric-label">บัตรสมบูรณ์</div>
-                    <div class="metric-value">{complete_cards:,}</div>
+                    <div class="metric-label">✅ บัตรสมบูรณ์ (1 Appt = 1 G)</div>
+                    <div class="metric-value" style="color: #3fb950;">{complete_cards:,}</div>
                     <div class="metric-delta">{complete_pct:.2f}%</div>
                 </div>
                 <div class="metric-item">
-                    <div class="metric-label">Appt ID ที่มี G > 1</div>
+                    <div class="metric-label">⚠️ Appt ID ที่มี G > 1</div>
                     <div class="metric-value" style="color: #f59e0b;">{appt_multiple_g:,}</div>
                     <div class="metric-delta" style="color: {text_muted};">{appt_multiple_records:,} รายการ</div>
                 </div>
                 <div class="metric-item">
-                    <div class="metric-label">บัตรไม่สมบูรณ์ (ข้อมูลไม่ครบ)</div>
+                    <div class="metric-label">⚠️ ข้อมูลไม่ครบ</div>
                     <div class="metric-value" style="color: #f59e0b;">{incomplete:,}</div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-label">Unique Work Permit No</div>
+                    <div class="metric-value">{unique_work_permit:,}</div>
                 </div>
             </div>
         </div>
