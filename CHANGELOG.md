@@ -2,6 +2,51 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.3.3] - 2026-01-29
+
+### Fixed
+- **Unique Serial (G) Calculation**
+  - Problem: Dashboard showed 21,616 instead of correct 21,599
+  - Root cause: Simple addition of center + delivery counts instead of true unique count
+  - Solution: Use `UNION ALL` + `COUNT(DISTINCT)` to count unique serials across both tables
+  - Files: `pages/2_📈_Overview.py`
+
+- **Unique Serial Reading from Excel**
+  - Problem: Preview showed wrong Unique Serial value
+  - Root cause: Reading from wrong cell "รวม Unique Serial Number (G)" (Row 74) instead of "G (บัตรดี) - Unique Serial" (Row 12)
+  - Solution: Read from correct cell with priority for "G Unique Serial หลังหัก Validation" (Row 106) when available
+  - Files: `services/excel_parser.py`
+
+- **Bad Cards Count Missing Delivery**
+  - Problem: Bad cards count didn't include delivery cards with B status
+  - Solution: Count B cards from both `Card` and `DeliveryCard` tables
+  - Files: `pages/2_📈_Overview.py`
+
+- **Import Stats Not Matching Excel**
+  - Problem: After import showed 21,586 instead of 21,603
+  - Solution: Read total_good, total_bad, total_records from Summary Sheet (most accurate)
+  - Files: `services/data_service.py`
+
+- **Monthly Report Parsing Failed**
+  - Problem: Monthly reports (Jan 2026) not displaying in Overview
+  - Root cause: Monthly files have title rows at top (e.g., "รายการบัตรดี (G) - จำนวน 95,431 รายการ") before column headers
+  - Solution: Detect header row containing 'ลำดับ' and restructure dataframe
+  - Files: `services/excel_parser.py` - `parse_good_cards()`, `parse_bad_cards()`
+
+### Added
+- **Refresh Button on Overview Page**
+  - Added "🔄 รีเฟรช" button to clear cache and reload data
+  - Reduced date range cache from 5 minutes to 1 minute
+  - Files: `pages/2_📈_Overview.py`
+
+### Changed
+- **Unique Serial Priority Reading**
+  - Priority 1: "G Unique Serial หลังหัก Validation" (post-validation deduction)
+  - Priority 2: "G (บัตรดี) - Unique Serial" (fallback)
+  - Supports both daily and monthly report formats
+
+---
+
 ## [1.3.2] - 2026-01-29
 
 ### Changed
