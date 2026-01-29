@@ -43,8 +43,21 @@ def get_overview_stats(start_date, end_date):
             DeliveryCard.report_id.in_(session.query(report_ids_with_data))
         ).scalar() or 0
 
-        # Total = At center + Delivery
-        unique_total = unique_at_center + unique_delivery
+        # Total = นับ Unique Serial รวมจากทั้งสองตาราง (ไม่นับซ้ำ)
+        # ใช้ UNION เพื่อรวม Serial จาก Card และ DeliveryCard แล้วนับ distinct
+        from sqlalchemy import union_all, literal_column
+
+        card_serials = session.query(Card.serial_number.label('sn')).filter(
+            date_filter, Card.print_status == 'G',
+            Card.serial_number.isnot(None), Card.serial_number != ''
+        )
+        delivery_serials = session.query(DeliveryCard.serial_number.label('sn')).filter(
+            DeliveryCard.print_status == 'G',
+            DeliveryCard.report_id.in_(session.query(report_ids_with_data)),
+            DeliveryCard.serial_number.isnot(None), DeliveryCard.serial_number != ''
+        )
+        combined_serials = union_all(card_serials, delivery_serials).subquery()
+        unique_total = session.query(func.count(func.distinct(combined_serials.c.sn))).scalar() or 0
 
         bad_cards = session.query(Card).filter(date_filter, Card.print_status == 'B').count()
 

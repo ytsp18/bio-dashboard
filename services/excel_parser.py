@@ -619,13 +619,10 @@ class ExcelParser:
                             good = int(str(value).replace(',', ''))
                         except:
                             pass
-                    elif 'รวม Unique Serial Number (G)' in cell and pd.notna(value):
-                        try:
-                            unique_serial_g = int(str(value).replace(',', ''))
-                        except:
-                            pass
-                    elif unique_serial_g == 0 and 'G (บัตรดี) - Unique Serial' in cell and pd.notna(value):
-                        # Fallback: use this if "รวม Unique Serial Number (G)" not found
+                    # อ่าน Unique Serial จาก Summary Sheet
+                    # ใช้ "G (บัตรดี) - Unique Serial" (Row 12) ซึ่งเป็นค่าที่ถูกต้อง
+                    # ไม่ใช้ "รวม Unique Serial Number (G)" (Row 74) ซึ่งเป็นค่าที่บวกตรงๆ
+                    elif 'G (บัตรดี) - Unique Serial' in cell and pd.notna(value):
                         try:
                             unique_serial_g = int(str(value).replace(',', ''))
                         except:
@@ -635,20 +632,21 @@ class ExcelParser:
                             bad = int(str(value).replace(',', ''))
                         except:
                             pass
-
-                if total > 0 or good > 0 or bad > 0:
-                    return {
-                        'total_records': total,
-                        'good_cards': good,
-                        'bad_cards': bad,
-                        'good_pickup': good_pickup,
-                        'good_delivery': good_delivery,
-                        'unique_serial_g': unique_serial_g,
-                    }
         except:
             pass
 
-        # Fallback: calculate from data sheets
+        # If we got data from Summary sheet, use it
+        if total > 0 or good > 0 or bad > 0:
+            return {
+                'total_records': total,
+                'good_cards': good,
+                'bad_cards': bad,
+                'good_pickup': good_pickup,
+                'good_delivery': good_delivery,
+                'unique_serial_g': unique_serial_g,
+            }
+
+        # Fallback: calculate everything from data sheets
         all_data = self.parse_all_data()
         good_cards_df = self.parse_good_cards()
         bad_cards_df = self.parse_bad_cards()
@@ -671,14 +669,17 @@ class ExcelParser:
         good_total = good_from_sheets + delivery_good
         total_from_sheets = good_total + bad_from_sheets
 
-        # Calculate unique serial
-        all_serials = []
+        # Calculate unique serial - รวม serial จากทั้ง 2 แหล่ง แล้วนับ unique
+        all_serials = set()
         if not good_cards_df.empty and 'serial_number' in good_cards_df.columns:
-            all_serials.extend(good_cards_df['serial_number'].dropna().tolist())
+            all_serials.update(good_cards_df['serial_number'].dropna().tolist())
         if not delivery_df.empty and 'serial_number' in delivery_df.columns:
-            delivery_g = delivery_df[delivery_df.get('print_status', '') == 'G'] if 'print_status' in delivery_df.columns else delivery_df
-            all_serials.extend(delivery_g['serial_number'].dropna().tolist())
-        unique_serial_calc = len(set(all_serials))
+            if 'print_status' in delivery_df.columns:
+                delivery_g = delivery_df[delivery_df['print_status'] == 'G']
+            else:
+                delivery_g = delivery_df
+            all_serials.update(delivery_g['serial_number'].dropna().tolist())
+        unique_serial_calc = len(all_serials)
 
         # Use the source with more data
         if total_from_all >= total_from_sheets:
