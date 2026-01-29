@@ -42,15 +42,11 @@ class DataService:
         all_data = parser.parse_all_data()
         delivery_df = parser.parse_delivery_cards()
 
-        # Count delivery cards with G status
-        delivery_good_count = 0
-        if not delivery_df.empty and 'print_status' in delivery_df.columns:
-            delivery_good_count = len(delivery_df[delivery_df['print_status'] == 'G'])
-        elif not delivery_df.empty:
-            delivery_good_count = len(delivery_df)  # Assume all are G if no status column
+        # Get summary stats from Excel (most accurate source)
+        summary_stats = parser.get_summary_stats()
 
-        # Determine which data source to use
-        total_from_sheets = len(good_cards_df) + len(bad_cards_df) + delivery_good_count
+        # Determine which data source to use for importing
+        total_from_sheets = len(good_cards_df) + len(bad_cards_df)
         total_from_all = len(all_data)
 
         # Decision logic:
@@ -78,8 +74,13 @@ class DataService:
                     # Use serial_number as primary key
                     sheet13_lookup[str(serial)] = row
 
-        # Calculate stats
-        if use_sheet_13_only:
+        # Use summary stats from Excel (most accurate) if available
+        # Otherwise calculate from data
+        if summary_stats.get('good_cards', 0) > 0 or summary_stats.get('bad_cards', 0) > 0:
+            total_good = summary_stats.get('good_cards', 0)
+            total_bad = summary_stats.get('bad_cards', 0)
+            total_records = summary_stats.get('total_records', 0)
+        elif use_sheet_13_only:
             # Use Sheet 13 stats
             if 'print_status' in all_data.columns:
                 total_good = len(all_data[all_data['print_status'] == 'G'])
@@ -89,8 +90,8 @@ class DataService:
                 total_bad = 0
             total_records = total_from_all
         else:
-            # Use Sheet 2+3+7 stats (รวมบัตรจัดส่งด้วย)
-            total_good = len(good_cards_df) + delivery_good_count
+            # Fallback: use Sheet 2+3 stats
+            total_good = len(good_cards_df)
             total_bad = len(bad_cards_df)
             total_records = total_from_sheets
 
