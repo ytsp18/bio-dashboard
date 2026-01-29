@@ -442,6 +442,15 @@ else:
     if 'filter_end' not in st.session_state:
         st.session_state.filter_end = max_date
 
+    # Update filter bounds when data range changes (e.g., new data imported)
+    if st.session_state.filter_start < min_date:
+        st.session_state.filter_start = min_date
+    if st.session_state.filter_end > max_date:
+        st.session_state.filter_end = max_date
+    # If stored end date is less than new max_date, update to include new data
+    if st.session_state.filter_end < max_date:
+        st.session_state.filter_end = max_date
+
     # Quick filter buttons
     col1, col2, col3, col4, col5 = st.columns([2.5, 2.5, 1, 1, 1])
 
