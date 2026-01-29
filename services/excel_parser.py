@@ -620,9 +620,15 @@ class ExcelParser:
                         except:
                             pass
                     # อ่าน Unique Serial จาก Summary Sheet
-                    # ใช้ "G (บัตรดี) - Unique Serial" (Row 12) ซึ่งเป็นค่าที่ถูกต้อง
-                    # ไม่ใช้ "รวม Unique Serial Number (G)" (Row 74) ซึ่งเป็นค่าที่บวกตรงๆ
-                    elif 'G (บัตรดี) - Unique Serial' in cell and pd.notna(value):
+                    # ใช้ "G Unique Serial หลังหัก Validation" ถ้ามี (ค่าที่ถูกต้องที่สุด)
+                    # ถ้าไม่มีให้ใช้ "G (บัตรดี) - Unique Serial"
+                    elif 'G Unique Serial หลังหัก Validation' in cell and pd.notna(value):
+                        try:
+                            unique_serial_g = int(str(value).replace(',', ''))
+                        except:
+                            pass
+                    elif unique_serial_g == 0 and 'G (บัตรดี) - Unique Serial' in cell and pd.notna(value):
+                        # Fallback: ใช้ค่านี้ถ้าไม่มี "หลังหัก Validation"
                         try:
                             unique_serial_g = int(str(value).replace(',', ''))
                         except:
