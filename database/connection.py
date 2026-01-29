@@ -188,10 +188,42 @@ def _run_migrations():
                 if current_size and current_size < target_size:
                     migrations.append(f"ALTER TABLE complete_diffs ALTER COLUMN {col_name} TYPE VARCHAR({target_size})")
 
+    # ========== Fix CASCADE DELETE for Foreign Keys ==========
+    # This fixes the issue where deleting a report doesn't delete related records
+    if not is_sqlite:
+        # Tables that need CASCADE DELETE on report_id FK
+        tables_with_fk = [
+            'cards', 'bad_cards', 'center_stats', 'anomaly_sla',
+            'wrong_centers', 'complete_diffs', 'delivery_cards'
+        ]
+
+        with engine.connect() as conn:
+            for table_name in tables_with_fk:
+                if table_name not in tables:
+                    continue
+
+                # Check if FK already has CASCADE
+                result = conn.execute(text(f"""
+                    SELECT tc.constraint_name, rc.delete_rule
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.referential_constraints rc
+                        ON tc.constraint_name = rc.constraint_name
+                    WHERE tc.table_name = '{table_name}'
+                    AND tc.constraint_type = 'FOREIGN KEY'
+                """))
+
+                for row in result:
+                    constraint_name, delete_rule = row[0], row[1]
+                    if delete_rule != 'CASCADE':
+                        # Drop old FK and recreate with CASCADE
+                        migrations.append(f"ALTER TABLE {table_name} DROP CONSTRAINT {constraint_name}")
+                        migrations.append(f"ALTER TABLE {table_name} ADD CONSTRAINT {constraint_name} FOREIGN KEY (report_id) REFERENCES reports(id) ON DELETE CASCADE")
+                        _log(f"Queued CASCADE fix for {table_name}.{constraint_name}")
+
     # Execute migrations
     if migrations:
         with engine.connect() as conn:
             for sql in migrations:
                 conn.execute(text(sql))
             conn.commit()
-        _log(f"Migrations applied: {len(migrations)} index(es) created")
+        _log(f"Migrations applied: {len(migrations)} change(s)")

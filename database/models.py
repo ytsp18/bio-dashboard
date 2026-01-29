@@ -48,7 +48,7 @@ class Card(Base):
     __tablename__ = 'cards'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    report_id = Column(Integer, ForeignKey('reports.id'), nullable=False)
+    report_id = Column(Integer, ForeignKey('reports.id', ondelete='CASCADE'), nullable=False)
 
     # Core identifiers
     appointment_id = Column(String(50), index=True)
@@ -123,7 +123,7 @@ class BadCard(Base):
     __tablename__ = 'bad_cards'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    report_id = Column(Integer, ForeignKey('reports.id'), nullable=False)
+    report_id = Column(Integer, ForeignKey('reports.id', ondelete='CASCADE'), nullable=False)
 
     appointment_id = Column(String(50), index=True)
     branch_code = Column(String(20))
@@ -143,7 +143,7 @@ class CenterStat(Base):
     __tablename__ = 'center_stats'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    report_id = Column(Integer, ForeignKey('reports.id'), nullable=False)
+    report_id = Column(Integer, ForeignKey('reports.id', ondelete='CASCADE'), nullable=False)
 
     branch_code = Column(String(20), index=True)
     branch_name = Column(String(255))
@@ -163,7 +163,7 @@ class AnomalySLA(Base):
     __tablename__ = 'anomaly_sla'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    report_id = Column(Integer, ForeignKey('reports.id'), nullable=False)
+    report_id = Column(Integer, ForeignKey('reports.id', ondelete='CASCADE'), nullable=False)
 
     appointment_id = Column(String(50))
     branch_code = Column(String(20))
@@ -181,7 +181,7 @@ class WrongCenter(Base):
     __tablename__ = 'wrong_centers'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    report_id = Column(Integer, ForeignKey('reports.id'), nullable=False)
+    report_id = Column(Integer, ForeignKey('reports.id', ondelete='CASCADE'), nullable=False)
 
     appointment_id = Column(String(50))
     expected_branch = Column(String(20))
@@ -198,7 +198,7 @@ class CompleteDiff(Base):
     __tablename__ = 'complete_diffs'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    report_id = Column(Integer, ForeignKey('reports.id'), nullable=False)
+    report_id = Column(Integer, ForeignKey('reports.id', ondelete='CASCADE'), nullable=False)
 
     appointment_id = Column(String(50), index=True)
     g_count = Column(Integer)  # จำนวน G
@@ -224,7 +224,7 @@ class DeliveryCard(Base):
     __tablename__ = 'delivery_cards'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    report_id = Column(Integer, ForeignKey('reports.id'), nullable=False)
+    report_id = Column(Integer, ForeignKey('reports.id', ondelete='CASCADE'), nullable=False)
 
     appointment_id = Column(String(50), index=True)
     serial_number = Column(String(20), index=True)
