@@ -40,9 +40,17 @@ class DataService:
         good_cards_df = parser.parse_good_cards()
         bad_cards_df = parser.parse_bad_cards()
         all_data = parser.parse_all_data()
+        delivery_df = parser.parse_delivery_cards()
+
+        # Count delivery cards with G status
+        delivery_good_count = 0
+        if not delivery_df.empty and 'print_status' in delivery_df.columns:
+            delivery_good_count = len(delivery_df[delivery_df['print_status'] == 'G'])
+        elif not delivery_df.empty:
+            delivery_good_count = len(delivery_df)  # Assume all are G if no status column
 
         # Determine which data source to use
-        total_from_sheets = len(good_cards_df) + len(bad_cards_df)
+        total_from_sheets = len(good_cards_df) + len(bad_cards_df) + delivery_good_count
         total_from_all = len(all_data)
 
         # Decision logic:
@@ -81,8 +89,8 @@ class DataService:
                 total_bad = 0
             total_records = total_from_all
         else:
-            # Use Sheet 2+3 stats
-            total_good = len(good_cards_df)
+            # Use Sheet 2+3+7 stats (รวมบัตรจัดส่งด้วย)
+            total_good = len(good_cards_df) + delivery_good_count
             total_bad = len(bad_cards_df)
             total_records = total_from_sheets
 
