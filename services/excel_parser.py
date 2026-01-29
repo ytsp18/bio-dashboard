@@ -280,12 +280,26 @@ class ExcelParser:
         if df.empty or len(df) == 0:
             return pd.DataFrame()
 
-        # Expected columns
-        expected_cols = [
-            'ลำดับ', 'Appointment ID', 'รหัสศูนย์', 'ชื่อศูนย์', 'ภูมิภาค',
-            'Card ID', 'Serial Number', 'Work Permit No', 'SLA (นาที)',
-            'ผ่าน SLA', 'ผู้ให้บริการ', 'วันที่พิมพ์'
-        ]
+        # Sheet may have title rows at the top
+        # Find header row containing 'ลำดับ'
+        header_row_idx = None
+        for i in range(min(5, len(df))):
+            row = df.iloc[i]
+            first_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
+            if first_val == 'ลำดับ':
+                header_row_idx = i
+                break
+
+        # If header found, restructure dataframe
+        if header_row_idx is not None:
+            header_row = df.iloc[header_row_idx]
+            new_columns = [str(c).strip() if pd.notna(c) else f'col_{i}' for i, c in enumerate(header_row)]
+            df = df.iloc[header_row_idx + 1:].copy()
+            df.columns = new_columns
+            df = df.reset_index(drop=True)
+            # Filter out empty rows
+            if 'ลำดับ' in df.columns:
+                df = df[pd.to_numeric(df['ลำดับ'], errors='coerce').notna()]
 
         # Map to standard names
         column_map = {
@@ -320,6 +334,27 @@ class ExcelParser:
         df = self.read_sheet(self.SHEET_NAMES['bad_cards'])
         if df.empty or len(df) == 0:
             return pd.DataFrame()
+
+        # Sheet may have title rows at the top
+        # Find header row containing 'ลำดับ'
+        header_row_idx = None
+        for i in range(min(5, len(df))):
+            row = df.iloc[i]
+            first_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ''
+            if first_val == 'ลำดับ':
+                header_row_idx = i
+                break
+
+        # If header found, restructure dataframe
+        if header_row_idx is not None:
+            header_row = df.iloc[header_row_idx]
+            new_columns = [str(c).strip() if pd.notna(c) else f'col_{i}' for i, c in enumerate(header_row)]
+            df = df.iloc[header_row_idx + 1:].copy()
+            df.columns = new_columns
+            df = df.reset_index(drop=True)
+            # Filter out empty rows
+            if 'ลำดับ' in df.columns:
+                df = df[pd.to_numeric(df['ลำดับ'], errors='coerce').notna()]
 
         column_map = {
             'Appointment ID': 'appointment_id',
