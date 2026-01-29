@@ -59,7 +59,13 @@ def get_overview_stats(start_date, end_date):
         combined_serials = union_all(card_serials, delivery_serials).subquery()
         unique_total = session.query(func.count(func.distinct(combined_serials.c.sn))).scalar() or 0
 
-        bad_cards = session.query(Card).filter(date_filter, Card.print_status == 'B').count()
+        # นับบัตรเสีย (B) รวมทั้งรับที่ศูนย์และจัดส่ง
+        bad_at_center = session.query(Card).filter(date_filter, Card.print_status == 'B').count()
+        bad_delivery = session.query(DeliveryCard).filter(
+            DeliveryCard.print_status == 'B',
+            DeliveryCard.report_id.in_(session.query(report_ids_with_data))
+        ).count()
+        bad_cards = bad_at_center + bad_delivery
 
         # Complete cards - ต้องมีข้อมูลครบ 4 fields และ 1 Appt = 1 G
         # 1. หา Appt ID ที่มี G = 1 เท่านั้น
