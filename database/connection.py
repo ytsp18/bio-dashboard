@@ -162,6 +162,19 @@ def _run_migrations():
         if 'ix_cards_status_serial' not in existing_indexes:
             migrations.append("CREATE INDEX IF NOT EXISTS ix_cards_status_serial ON cards (print_status, serial_number)")
 
+    # ========== Fix operator column size (VARCHAR(20) -> VARCHAR(50)) ==========
+    # This fixes StringDataRightTruncation error when operator username > 20 chars
+    if 'complete_diffs' in tables and not is_sqlite:
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                SELECT character_maximum_length
+                FROM information_schema.columns
+                WHERE table_name = 'complete_diffs' AND column_name = 'operator'
+            """))
+            row = result.fetchone()
+            if row and row[0] and row[0] < 50:
+                migrations.append("ALTER TABLE complete_diffs ALTER COLUMN operator TYPE VARCHAR(50)")
+
     # Execute migrations
     if migrations:
         with engine.connect() as conn:
