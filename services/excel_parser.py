@@ -620,19 +620,22 @@ class ExcelParser:
                         except:
                             pass
                     # อ่าน Unique Serial จาก Summary Sheet
-                    # ใช้ "G Unique Serial หลังหัก Validation" ถ้ามี (ค่าที่ถูกต้องที่สุด)
-                    # ถ้าไม่มีให้ใช้ "G (บัตรดี) - Unique Serial"
+                    # Priority 1: "G Unique Serial หลังหัก Validation" (ค่าที่ถูกต้องที่สุด)
+                    # Priority 2: "G (บัตรดี) - Unique Serial" (fallback)
                     elif 'G Unique Serial หลังหัก Validation' in cell and pd.notna(value):
+                        # ค่านี้มี priority สูงสุด - override ค่าเดิมเสมอ
                         try:
                             unique_serial_g = int(str(value).replace(',', ''))
                         except:
                             pass
-                    elif unique_serial_g == 0 and 'G (บัตรดี) - Unique Serial' in cell and pd.notna(value):
-                        # Fallback: ใช้ค่านี้ถ้าไม่มี "หลังหัก Validation"
-                        try:
-                            unique_serial_g = int(str(value).replace(',', ''))
-                        except:
-                            pass
+                    elif 'G (บัตรดี) - Unique Serial' in cell and pd.notna(value):
+                        # ใช้เป็น fallback เฉพาะเมื่อยังไม่มีค่า
+                        # (ค่านี้อยู่ Row 12, ถ้ามี "หลังหัก Validation" ที่ Row 106 จะ override ทีหลัง)
+                        if unique_serial_g == 0:
+                            try:
+                                unique_serial_g = int(str(value).replace(',', ''))
+                            except:
+                                pass
                     elif 'B (บัตรเสีย) - รวม' in cell and pd.notna(value):
                         try:
                             bad = int(str(value).replace(',', ''))
