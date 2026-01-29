@@ -162,18 +162,31 @@ def _run_migrations():
         if 'ix_cards_status_serial' not in existing_indexes:
             migrations.append("CREATE INDEX IF NOT EXISTS ix_cards_status_serial ON cards (print_status, serial_number)")
 
-    # ========== Fix operator column size (VARCHAR(20) -> VARCHAR(50)) ==========
-    # This fixes StringDataRightTruncation error when operator username > 20 chars
+    # ========== Fix VARCHAR column sizes for complete_diffs ==========
+    # This fixes StringDataRightTruncation errors
     if 'complete_diffs' in tables and not is_sqlite:
         with engine.connect() as conn:
             result = conn.execute(text("""
-                SELECT character_maximum_length
+                SELECT column_name, character_maximum_length
                 FROM information_schema.columns
-                WHERE table_name = 'complete_diffs' AND column_name = 'operator'
+                WHERE table_name = 'complete_diffs'
+                AND column_name IN ('operator', 'branch_code', 'card_id', 'serial_number', 'work_permit_no')
             """))
-            row = result.fetchone()
-            if row and row[0] and row[0] < 50:
-                migrations.append("ALTER TABLE complete_diffs ALTER COLUMN operator TYPE VARCHAR(50)")
+
+            # Define target sizes for each column
+            target_sizes = {
+                'operator': 100,      # For usernames or datetime strings
+                'branch_code': 255,   # May contain branch_name due to Excel parsing
+                'card_id': 50,        # May have longer IDs
+                'serial_number': 50,  # May have longer serials
+                'work_permit_no': 50  # May have longer permit numbers
+            }
+
+            for row in result:
+                col_name, current_size = row[0], row[1]
+                target_size = target_sizes.get(col_name, 50)
+                if current_size and current_size < target_size:
+                    migrations.append(f"ALTER TABLE complete_diffs ALTER COLUMN {col_name} TYPE VARCHAR({target_size})")
 
     # Execute migrations
     if migrations:
