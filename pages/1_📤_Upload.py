@@ -354,7 +354,8 @@ try:
                     st.write("")
                     if st.button("🗑️ ลบรายงาน", type="secondary", use_container_width=True):
                         try:
-                            report = session.query(Report).filter(Report.id == report_to_delete[0]).first()
+                            report_id = report_to_delete[0]
+                            report = session.query(Report).filter(Report.id == report_id).first()
                             if report:
                                 # Audit log for delete
                                 from utils.security import audit_delete
@@ -364,10 +365,26 @@ try:
                                     item_name=report.filename
                                 )
 
+                                # Explicitly delete related records first (in case CASCADE not yet migrated)
+                                from database.models import (
+                                    Card, BadCard, CenterStat, AnomalySLA,
+                                    WrongCenter, CompleteDiff, DeliveryCard
+                                )
+                                session.query(Card).filter(Card.report_id == report_id).delete()
+                                session.query(BadCard).filter(BadCard.report_id == report_id).delete()
+                                session.query(CenterStat).filter(CenterStat.report_id == report_id).delete()
+                                session.query(AnomalySLA).filter(AnomalySLA.report_id == report_id).delete()
+                                session.query(WrongCenter).filter(WrongCenter.report_id == report_id).delete()
+                                session.query(CompleteDiff).filter(CompleteDiff.report_id == report_id).delete()
+                                session.query(DeliveryCard).filter(DeliveryCard.report_id == report_id).delete()
+
+                                # Now delete the report
                                 session.delete(report)
                                 session.commit()
                                 st.success(f"✅ ลบรายงาน {report_to_delete[1]} สำเร็จ")
                                 st.rerun()
+                            else:
+                                st.warning(f"⚠️ ไม่พบรายงาน ID {report_id}")
                         except Exception as e:
                             st.error(f"❌ เกิดข้อผิดพลาด: {str(e)}")
                             session.rollback()
