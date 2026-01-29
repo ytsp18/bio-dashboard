@@ -216,7 +216,7 @@ def get_daily_stats(start_date, end_date):
         log_perf(f"get_daily_stats({start_date} to {end_date})", duration)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)  # Cache 1 minute only for date range
 def get_date_range():
     """Get cached min/max dates."""
     start_time = time.perf_counter()
@@ -224,6 +224,13 @@ def get_date_range():
     try:
         min_date = session.query(func.min(Card.print_date)).scalar()
         max_date = session.query(func.max(Card.print_date)).scalar()
+
+        # ถ้าไม่มีข้อมูล ให้ใช้วันที่ปัจจุบัน
+        if min_date is None:
+            min_date = date.today()
+        if max_date is None:
+            max_date = date.today()
+
         return min_date, max_date
     finally:
         session.close()
@@ -415,6 +422,13 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="page-header">รายงานผลการออกบัตร</div>', unsafe_allow_html=True)
+
+# Refresh button to clear cache
+col_title, col_refresh = st.columns([6, 1])
+with col_refresh:
+    if st.button("🔄 รีเฟรช", use_container_width=True, help="รีเฟรชข้อมูลใหม่"):
+        st.cache_data.clear()
+        st.rerun()
 
 # Use cached date range
 min_date, max_date = get_date_range()
