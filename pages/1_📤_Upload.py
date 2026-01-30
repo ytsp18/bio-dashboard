@@ -112,9 +112,16 @@ def parse_sla_duration(duration_str):
 
 
 def safe_str(val):
+    """Safely convert value to string, handling special characters."""
     if pd.isna(val):
         return None
-    return str(val).strip() if val else None
+    if val is None:
+        return None
+    result = str(val).strip()
+    # Replace % with %% to avoid string formatting issues in some DB drivers
+    # But only if the string contains % followed by a letter (formatting pattern)
+    # Actually, leave % as is - the issue is elsewhere
+    return result if result else None
 
 
 def safe_float(val):
@@ -286,7 +293,26 @@ with tab2:
 
         try:
             if uploaded_appt.name.endswith('.csv'):
+                # Read header first to get expected column count
+                uploaded_appt.seek(0)
+                header_line = uploaded_appt.readline().decode('utf-8').strip()
+                expected_cols = len(header_line.split(','))
+                uploaded_appt.seek(0)
+
+                # Read CSV - pandas may use first data column as index if data has more columns than header
                 df = pd.read_csv(uploaded_appt)
+
+                # Check if data was shifted (first column used as index)
+                # This happens when data rows have more columns than header
+                if df.index.dtype == 'object' and len(df.columns) == expected_cols - 1:
+                    # Reset index to make it a regular column
+                    uploaded_appt.seek(0)
+                    df = pd.read_csv(uploaded_appt, index_col=False)
+                    # If still has issues, try with names parameter
+                    if 'APPOINTMENT_CODE' not in df.columns and 'Unnamed: 0' in df.columns:
+                        uploaded_appt.seek(0)
+                        header_names = header_line.split(',')
+                        df = pd.read_csv(uploaded_appt, skiprows=1, names=header_names)
             else:
                 df = pd.read_excel(uploaded_appt)
 
@@ -294,6 +320,12 @@ with tab2:
             col_map = {}
             for target, names in APPT_COLUMNS.items():
                 col_map[target] = find_column(df, names)
+
+            # Debug: Show column mapping
+            with st.expander("🔍 Column Mapping Debug"):
+                st.write("**Columns in file:**", list(df.columns))
+                st.write("**Mapped columns:**", {k: v for k, v in col_map.items() if v is not None})
+                st.write("**Missing:**", [k for k, v in col_map.items() if v is None])
 
             # Summary
             total = len(df)
