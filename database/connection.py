@@ -1,5 +1,6 @@
 """Database connection management."""
 import os
+import re
 import time
 import streamlit as st
 from sqlalchemy import create_engine
@@ -165,6 +166,15 @@ def _run_migrations():
     # ========== Fix VARCHAR column sizes for appointments ==========
     # This fixes StringDataRightTruncation errors for Thai text fields
     if 'appointments' in tables and not is_sqlite:
+        # Define target sizes for each column (whitelist for security)
+        appt_target_sizes = {
+            'form_type': 255,      # Thai form type descriptions are long
+            'card_id': 30,         # Card ID
+            'work_permit_no': 30   # Work permit number
+        }
+        # Only allow columns in whitelist
+        allowed_columns = set(appt_target_sizes.keys())
+
         with engine.connect() as conn:
             result = conn.execute(text("""
                 SELECT column_name, character_maximum_length
@@ -173,23 +183,31 @@ def _run_migrations():
                 AND column_name IN ('form_type', 'card_id', 'work_permit_no')
             """))
 
-            # Define target sizes for each column
-            appt_target_sizes = {
-                'form_type': 255,      # Thai form type descriptions are long
-                'card_id': 30,         # Card ID
-                'work_permit_no': 30   # Work permit number
-            }
-
             for row in result:
                 col_name, current_size = row[0], row[1]
+                # Security: Only process whitelisted column names
+                if col_name not in allowed_columns:
+                    continue
                 target_size = appt_target_sizes.get(col_name, 50)
                 if current_size and current_size < target_size:
+                    # Safe: col_name is validated against whitelist
                     migrations.append(f"ALTER TABLE appointments ALTER COLUMN {col_name} TYPE VARCHAR({target_size})")
                     _log(f"Queued column resize: appointments.{col_name} to VARCHAR({target_size})")
 
     # ========== Fix VARCHAR column sizes for complete_diffs ==========
     # This fixes StringDataRightTruncation errors
     if 'complete_diffs' in tables and not is_sqlite:
+        # Define target sizes for each column (whitelist for security)
+        diff_target_sizes = {
+            'operator': 100,      # For usernames or datetime strings
+            'branch_code': 255,   # May contain branch_name due to Excel parsing
+            'card_id': 50,        # May have longer IDs
+            'serial_number': 50,  # May have longer serials
+            'work_permit_no': 50  # May have longer permit numbers
+        }
+        # Only allow columns in whitelist
+        allowed_diff_columns = set(diff_target_sizes.keys())
+
         with engine.connect() as conn:
             result = conn.execute(text("""
                 SELECT column_name, character_maximum_length
@@ -198,49 +216,52 @@ def _run_migrations():
                 AND column_name IN ('operator', 'branch_code', 'card_id', 'serial_number', 'work_permit_no')
             """))
 
-            # Define target sizes for each column
-            target_sizes = {
-                'operator': 100,      # For usernames or datetime strings
-                'branch_code': 255,   # May contain branch_name due to Excel parsing
-                'card_id': 50,        # May have longer IDs
-                'serial_number': 50,  # May have longer serials
-                'work_permit_no': 50  # May have longer permit numbers
-            }
-
             for row in result:
                 col_name, current_size = row[0], row[1]
-                target_size = target_sizes.get(col_name, 50)
+                # Security: Only process whitelisted column names
+                if col_name not in allowed_diff_columns:
+                    continue
+                target_size = diff_target_sizes.get(col_name, 50)
                 if current_size and current_size < target_size:
+                    # Safe: col_name is validated against whitelist
                     migrations.append(f"ALTER TABLE complete_diffs ALTER COLUMN {col_name} TYPE VARCHAR({target_size})")
 
     # ========== Fix CASCADE DELETE for Foreign Keys ==========
     # This fixes the issue where deleting a report doesn't delete related records
     if not is_sqlite:
-        # Tables that need CASCADE DELETE on report_id FK
-        tables_with_fk = [
+        # Tables that need CASCADE DELETE on report_id FK (whitelist for security)
+        allowed_tables_with_fk = {
             'cards', 'bad_cards', 'center_stats', 'anomaly_sla',
             'wrong_centers', 'complete_diffs', 'delivery_cards'
-        ]
+        }
 
         with engine.connect() as conn:
-            for table_name in tables_with_fk:
+            for table_name in allowed_tables_with_fk:
                 if table_name not in tables:
                     continue
 
-                # Check if FK already has CASCADE
-                result = conn.execute(text(f"""
-                    SELECT tc.constraint_name, rc.delete_rule
-                    FROM information_schema.table_constraints tc
-                    JOIN information_schema.referential_constraints rc
-                        ON tc.constraint_name = rc.constraint_name
-                    WHERE tc.table_name = '{table_name}'
-                    AND tc.constraint_type = 'FOREIGN KEY'
-                """))
+                # Security: table_name is from whitelist, safe to use
+                # Use parameterized query for SELECT
+                result = conn.execute(
+                    text("""
+                        SELECT tc.constraint_name, rc.delete_rule
+                        FROM information_schema.table_constraints tc
+                        JOIN information_schema.referential_constraints rc
+                            ON tc.constraint_name = rc.constraint_name
+                        WHERE tc.table_name = :tbl_name
+                        AND tc.constraint_type = 'FOREIGN KEY'
+                    """),
+                    {"tbl_name": table_name}
+                )
 
                 for row in result:
                     constraint_name, delete_rule = row[0], row[1]
                     if delete_rule != 'CASCADE':
-                        # Drop old FK and recreate with CASCADE
+                        # Security: Validate constraint_name format (alphanumeric + underscore only)
+                        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', constraint_name):
+                            _log(f"Skipping invalid constraint name: {constraint_name}")
+                            continue
+                        # Safe: table_name from whitelist, constraint_name validated
                         migrations.append(f"ALTER TABLE {table_name} DROP CONSTRAINT {constraint_name}")
                         migrations.append(f"ALTER TABLE {table_name} ADD CONSTRAINT {constraint_name} FOREIGN KEY (report_id) REFERENCES reports(id) ON DELETE CASCADE")
                         _log(f"Queued CASCADE fix for {table_name}.{constraint_name}")
