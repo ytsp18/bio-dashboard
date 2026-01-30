@@ -997,11 +997,11 @@ with tab5:
             else:
                 min_date = max_date = None
 
-            # Status counts
+            # Status counts (convert to Python int to avoid numpy.int64 issues)
             if col_map.get('print_status'):
                 status_counts = df[col_map['print_status']].value_counts()
-                good = status_counts.get('G', 0)
-                bad = status_counts.get('B', 0)
+                good = int(status_counts.get('G', 0))
+                bad = int(status_counts.get('B', 0))
             else:
                 good = bad = 0
 
