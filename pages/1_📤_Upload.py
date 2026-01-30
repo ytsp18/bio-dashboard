@@ -389,10 +389,21 @@ with tab2:
                         import_df = import_df.replace({'nan': None, 'None': None, '': None})
                         progress.progress(30)
 
-                        # Use pandas to_sql for fastest insert
+                        # Use SQLAlchemy bulk insert (compatible with PostgreSQL)
                         status_text.text("กำลังนำเข้าข้อมูล...")
-                        from database.connection import get_engine
-                        import_df.to_sql('appointments', get_engine(), if_exists='append', index=False, method='multi', chunksize=500)
+                        from sqlalchemy import insert
+                        records = import_df.to_dict('records')
+
+                        # Insert in smaller batches (100 records) to avoid PostgreSQL parameter limit
+                        batch_size = 100
+                        total_batches = (len(records) + batch_size - 1) // batch_size
+                        for i in range(0, len(records), batch_size):
+                            batch = records[i:i+batch_size]
+                            session.execute(insert(Appointment), batch)
+                            batch_num = i // batch_size + 1
+                            progress.progress(30 + int(batch_num / total_batches * 65))
+                            if batch_num % 10 == 0:
+                                status_text.text(f"กำลังนำเข้า batch {batch_num}/{total_batches}...")
 
                         session.commit()
                         progress.progress(100)
@@ -548,10 +559,21 @@ with tab3:
                         import_df = import_df.replace({'nan': None, 'None': None, '': None})
                         progress.progress(30)
 
-                        # Use pandas to_sql for fastest insert
+                        # Use SQLAlchemy bulk insert (compatible with PostgreSQL)
                         status_text.text("กำลังนำเข้าข้อมูล...")
-                        from database.connection import get_engine
-                        import_df.to_sql('qlogs', get_engine(), if_exists='append', index=False, method='multi', chunksize=500)
+                        from sqlalchemy import insert
+                        records = import_df.to_dict('records')
+
+                        # Insert in smaller batches (100 records) to avoid PostgreSQL parameter limit
+                        batch_size = 100
+                        total_batches = (len(records) + batch_size - 1) // batch_size
+                        for i in range(0, len(records), batch_size):
+                            batch = records[i:i+batch_size]
+                            session.execute(insert(QLog), batch)
+                            batch_num = i // batch_size + 1
+                            progress.progress(30 + int(batch_num / total_batches * 65))
+                            if batch_num % 10 == 0:
+                                status_text.text(f"กำลังนำเข้า batch {batch_num}/{total_batches}...")
 
                         session.commit()
                         progress.progress(100)
@@ -718,10 +740,21 @@ with tab4:
                         import_df = import_df.replace({'nan': None, 'None': None, '': None})
                         progress.progress(30)
 
-                        # Use pandas to_sql for fastest insert
+                        # Use SQLAlchemy bulk insert (compatible with PostgreSQL)
                         status_text.text("กำลังนำเข้าข้อมูล...")
-                        from database.connection import get_engine
-                        import_df.to_sql('bio_records', get_engine(), if_exists='append', index=False, method='multi', chunksize=500)
+                        from sqlalchemy import insert
+                        records = import_df.to_dict('records')
+
+                        # Insert in smaller batches (100 records) to avoid PostgreSQL parameter limit
+                        batch_size = 100
+                        total_batches = (len(records) + batch_size - 1) // batch_size
+                        for i in range(0, len(records), batch_size):
+                            batch = records[i:i+batch_size]
+                            session.execute(insert(BioRecord), batch)
+                            batch_num = i // batch_size + 1
+                            progress.progress(30 + int(batch_num / total_batches * 65))
+                            if batch_num % 10 == 0:
+                                status_text.text(f"กำลังนำเข้า batch {batch_num}/{total_batches}...")
 
                         session.commit()
                         progress.progress(100)
