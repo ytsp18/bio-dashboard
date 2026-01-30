@@ -1,5 +1,181 @@
 # Session Log - 31 Jan 2026
 
+## สิ่งที่ทำเสร็จแล้ว (31 Jan 2026 - Session 5: Workload Forecast)
+
+### 14. Workload Forecast Feature (นัดหมายล่วงหน้า)
+
+**ความต้องการ:**
+- แสดงปริมาณการนัดหมายล่วงหน้าเพื่อเตรียมรับมือ
+- เปรียบเทียบกับ Capacity จาก BranchMaster
+
+**สิ่งที่พัฒนา:**
+
+1. **Function `get_upcoming_appointments()`** (Overview.py)
+   - Query นัดหมายที่มี `appt_date >= today` และ `appt_status IN ('SUCCESS', 'WAITING')`
+   - รวม `total_capacity` จาก `BranchMaster.max_capacity`
+   - คำนวณ usage_pct และ status (over/warning/normal)
+
+2. **Summary Section ใน Overview**
+   - Metrics: วันนี้, พรุ่งนี้, 7 วัน, 30 วัน
+   - กราฟแท่งรายวัน + เส้น Capacity (เขียว) + เส้นค่าเฉลี่ย (แดง)
+   - Link ไปหน้ารายละเอียด
+
+3. **หน้า "ปริมาณการนัดหมาย"** (3_📆_Forecast.py)
+   - Tab รายวัน: กราฟ + ตารางข้อมูล
+   - Tab รายศูนย์: Horizontal bar chart + ตาราง Capacity
+   - Tab ตารางรายละเอียด: Pivot table (ศูนย์ × วัน) + Export CSV
+   - เส้น Capacity limit สีเขียว
+
+**Bug Fix:**
+- JSON Serialization Error: ลบ lambda formatter ใน ECharts tooltip
+
+**Menu Reorder:**
+- เปลี่ยน Forecast จาก 2.5_ เป็น 3_ ให้อยู่หลัง Overview
+- Rename ไฟล์ทั้งหมด: Search (4_), By Center (5_), Anomaly (6_), etc.
+
+**Git Commits:**
+| Commit | Description |
+|--------|-------------|
+| `1d42cfd` | Add Workload Forecast feature |
+| `7552cc8` | Fix WAITING status for upcoming appointments |
+| `7e3f5bf` | Rename Forecast page, change title |
+| `de16482` | Add capacity limit line to charts, reorder menu |
+
+**Version:** 1.3.8
+
+---
+
+## สิ่งที่ทำเสร็จแล้ว (31 Jan 2026 - Session 4: Security Audit)
+
+### 13. Security Audit & SQL Injection Fix
+
+**ปัญหาที่พบ:**
+1. **SQL Injection Vulnerability (HIGH RISK)**
+   - ไฟล์: `database/connection.py`
+   - ใช้ f-string สร้าง SQL queries กับ user input โดยตรง
+   - ตัวอย่างโค้ดที่มีปัญหา:
+   ```python
+   # ❌ Vulnerable
+   query = f"SELECT * FROM cards WHERE serial_number LIKE '%{search_term}%'"
+   ```
+
+2. **Credential Exposure**
+   - รหัสผ่าน database ควรถูก rotate หลังพบ vulnerability
+
+**วิธีแก้ไข:**
+1. **SQL Injection Fix**
+   - เปลี่ยนเป็น parameterized queries ด้วย SQLAlchemy `text()` และ `:param`
+   ```python
+   # ✅ Safe
+   query = text("SELECT * FROM cards WHERE serial_number LIKE :search")
+   result = session.execute(query, {"search": f"%{search_term}%"})
+   ```
+   - Commit: `afdeb03`
+
+2. **Credential Rotation**
+   - รหัส database เปลี่ยนจาก `kadxa1-Pupfyv-tajgyd` → `qiqma7-baKzax-wetbeh`
+   - Cookie key ใหม่: 64-char hex
+   - อัปเดต Streamlit Cloud secrets
+
+**ปัญหาที่เจอระหว่างแก้ไข:**
+- "Circuit breaker open" error - IP ถูก ban จาก Supabase
+- แก้โดย Unban IP จาก Network Bans + รอ circuit breaker reset
+- Restart database เพื่อ clear connection pool
+
+**ผลลัพธ์:**
+- ✅ SQL Injection fixed
+- ✅ Credentials rotated
+- ✅ Database connection restored
+- ✅ App ใช้งานได้ปกติ
+
+---
+
+## สิ่งที่ทำเสร็จแล้ว (31 Jan 2026 - Session 3)
+
+### 9. PostgreSQL COPY Protocol สำหรับ Upload เร็วขึ้น 10-50x
+
+**ปัญหา:** Upload ไฟล์ 6.4MB ช้ามาก (stuck ที่ 30%)
+
+**สาเหตุ:** SQLAlchemy `insert()` มี overhead จาก parameter binding
+
+**วิธีแก้ไข:** เปลี่ยนเป็น PostgreSQL `COPY FROM STDIN WITH CSV`
+
+```python
+from io import StringIO
+buffer = StringIO()
+import_df[columns].to_csv(buffer, index=False, header=False, na_rep='\\N')
+buffer.seek(0)
+cursor.copy_expert("""
+    COPY table_name (columns...)
+    FROM STDIN WITH (FORMAT CSV, NULL '\\N')
+""", buffer)
+```
+
+**ผลลัพธ์:**
+| ไฟล์ | Records | สถานะ |
+|------|---------|-------|
+| 6.4MB | 24K | ✅ เร็วขึ้นมาก |
+| 17MB | 66K | ✅ สำเร็จ |
+| 31MB | 130K | ✅ สำเร็จ |
+
+---
+
+### 10. Card Delivery Upload Support
+
+**เพิ่ม Tab ใหม่:** 📦 Card Delivery
+
+**รูปแบบข้อมูล:**
+- Appointment ID ขึ้นต้นด้วย 68/69 (ไม่ใช่รูปแบบปกติ)
+- ไม่มี SLA time data
+- มี `alien_card_id` แทน `card_id`
+
+**Database Models:**
+- `CardDeliveryUpload` - metadata การ upload
+- `CardDeliveryRecord` - ข้อมูลการจัดส่งบัตร
+
+**ทดสอบ:** 196 records (G: 191, B: 5) ✅ สำเร็จ
+
+---
+
+### 11. Duplicate Data Check
+
+**กฎการตรวจสอบ:**
+
+| ประเภท | Unique Key | พบซ้ำ |
+|--------|------------|-------|
+| Appointment | `appointment_id` | ❌ บล็อก + ปุ่ม disabled |
+| QLog | `qlog_id` | ❌ บล็อก + ปุ่ม disabled |
+| Card Delivery | `serial_number` | ❌ บล็อก + ปุ่ม disabled |
+| Bio Raw | `serial_number + print_status` | ⚠️ Warning เท่านั้น |
+
+**หมายเหตุ:** Bio Raw อนุญาตซ้ำเพราะ serial เดียวกันอาจมีหลาย status (G→B, B→G) สำหรับ verify
+
+---
+
+### 12. Bug Fix: emergency column type error
+
+**อาการ:** `invalid input syntax for type integer: "0.0"`
+
+**สาเหตุ:** Excel data มี float (0.0) แต่ PostgreSQL COPY ต้องการ integer
+
+**วิธีแก้ไข:**
+```python
+copy_df['emergency'] = copy_df['emergency'].apply(lambda x: int(x) if pd.notna(x) else None)
+```
+
+---
+
+### Version Update: 1.3.6
+
+**ไฟล์ที่แก้ไข:**
+- `pages/1_📤_Upload.py` - COPY protocol, duplicate check, Card Delivery tab
+- `database/models.py` - CardDeliveryUpload, CardDeliveryRecord
+- `database/connection.py` - ลบ unique constraint migrations
+- `__version__.py` - 1.3.6
+- `CHANGELOG.md` - บันทึกการเปลี่ยนแปลง
+
+---
+
 ## สิ่งที่ทำเสร็จแล้ว (31 Jan 2026 - Session 2)
 
 ### 7. แก้ไข FK Violation และเพิ่มความเร็ว Upload
@@ -221,9 +397,10 @@ for enc in encodings:
 - SLA Start, SLA Stop, SLA Duration
 
 ## Git Status
-- Last commit: `fbf9cbe` - Optimize upload for large files 30MB+
+- Version: 1.3.8
 - Branch: main
 - Remote: https://github.com/ytsp18/bio-dashboard.git
+- Latest Commit: `de16482` - Add capacity limit line to charts, reorder menu
 
 ## วิธีทดสอบ No-Show Analysis
 1. อัพโหลดไฟล์ Appointment (appointment-*.csv) ในหน้า Upload > Tab "📅 Appointment"

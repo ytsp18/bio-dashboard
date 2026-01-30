@@ -28,12 +28,17 @@ bio_dashboard/
 │   ├── data_service.py         # Data import/export operations
 │   └── excel_parser.py         # Excel file parsing
 ├── pages/
-│   ├── 1_📤_Upload.py          # Upload page
-│   ├── 2_📊_Reports.py         # Reports page
-│   ├── 3_🔍_Search.py          # Search page
-│   ├── 4_📈_Analytics.py       # Analytics page
-│   ├── 5_🏢_Centers.py         # Centers page
-│   └── 6_⚙️_Settings.py        # Settings page
+│   ├── 0_📝_Register.py        # User registration
+│   ├── 1_📤_Upload.py          # Upload page (4 tabs)
+│   ├── 2_📈_Overview.py        # Main dashboard with charts
+│   ├── 3_📆_Forecast.py        # Workload forecast (นัดหมายล่วงหน้า)
+│   ├── 4_🔍_Search.py          # Search page
+│   ├── 5_🏢_By_Center.py       # By center analysis
+│   ├── 6_⚠️_Anomaly.py         # Anomaly detection
+│   ├── 7_📋_Raw_Data.py        # Raw data view
+│   ├── 8_📊_Complete_Diff.py   # Complete diff report
+│   ├── 9_👤_Admin.py           # Admin panel
+│   └── 10_🔐_Profile.py        # User profile
 └── utils/
     └── helpers.py              # Utility functions
 ```
@@ -73,6 +78,22 @@ bio_dashboard/
 - `appointment_id`: รหัสนัดหมาย
 - `serial_number`: หมายเลข Serial
 - `print_status`: สถานะการพิมพ์
+
+### CardDeliveryRecord (NEW - v1.3.5)
+บัตรจัดส่งแยก (Appointment 68/69)
+- `id`: Primary key
+- `upload_id`: Foreign key to CardDeliveryUpload
+- `appointment_id`: รหัสนัดหมาย (68xxx, 69xxx)
+- `serial_number`: หมายเลข Serial
+- `alien_card_id`: Card ID
+- `print_status`: สถานะการพิมพ์ (G/B)
+- `create_date`: วันที่พิมพ์
+
+### Appointment, QLog, BioRecord
+ข้อมูล Raw จากไฟล์แยก (v1.3.0+)
+- Appointment: นัดหมาย (appointment-*.csv)
+- QLog: Check-in (qlog-*.csv)
+- BioRecord: การพิมพ์บัตร (ALL-*.csv, BIO_*.xlsx)
 
 ### CenterStat
 สถิติตามศูนย์ (จาก Sheet 4)
@@ -322,8 +343,39 @@ Open browser: http://localhost:8501
 - [ ] Add data export functionality
 - [ ] Implement data comparison between periods
 - [x] Add user authentication
+- [x] PostgreSQL COPY protocol for fast upload (30MB+ files)
+- [x] Card Delivery upload support (68/69 appointments)
+- [x] Duplicate data check before import
 - [ ] Create automated report generation
 - [ ] Add email notifications for anomalies
+- [ ] Enable RLS (Row Level Security) on Supabase tables
+
+---
+
+## Security
+
+### SQL Injection Prevention (v1.3.7)
+All database queries now use parameterized queries:
+
+```python
+# ✅ Safe - Parameterized query
+from sqlalchemy import text
+query = text("SELECT * FROM cards WHERE serial_number LIKE :search")
+result = session.execute(query, {"search": f"%{user_input}%"})
+
+# ❌ Unsafe - Never do this
+query = f"SELECT * FROM cards WHERE serial_number LIKE '%{user_input}%'"
+```
+
+### Credential Management
+- Database password stored only in Streamlit secrets (never in code)
+- Cookie key: 64-character hex string
+- Credentials should be rotated periodically
+
+### Supabase Security
+- Using Session Pooler for IPv4 compatibility
+- Direct database connection (not Supabase API)
+- RLS currently disabled (app uses service role connection)
 
 ---
 
@@ -390,12 +442,18 @@ credentials:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0.0 | Jan 28, 2026 | Initial release |
-| 1.0.1 | Jan 28, 2026 | Fixed delivery card display |
-| 1.0.2 | Jan 28, 2026 | Fixed good rate calculation |
-| 1.0.3 | Jan 28, 2026 | Fixed summary stats reading |
-| 1.0.4 | Jan 28, 2026 | Fixed date parsing (day/month swap) |
+| 1.3.8 | Jan 31, 2026 | **Feature**: Workload Forecast, capacity line, menu reorder |
+| 1.3.7 | Jan 31, 2026 | **Security**: SQL Injection fix, credential rotation |
+| 1.3.6 | Jan 31, 2026 | Duplicate data check, emergency column fix |
+| 1.3.5 | Jan 31, 2026 | Card Delivery upload support (68/69 appointments) |
+| 1.3.4 | Jan 31, 2026 | PostgreSQL COPY protocol - 10-50x faster upload |
+| 1.3.0 | Jan 30, 2026 | ECharts integration, Upload 4 tabs, No-Show analysis |
 | 1.1.0 | Jan 28, 2026 | Added user authentication system |
+| 1.0.4 | Jan 28, 2026 | Fixed date parsing (day/month swap) |
+| 1.0.3 | Jan 28, 2026 | Fixed summary stats reading |
+| 1.0.2 | Jan 28, 2026 | Fixed good rate calculation |
+| 1.0.1 | Jan 28, 2026 | Fixed delivery card display |
+| 1.0.0 | Jan 28, 2026 | Initial release |
 
 ---
 

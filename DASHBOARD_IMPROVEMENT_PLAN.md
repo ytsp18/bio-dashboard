@@ -5,7 +5,7 @@
 
 **สถานะ:** 🔄 กำลังดำเนินการ
 **เริ่มต้น:** 2026-01-30
-**อัปเดตล่าสุด:** 2026-01-30
+**อัปเดตล่าสุด:** 2026-01-31 (Session 5 - Workload Forecast)
 
 ---
 
@@ -21,7 +21,17 @@
 - [x] เปลี่ยน Bar Chart ในหน้า By Center
 - [x] เพิ่ม Pie Chart สำหรับ Print Status (G/B)
 - [x] เพิ่ม Gauge Chart สำหรับ SLA Performance
-- [ ] ทดสอบ Responsive บนหน้าจอต่างๆ
+- [x] ทดสอบ Responsive บนหน้าจอต่างๆ
+
+### Responsive Testing Results (31 Jan 2026)
+| หัวข้อ | สถานะ | รายละเอียด |
+|--------|--------|------------|
+| containLabel | ✅ | ป้องกัน label หลุดออกนอก container |
+| Auto Rotate Labels | ✅ | หมุน 45° เมื่อ data > 15 items |
+| Fixed Heights | ✅ | 400px, 350px, 280px ตาม chart type |
+| Grid Settings (%) | ✅ | ใช้ percentage ยืดหยุ่น |
+| Tooltip | ✅ | แสดงถูกต้องทุกขนาดจอ |
+| Gauge Charts | ✅ | ตัวเลขแสดงครบถ้วน |
 
 ### Dependencies
 ```bash
@@ -232,7 +242,7 @@ st.markdown("""
 
 | Phase | Status | Started | Completed |
 |-------|--------|---------|-----------|
-| 1. Charts (ECharts) | ✅ Completed | 2026-01-30 | 2026-01-30 |
+| 1. Charts (ECharts) | ✅ Completed | 2026-01-30 | 2026-01-31 |
 | 2. Metric Cards | ⬜ Pending | - | - |
 | 3. Color Theme | ⬜ Pending | - | - |
 | 4. Sidebar | ⬜ Pending | - | - |
@@ -280,6 +290,123 @@ streamlit-aggrid>=0.3.0
 ---
 
 ## Changelog
+
+### 2026-01-31 (Session 5 - Workload Forecast)
+- **Feature: Workload Forecast (นัดหมายล่วงหน้า)**
+  - หน้า "ปริมาณการนัดหมาย" แสดงนัดหมายล่วงหน้า
+  - เส้น Capacity limit (สีเขียว) ในกราฟรายวัน
+  - เปรียบเทียบปริมาณนัดหมาย vs total_capacity
+  - Summary ใน Overview + หน้ารายละเอียดแยก
+
+- **UI: Page Menu Reorder**
+  - Forecast (3_) อยู่หลัง Overview (2_)
+  - Pages renumbered: Search (4_), By Center (5_), etc.
+
+- **Bug Fix: JSON Serialization Error**
+  - ลบ lambda formatter ที่ไม่ serializable
+
+- **Version: 1.3.8**
+
+### 2026-01-31 (Session 4 - Security Audit)
+- **Security: SQL Injection Fix**
+  - พบ vulnerability ใน `database/connection.py`
+  - แก้ไขเป็น parameterized queries
+  - Commit: `afdeb03`
+
+- **Security: Credential Rotation**
+  - เปลี่ยนรหัส database หลังพบ vulnerability
+  - สร้าง cookie key ใหม่
+  - อัปเดต Streamlit Cloud secrets
+
+- **Infrastructure: Supabase Connection Fix**
+  - แก้ไข "Circuit breaker open" error
+  - Unban IP จาก Network Bans
+  - Restart database และ app
+
+### 2026-01-31 (Session 3)
+- **Performance: PostgreSQL COPY Protocol**
+  - เปลี่ยนเป็น `COPY FROM STDIN WITH CSV` - เร็วขึ้น 10-50x
+  - ทดสอบ: 6.4MB (24K), 17MB (66K), 31MB (130K) ✅
+
+- **Feature: Card Delivery Upload**
+  - Tab ใหม่ "📦 Card Delivery"
+  - รองรับ appointment ID 68/69
+  - Models: `CardDeliveryUpload`, `CardDeliveryRecord`
+  - ทดสอบ: 196 records (G: 191, B: 5) ✅
+
+- **Feature: Duplicate Data Check**
+  - Appointment/QLog/Card Delivery: ❌ บล็อกถ้าซ้ำ
+  - Bio Raw: ⚠️ Warning เท่านั้น (อนุญาตซ้ำ G/B)
+
+- **Bug Fix: emergency column type**
+  - แปลง float → int ก่อน COPY
+
+- **Version: 1.3.6**
+
+### 2026-01-31 (Session 2)
+- **Performance: Large File Support (30MB+)**
+  - เพิ่ม `gc.collect()` ทุก 10 batches เพื่อคืน memory
+  - ใช้ `low_memory=False` สำหรับไฟล์ใหญ่
+  - ใช้ `iloc` slicing แทนการแปลง dict ทั้งหมดในครั้งเดียว
+  - ลบ DataFrame หลัง import เสร็จ
+  - Config: `maxUploadSize = 200 MB`
+
+- **Performance: Batch Size Optimization**
+  - Appointment: 100 → **5,000** records/batch
+  - QLog: 100 → **4,000** records/batch
+  - Bio Raw: 100 → **3,000** records/batch
+
+- **Bug Fix: FK Violation**
+  - กลับไปใช้ `session.execute(insert(Model), batch)` แทน COPY/to_sql
+  - ทำงานใน transaction เดียวกัน ไม่มี FK error
+
+- **Git Commits:**
+  - `fbf9cbe` - Optimize upload for large files 30MB+
+  - `306435d` - Increase batch sizes significantly
+  - `dd692eb` - Revert to session-based insert to fix FK violation
+
+### 2026-01-31 (Session 1)
+- **Bug Fixes:**
+  - Column Mapping: ใช้ `index_col=False` ป้องกัน pandas ใช้ column แรกเป็น index
+  - StringDataRightTruncation: เพิ่มขนาด columns (form_type VARCHAR(255), card_id VARCHAR(30))
+  - numpy.int64: แปลงเป็น Python int ก่อนใส่ database
+  - Thai Encoding: รองรับ `windows-874`, `tis-620`, `cp874`
+
+- **Performance: Bulk Insert**
+  - เปลี่ยนจาก `df.iterrows()` + ORM เป็น vectorized pandas + SQLAlchemy bulk insert
+
+- **Upload Test Results:**
+  - Appointment: 3,117 records ✅
+  - QLog: 3,018 records ✅
+  - Bio Raw: 3,022 records (G: 2,881, B: 132) ✅
+
+- **Git Commits:**
+  - `7051c5b` - Fix Thai encoding detection
+  - `ad445a8` - Fix numpy.int64 compatibility
+  - `32eb3f1` - Fix StringDataRightTruncation
+  - `9af44de` - Fix CSV column alignment
+
+### 2026-01-31 (Early)
+- **Performance: Upload Optimization**
+  - แก้ไข upload ช้า (stuck at 30%) โดยเปลี่ยนจาก SQLAlchemy insert เป็น PostgreSQL COPY protocol
+  - ทดสอบสำเร็จ: 6.4MB (24K), 17MB (66K), 31MB (130K records)
+
+- **Feature: Card Delivery Upload**
+  - เพิ่ม Tab "📦 Card Delivery" ใน Upload page
+  - รองรับ appointment ID ขึ้นต้นด้วย 68/69
+  - Database models: `CardDeliveryUpload`, `CardDeliveryRecord`
+
+- **Feature: Duplicate Data Check**
+  - Appointment: Check `appointment_id` - ❌ บล็อกถ้าซ้ำ
+  - QLog: Check `qlog_id` - ❌ บล็อกถ้าซ้ำ
+  - Card Delivery: Check `serial_number` - ❌ บล็อกถ้าซ้ำ
+  - Bio Raw: Check `serial_number + print_status` - ⚠️ Warning เท่านั้น (อนุญาตซ้ำสำหรับ verify G/B status)
+
+- **Bug Fix: emergency column type error**
+  - แก้ไข `invalid input syntax for type integer: "0.0"`
+  - แปลง float เป็น int ก่อน COPY
+
+- **Version: 1.3.6**
 
 ### 2026-01-30
 - สร้างแผนเริ่มต้น 8 Phases

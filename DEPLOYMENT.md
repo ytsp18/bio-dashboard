@@ -116,13 +116,21 @@ docker-compose down
 5. Deploy
 
 ### Secrets Management
-Create `secrets.toml` in Streamlit Cloud:
+Create secrets in Streamlit Cloud Settings → Secrets:
 ```toml
-[credentials]
-cookie_key = "your-secret-key-here"
+[database]
+url = "postgresql://postgres.xxx:PASSWORD@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres"
+
+[cookie]
+key = "your-64-char-hex-key-here"
+name = "bio_dashboard_auth"
+expiry_days = 7
 ```
 
-**Note**: Database resets on each deploy. Consider external database for production.
+**Important**:
+- Use Session Pooler URL (port 5432) for IPv4 compatibility
+- Never commit credentials to Git
+- Rotate credentials periodically
 
 ---
 
@@ -277,13 +285,15 @@ textColor = "#c9d1d9"
 
 ### Before Going Live
 
+- [x] Fix SQL Injection vulnerabilities (v1.3.7)
 - [ ] Change default passwords (admin123, operator123)
-- [ ] Update cookie key in `config/config.yaml`
+- [ ] Update cookie key in Streamlit secrets
 - [ ] Enable HTTPS (SSL certificate)
 - [ ] Setup firewall (allow only 80, 443)
 - [ ] Disable registration or enable approval mode
 - [ ] Setup automated backups
 - [ ] Review user permissions
+- [ ] Consider enabling RLS on Supabase tables
 
 ### Firewall Setup (UFW)
 ```bash
@@ -415,3 +425,18 @@ For issues, check:
 1. Application logs: `journalctl -u bio-dashboard`
 2. Nginx logs: `/var/log/nginx/error.log`
 3. Database integrity: `sqlite3 database/bio_data.db "PRAGMA integrity_check;"`
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.3.8 | 2026-01-31 | **Feature**: Workload Forecast, capacity line, menu reorder |
+| 1.3.7 | 2026-01-31 | **Security**: SQL Injection fix, credential rotation |
+| 1.3.6 | 2026-01-31 | COPY protocol, Card Delivery, Duplicate Check |
+| 1.3.5 | 2026-01-31 | Card Delivery upload support |
+| 1.3.4 | 2026-01-31 | PostgreSQL COPY protocol optimization |
+| 1.3.0 | 2026-01-30 | ECharts integration, Upload 4 tabs |
+| 1.1.0 | 2026-01-28 | User authentication system |
+| 1.0.0 | 2026-01-28 | Initial release |

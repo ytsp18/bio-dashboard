@@ -2,6 +2,92 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.3.8] - 2026-01-31
+
+### Added
+- **Workload Forecast Feature**
+  - New "ปริมาณการนัดหมาย" page showing upcoming appointments
+  - Capacity limit line (green) in daily appointment charts
+  - Compare appointment volume vs total capacity from BranchMaster
+  - Summary metrics: Today, Tomorrow, 7 days, 30 days ahead
+  - By center breakdown with usage percentage
+  - Over-capacity warnings
+
+### Changed
+- **Page Menu Reordering**
+  - Forecast page now appears after Overview (was 2.5_, now 3_)
+  - All subsequent pages renumbered (Search: 4_, By Center: 5_, etc.)
+  - Profile page moved to 10_
+
+### Fixed
+- **JSON Serialization Error in Forecast**
+  - Removed lambda formatter from ECharts tooltip (not JSON serializable)
+
+### Files Modified
+- `pages/2_📈_Overview.py` - Added capacity line to upcoming appointments chart
+- `pages/3_📆_Forecast.py` - New page with detailed forecast (renamed from 2.5_)
+- All pages renumbered to accommodate Forecast after Overview
+
+---
+
+## [1.3.7] - 2026-01-31
+
+### Security
+- **SQL Injection Vulnerability Fix**
+  - Problem: `database/connection.py` had SQL Injection vulnerability in search functions
+  - Using f-string formatting to build SQL queries with user input
+  - Solution: Changed to parameterized queries with SQLAlchemy `text()` and `:param` placeholders
+  - Risk Level: HIGH - Could allow attackers to execute arbitrary SQL commands
+  - Files: `database/connection.py`
+  - Commit: `afdeb03`
+
+- **Credential Rotation**
+  - Rotated database password after security audit
+  - Generated new cookie key (64-char hex)
+  - Updated Streamlit Cloud secrets
+  - Old credentials invalidated
+
+- **Security Audit Findings**
+  - ✅ Fixed: SQL Injection in search queries
+  - ✅ Fixed: Credential exposure (password rotation)
+  - ⚠️ Warning: RLS (Row Level Security) disabled on Supabase tables
+    - Not critical for this app (uses direct connection with password, not Supabase API)
+    - Can be enabled later for additional security layer
+
+### Fixed
+- **Supabase Connection Issues**
+  - Problem: "Circuit breaker open" error after credential rotation
+  - Root cause: IP was banned due to repeated failed connection attempts
+  - Solution: Unban IP from Supabase Network Bans + wait for circuit breaker reset
+  - Database restart required to clear connection pool state
+
+### Infrastructure
+- **Supabase Configuration**
+  - Using Session Pooler (IPv4 compatible) for Streamlit Cloud
+  - Connection URL: `aws-1-ap-southeast-1.pooler.supabase.com:5432`
+  - IPv6 direct connection not supported on Streamlit Cloud
+
+---
+
+## [1.3.6] - 2026-01-31
+
+### Added
+- **Duplicate Data Check for All Upload Types**
+  - Appointment: Check `appointment_id` - ❌ **บล็อก** ถ้าพบซ้ำ
+  - QLog: Check `qlog_id` - ❌ **บล็อก** ถ้าพบซ้ำ
+  - Card Delivery: Check `serial_number` - ❌ **บล็อก** ถ้าพบซ้ำ
+  - Bio Raw: Check `serial_number + print_status` - ⚠️ **Warning เท่านั้น** (อนุญาตซ้ำสำหรับ verify G/B status)
+  - Files: `pages/1_📤_Upload.py`
+
+### Fixed
+- **Bio Raw Upload: emergency column type error**
+  - Problem: `invalid input syntax for type integer: "0.0"` when using COPY
+  - Root cause: Excel data has float values (0.0) but PostgreSQL expects integer
+  - Solution: Convert emergency column from float to int before COPY export
+  - Files: `pages/1_📤_Upload.py`
+
+---
+
 ## [1.3.5] - 2026-01-31
 
 ### Added
