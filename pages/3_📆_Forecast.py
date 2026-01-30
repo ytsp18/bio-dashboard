@@ -125,12 +125,14 @@ def get_upcoming_appointments_full(selected_branches=None, days_ahead=30):
 
         # Get capacity map from BranchMaster
         capacity_map = {}
+        total_capacity = 0
         branch_capacities = session.query(
             BranchMaster.branch_code,
             BranchMaster.max_capacity
         ).filter(BranchMaster.max_capacity.isnot(None)).all()
         for bc in branch_capacities:
             capacity_map[bc.branch_code] = bc.max_capacity
+            total_capacity += bc.max_capacity
 
         # Daily breakdown
         chart_end_date = min(end_date, max_future_date)
@@ -229,7 +231,8 @@ def get_upcoming_appointments_full(selected_branches=None, days_ahead=30):
             'by_center_daily': by_center_daily,
             'over_capacity_count': over_capacity_count,
             'warning_count': warning_count,
-            'max_date': max_future_date
+            'max_date': max_future_date,
+            'total_capacity': total_capacity
         }
     finally:
         session.close()
@@ -340,8 +343,9 @@ if stats['has_data']:
             upcoming_dates = [d.strftime('%d/%m') if hasattr(d, 'strftime') else str(d) for d in upcoming_df['date']]
             today_dt = date.today()
 
-            # Calculate average line
+            # Calculate average line and get total capacity
             avg_count = upcoming_df['count'].mean()
+            total_capacity = stats.get('total_capacity', 0)
 
             daily_chart_options = {
                 "animation": True,
@@ -355,7 +359,7 @@ if stats['has_data']:
                     "textStyle": {"color": "#F1F5F9"},
                 },
                 "legend": {
-                    "data": ["นัดหมาย", "ค่าเฉลี่ย"],
+                    "data": ["นัดหมาย", "Capacity รวม", "ค่าเฉลี่ย"],
                     "bottom": 0,
                     "textStyle": {"color": "#9CA3AF"},
                 },
@@ -395,6 +399,14 @@ if stats['has_data']:
                         }
                     },
                     {
+                        "name": "Capacity รวม",
+                        "type": "line",
+                        "data": [total_capacity] * len(upcoming_dates),
+                        "itemStyle": {"color": "#10B981"},
+                        "lineStyle": {"width": 3, "type": "solid"},
+                        "symbol": "none",
+                    },
+                    {
                         "name": "ค่าเฉลี่ย",
                         "type": "line",
                         "data": [round(avg_count)] * len(upcoming_dates),
@@ -404,7 +416,7 @@ if stats['has_data']:
                     }
                 ]
             }
-            st.markdown("**สีส้ม** = วันนี้ | **สีฟ้า** = พรุ่งนี้ | **เส้นประแดง** = ค่าเฉลี่ย")
+            st.markdown(f"**สีส้ม** = วันนี้ | **สีฟ้า** = พรุ่งนี้ | **เส้นเขียว** = Capacity รวม ({total_capacity:,}) | **เส้นประแดง** = ค่าเฉลี่ย")
             st_echarts(options=daily_chart_options, height="400px", key="forecast_daily_chart")
 
             # Daily stats table
@@ -447,7 +459,6 @@ if stats['has_data']:
                         "backgroundColor": "rgba(30, 41, 59, 0.95)",
                         "borderColor": "#475569",
                         "textStyle": {"color": "#F1F5F9"},
-                        "formatter": lambda params: f"{params[0].name}<br/>เฉลี่ย/วัน: {params[0].value}<br/>Capacity: {params[1].value if len(params) > 1 else 'N/A'}"
                     },
                     "legend": {
                         "data": ["เฉลี่ย/วัน", "Capacity"],

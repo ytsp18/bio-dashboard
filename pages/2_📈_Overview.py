@@ -403,12 +403,14 @@ def get_upcoming_appointments(selected_branches=None):
 
         # Get capacity map from BranchMaster
         capacity_map = {}
+        total_capacity = 0
         branch_capacities = session.query(
             BranchMaster.branch_code,
             BranchMaster.max_capacity
         ).filter(BranchMaster.max_capacity.isnot(None)).all()
         for bc in branch_capacities:
             capacity_map[bc.branch_code] = bc.max_capacity
+            total_capacity += bc.max_capacity
 
         # By center breakdown with capacity (top 15 centers with most appointments in next 7 days)
         branch_map = get_branch_name_map_cached()
@@ -491,7 +493,8 @@ def get_upcoming_appointments(selected_branches=None):
             'by_center': by_center,
             'by_center_daily': by_center_daily,
             'over_capacity_count': over_capacity_count,
-            'max_date': max_future_date
+            'max_date': max_future_date,
+            'total_capacity': total_capacity
         }
     finally:
         session.close()
@@ -1033,7 +1036,7 @@ else:
         with col_header:
             st.markdown("### 📆 นัดหมายล่วงหน้า (Workload Forecast)")
         with col_link:
-            st.page_link("pages/2_📆_Forecast.py", label="📊 ดูรายละเอียด", icon="➡️")
+            st.page_link("pages/3_📆_Forecast.py", label="📊 ดูรายละเอียด", icon="➡️")
 
         st.caption("📌 แสดงปริมาณการนัดหมายที่จะเกิดขึ้นในอนาคต เทียบกับ Capacity ของแต่ละศูนย์")
 
@@ -1064,6 +1067,9 @@ else:
             # Calculate average for reference line
             avg_count = upcoming_df['count'].mean() if len(upcoming_df) > 0 else 0
 
+            # Get total capacity for limit line
+            total_capacity = upcoming_stats.get('total_capacity', 0)
+
             upcoming_chart_options = {
                 "animation": True,
                 "animationDuration": 800,
@@ -1076,7 +1082,7 @@ else:
                     "textStyle": {"color": "#F1F5F9"},
                 },
                 "legend": {
-                    "data": ["นัดหมายล่วงหน้า", "ค่าเฉลี่ย"],
+                    "data": ["นัดหมายล่วงหน้า", "Capacity รวม", "ค่าเฉลี่ย"],
                     "bottom": 0,
                     "textStyle": {"color": "#9CA3AF"},
                 },
@@ -1116,6 +1122,14 @@ else:
                         }
                     },
                     {
+                        "name": "Capacity รวม",
+                        "type": "line",
+                        "data": [total_capacity] * len(upcoming_dates),
+                        "itemStyle": {"color": "#10B981"},
+                        "lineStyle": {"width": 3, "type": "solid"},
+                        "symbol": "none",
+                    },
+                    {
                         "name": "ค่าเฉลี่ย",
                         "type": "line",
                         "data": [round(avg_count)] * len(upcoming_dates),
@@ -1125,7 +1139,7 @@ else:
                     }
                 ]
             }
-            st.markdown("**📊 ปริมาณนัดหมายรายวัน** (สีส้ม = วันนี้, สีฟ้า = พรุ่งนี้, เส้นประแดง = ค่าเฉลี่ย)")
+            st.markdown(f"**📊 ปริมาณนัดหมายรายวัน** (สีส้ม = วันนี้, สีฟ้า = พรุ่งนี้, เส้นเขียว = Capacity {total_capacity:,}, เส้นประแดง = ค่าเฉลี่ย)")
             st_echarts(options=upcoming_chart_options, height="350px", key="upcoming_daily_chart")
     else:
         st.markdown("---")
