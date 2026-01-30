@@ -408,10 +408,10 @@ with tab2:
                         import_df = import_df.replace({'nan': None, 'None': None, '': None})
                         progress.progress(30)
 
-                        # Use optimized bulk insert for PostgreSQL (COPY-like performance)
+                        # Use PostgreSQL COPY for maximum speed (fastest method)
                         status_text.text("กำลังนำเข้าข้อมูล...")
-                        from sqlalchemy import text
                         from database.connection import is_sqlite
+                        from io import StringIO
 
                         total_records = len(import_df)
 
@@ -420,38 +420,26 @@ with tab2:
                             import_df.to_sql('appointments', session.bind, if_exists='append', index=False, method='multi', chunksize=5000)
                             progress.progress(95)
                         else:
-                            # PostgreSQL: use execute_values for maximum speed
-                            # This is 10-50x faster than individual inserts
+                            # PostgreSQL: use COPY protocol (fastest possible method)
                             conn = session.connection().connection
                             cursor = conn.cursor()
 
-                            # Prepare data as tuples (much faster than dicts)
                             columns = ['upload_id', 'appointment_id', 'appt_date', 'branch_code', 'appt_status', 'form_id', 'form_type', 'work_permit_no']
 
-                            # Convert DataFrame to list of tuples
-                            data_tuples = [tuple(x) for x in import_df[columns].values]
+                            # Convert DataFrame to CSV string buffer
+                            status_text.text("กำลังเตรียมข้อมูลสำหรับ COPY...")
+                            buffer = StringIO()
+                            import_df[columns].to_csv(buffer, index=False, header=False, na_rep='\\N')
+                            buffer.seek(0)
+                            progress.progress(50)
 
-                            # Use execute_values for bulk insert (psycopg2 optimization)
-                            from psycopg2.extras import execute_values
-
-                            insert_sql = """
-                                INSERT INTO appointments (upload_id, appointment_id, appt_date, branch_code, appt_status, form_id, form_type, work_permit_no)
-                                VALUES %s
-                            """
-
-                            # Process in large batches (10000 rows per batch for speed)
-                            batch_size = 10000
-                            total_batches = (total_records + batch_size - 1) // batch_size
-
-                            for batch_num in range(total_batches):
-                                start_idx = batch_num * batch_size
-                                end_idx = min(start_idx + batch_size, total_records)
-                                batch_data = data_tuples[start_idx:end_idx]
-
-                                execute_values(cursor, insert_sql, batch_data, page_size=1000)
-
-                                progress.progress(30 + int((batch_num + 1) / total_batches * 65))
-                                status_text.text(f"กำลังนำเข้า {end_idx:,}/{total_records:,}...")
+                            # Use COPY command (2-5x faster than execute_values)
+                            status_text.text(f"กำลังนำเข้า {total_records:,} รายการด้วย COPY...")
+                            cursor.copy_expert("""
+                                COPY appointments (upload_id, appointment_id, appt_date, branch_code, appt_status, form_id, form_type, work_permit_no)
+                                FROM STDIN WITH (FORMAT CSV, NULL '\\N')
+                            """, buffer)
+                            progress.progress(95)
 
                         session.commit()
 
@@ -630,9 +618,10 @@ with tab3:
                         import_df = import_df.replace({'nan': None, 'None': None, '': None})
                         progress.progress(30)
 
-                        # Use optimized bulk insert for PostgreSQL
+                        # Use PostgreSQL COPY for maximum speed
                         status_text.text("กำลังนำเข้าข้อมูล...")
                         from database.connection import is_sqlite
+                        from io import StringIO
 
                         total_records = len(import_df)
 
@@ -640,7 +629,7 @@ with tab3:
                             import_df.to_sql('qlogs', session.bind, if_exists='append', index=False, method='multi', chunksize=5000)
                             progress.progress(95)
                         else:
-                            # PostgreSQL: use execute_values for maximum speed
+                            # PostgreSQL: use COPY protocol (fastest possible method)
                             conn = session.connection().connection
                             cursor = conn.cursor()
 
@@ -648,29 +637,22 @@ with tab3:
                                        'qlog_date', 'qlog_time_in', 'qlog_time_call', 'qlog_time_end',
                                        'wait_time_seconds', 'appointment_code', 'qlog_status', 'sla_status']
 
-                            data_tuples = [tuple(x) for x in import_df[columns].values]
+                            # Convert DataFrame to CSV string buffer
+                            status_text.text("กำลังเตรียมข้อมูลสำหรับ COPY...")
+                            buffer = StringIO()
+                            import_df[columns].to_csv(buffer, index=False, header=False, na_rep='\\N')
+                            buffer.seek(0)
+                            progress.progress(50)
 
-                            from psycopg2.extras import execute_values
-
-                            insert_sql = """
-                                INSERT INTO qlogs (upload_id, qlog_id, branch_code, qlog_type, qlog_num, qlog_user,
+                            # Use COPY command
+                            status_text.text(f"กำลังนำเข้า {total_records:,} รายการด้วย COPY...")
+                            cursor.copy_expert("""
+                                COPY qlogs (upload_id, qlog_id, branch_code, qlog_type, qlog_num, qlog_user,
                                     qlog_date, qlog_time_in, qlog_time_call, qlog_time_end,
                                     wait_time_seconds, appointment_code, qlog_status, sla_status)
-                                VALUES %s
-                            """
-
-                            batch_size = 10000
-                            total_batches = (total_records + batch_size - 1) // batch_size
-
-                            for batch_num in range(total_batches):
-                                start_idx = batch_num * batch_size
-                                end_idx = min(start_idx + batch_size, total_records)
-                                batch_data = data_tuples[start_idx:end_idx]
-
-                                execute_values(cursor, insert_sql, batch_data, page_size=1000)
-
-                                progress.progress(30 + int((batch_num + 1) / total_batches * 65))
-                                status_text.text(f"กำลังนำเข้า {end_idx:,}/{total_records:,}...")
+                                FROM STDIN WITH (FORMAT CSV, NULL '\\N')
+                            """, buffer)
+                            progress.progress(95)
 
                         session.commit()
 
@@ -865,9 +847,10 @@ with tab4:
                         import_df = import_df.replace({'nan': None, 'None': None, '': None})
                         progress.progress(30)
 
-                        # Use optimized bulk insert for PostgreSQL
+                        # Use PostgreSQL COPY for maximum speed
                         status_text.text("กำลังนำเข้าข้อมูล...")
                         from database.connection import is_sqlite
+                        from io import StringIO
 
                         total_records = len(import_df)
 
@@ -875,7 +858,7 @@ with tab4:
                             import_df.to_sql('bio_records', session.bind, if_exists='append', index=False, method='multi', chunksize=5000)
                             progress.progress(95)
                         else:
-                            # PostgreSQL: use execute_values for maximum speed
+                            # PostgreSQL: use COPY protocol (fastest possible method)
                             conn = session.connection().connection
                             cursor = conn.cursor()
 
@@ -883,29 +866,22 @@ with tab4:
                                        'card_id', 'work_permit_no', 'serial_number', 'print_status', 'reject_type',
                                        'operator', 'print_date', 'sla_start', 'sla_stop', 'sla_duration', 'emergency', 'sla_minutes']
 
-                            data_tuples = [tuple(x) for x in import_df[columns].values]
+                            # Convert DataFrame to CSV string buffer
+                            status_text.text("กำลังเตรียมข้อมูลสำหรับ COPY...")
+                            buffer = StringIO()
+                            import_df[columns].to_csv(buffer, index=False, header=False, na_rep='\\N')
+                            buffer.seek(0)
+                            progress.progress(50)
 
-                            from psycopg2.extras import execute_values
-
-                            insert_sql = """
-                                INSERT INTO bio_records (upload_id, appointment_id, form_id, form_type, branch_code,
+                            # Use COPY command
+                            status_text.text(f"กำลังนำเข้า {total_records:,} รายการด้วย COPY...")
+                            cursor.copy_expert("""
+                                COPY bio_records (upload_id, appointment_id, form_id, form_type, branch_code,
                                     card_id, work_permit_no, serial_number, print_status, reject_type,
                                     operator, print_date, sla_start, sla_stop, sla_duration, emergency, sla_minutes)
-                                VALUES %s
-                            """
-
-                            batch_size = 10000
-                            total_batches = (total_records + batch_size - 1) // batch_size
-
-                            for batch_num in range(total_batches):
-                                start_idx = batch_num * batch_size
-                                end_idx = min(start_idx + batch_size, total_records)
-                                batch_data = data_tuples[start_idx:end_idx]
-
-                                execute_values(cursor, insert_sql, batch_data, page_size=1000)
-
-                                progress.progress(30 + int((batch_num + 1) / total_batches * 65))
-                                status_text.text(f"กำลังนำเข้า {end_idx:,}/{total_records:,}...")
+                                FROM STDIN WITH (FORMAT CSV, NULL '\\N')
+                            """, buffer)
+                            progress.progress(95)
 
                         session.commit()
 
