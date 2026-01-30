@@ -6,6 +6,7 @@ import tempfile
 import pandas as pd
 from datetime import datetime
 import re
+import gc
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -305,15 +306,16 @@ with tab2:
                         uploaded_appt.seek(0)
 
                         # Read CSV with index_col=False to prevent pandas from using first column as index
+                        # low_memory=False for large files to ensure consistent dtype inference
                         import warnings
                         with warnings.catch_warnings():
                             warnings.filterwarnings('ignore', message='Length of header or names does not match')
-                            df = pd.read_csv(uploaded_appt, index_col=False, encoding=enc)
+                            df = pd.read_csv(uploaded_appt, index_col=False, encoding=enc, low_memory=False)
 
                         # Verify columns are correct - if APPOINTMENT_CODE is not first column, there's a problem
                         if len(df.columns) > 0 and df.columns[0] != 'APPOINTMENT_CODE':
                             uploaded_appt.seek(0)
-                            df = pd.read_csv(uploaded_appt, encoding=enc)
+                            df = pd.read_csv(uploaded_appt, encoding=enc, low_memory=False)
                             if df.index.dtype == 'object':
                                 df = df.reset_index()
                                 df.columns = header_line.split(',') + ['_extra'] if len(df.columns) > expected_cols else df.columns
@@ -409,20 +411,31 @@ with tab2:
                         # Use SQLAlchemy bulk insert (compatible with PostgreSQL)
                         status_text.text("กำลังนำเข้าข้อมูล...")
                         from sqlalchemy import insert
-                        records = import_df.to_dict('records')
 
-                        # Insert in batches - larger batch = faster, but limited by PostgreSQL params
-                        # 7 columns * 5000 = 35000 params (well under 65535 limit)
+                        # Process in chunks for memory efficiency (large files 30MB+)
+                        # 8 columns * 5000 = 40000 params (under 65535 limit)
                         batch_size = 5000
-                        total_batches = (len(records) + batch_size - 1) // batch_size
-                        for i in range(0, len(records), batch_size):
-                            batch = records[i:i+batch_size]
+                        total_records = len(import_df)
+                        total_batches = (total_records + batch_size - 1) // batch_size
+
+                        for batch_num in range(total_batches):
+                            start_idx = batch_num * batch_size
+                            end_idx = min(start_idx + batch_size, total_records)
+                            batch_df = import_df.iloc[start_idx:end_idx]
+                            batch = batch_df.to_dict('records')
                             session.execute(insert(Appointment), batch)
-                            batch_num = i // batch_size + 1
-                            progress.progress(30 + int(batch_num / total_batches * 65))
-                            status_text.text(f"กำลังนำเข้า {min(i+batch_size, len(records)):,}/{len(records):,}...")
+                            progress.progress(30 + int((batch_num + 1) / total_batches * 65))
+                            status_text.text(f"กำลังนำเข้า {end_idx:,}/{total_records:,}...")
+
+                            # Free memory periodically
+                            if batch_num % 10 == 0:
+                                gc.collect()
 
                         session.commit()
+
+                        # Free memory
+                        del import_df, df
+                        gc.collect()
                         progress.progress(100)
                         status_text.empty()
                         st.success(f"นำเข้าสำเร็จ! {total:,} รายการ")
@@ -503,7 +516,7 @@ with tab3:
             for enc in encodings:
                 try:
                     uploaded_qlog.seek(0)
-                    df = pd.read_csv(uploaded_qlog, encoding=enc)
+                    df = pd.read_csv(uploaded_qlog, encoding=enc, low_memory=False)
                     # Verify encoding by checking for valid Thai characters
                     sample_text = df.astype(str).values.flatten()[:100]
                     sample_str = ' '.join(str(x) for x in sample_text)
@@ -598,20 +611,31 @@ with tab3:
                         # Use SQLAlchemy bulk insert (compatible with PostgreSQL)
                         status_text.text("กำลังนำเข้าข้อมูล...")
                         from sqlalchemy import insert
-                        records = import_df.to_dict('records')
 
-                        # Insert in batches - larger batch = faster
-                        # 13 columns * 4000 = 52000 params (under 65535 limit)
+                        # Process in chunks for memory efficiency (large files 30MB+)
+                        # 14 columns * 4000 = 56000 params (under 65535 limit)
                         batch_size = 4000
-                        total_batches = (len(records) + batch_size - 1) // batch_size
-                        for i in range(0, len(records), batch_size):
-                            batch = records[i:i+batch_size]
+                        total_records = len(import_df)
+                        total_batches = (total_records + batch_size - 1) // batch_size
+
+                        for batch_num in range(total_batches):
+                            start_idx = batch_num * batch_size
+                            end_idx = min(start_idx + batch_size, total_records)
+                            batch_df = import_df.iloc[start_idx:end_idx]
+                            batch = batch_df.to_dict('records')
                             session.execute(insert(QLog), batch)
-                            batch_num = i // batch_size + 1
-                            progress.progress(30 + int(batch_num / total_batches * 65))
-                            status_text.text(f"กำลังนำเข้า {min(i+batch_size, len(records)):,}/{len(records):,}...")
+                            progress.progress(30 + int((batch_num + 1) / total_batches * 65))
+                            status_text.text(f"กำลังนำเข้า {end_idx:,}/{total_records:,}...")
+
+                            # Free memory periodically
+                            if batch_num % 10 == 0:
+                                gc.collect()
 
                         session.commit()
+
+                        # Free memory
+                        del import_df, df
+                        gc.collect()
                         progress.progress(100)
                         status_text.empty()
                         st.success(f"นำเข้าสำเร็จ! {total:,} รายการ")
@@ -696,7 +720,7 @@ with tab4:
                 for enc in encodings:
                     try:
                         uploaded_bio.seek(0)
-                        df = pd.read_csv(uploaded_bio, encoding=enc)
+                        df = pd.read_csv(uploaded_bio, encoding=enc, low_memory=False)
                         # Verify encoding is correct by checking for Thai characters
                         # If data contains Thai, valid encoding should have Thai unicode range
                         sample_text = df.astype(str).values.flatten()[:100]
@@ -803,20 +827,31 @@ with tab4:
                         # Use SQLAlchemy bulk insert (compatible with PostgreSQL)
                         status_text.text("กำลังนำเข้าข้อมูล...")
                         from sqlalchemy import insert
-                        records = import_df.to_dict('records')
 
-                        # Insert in batches - larger batch = faster
-                        # 16 columns * 3000 = 48000 params (under 65535 limit)
+                        # Process in chunks for memory efficiency (large files 30MB+)
+                        # 17 columns * 3000 = 51000 params (under 65535 limit)
                         batch_size = 3000
-                        total_batches = (len(records) + batch_size - 1) // batch_size
-                        for i in range(0, len(records), batch_size):
-                            batch = records[i:i+batch_size]
+                        total_records = len(import_df)
+                        total_batches = (total_records + batch_size - 1) // batch_size
+
+                        for batch_num in range(total_batches):
+                            start_idx = batch_num * batch_size
+                            end_idx = min(start_idx + batch_size, total_records)
+                            batch_df = import_df.iloc[start_idx:end_idx]
+                            batch = batch_df.to_dict('records')
                             session.execute(insert(BioRecord), batch)
-                            batch_num = i // batch_size + 1
-                            progress.progress(30 + int(batch_num / total_batches * 65))
-                            status_text.text(f"กำลังนำเข้า {min(i+batch_size, len(records)):,}/{len(records):,}...")
+                            progress.progress(30 + int((batch_num + 1) / total_batches * 65))
+                            status_text.text(f"กำลังนำเข้า {end_idx:,}/{total_records:,}...")
+
+                            # Free memory periodically
+                            if batch_num % 10 == 0:
+                                gc.collect()
 
                         session.commit()
+
+                        # Free memory
+                        del import_df, df
+                        gc.collect()
                         progress.progress(100)
                         status_text.empty()
                         st.success(f"นำเข้าสำเร็จ! {total:,} รายการ (G: {good:,} | B: {bad:,})")
