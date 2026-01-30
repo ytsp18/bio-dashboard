@@ -514,8 +514,10 @@ with tab3:
             with col2:
                 if st.button("📥 นำเข้า QLog", type="primary", use_container_width=True, key="import_qlog"):
                     progress = st.progress(0)
+                    status_text = st.empty()
                     session = get_session()
                     try:
+                        status_text.text("กำลังสร้าง upload record...")
                         upload = QLogUpload(
                             filename=uploaded_qlog.name,
                             date_from=min_date, date_to=max_date,
@@ -524,31 +526,50 @@ with tab3:
                         )
                         session.add(upload)
                         session.flush()
+                        progress.progress(10)
 
-                        records = []
-                        for idx, row in df.iterrows():
-                            records.append(QLog(
-                                upload_id=upload.id,
-                                qlog_id=safe_str(row[col_map['qlog_id']]) if col_map.get('qlog_id') else None,
-                                branch_code=safe_str(row[col_map['branch_code']]) if col_map.get('branch_code') else None,
-                                qlog_type=safe_str(row[col_map['qlog_type']]) if col_map.get('qlog_type') else None,
-                                qlog_num=safe_int(row[col_map['qlog_num']]) if col_map.get('qlog_num') else None,
-                                qlog_user=safe_str(row[col_map['qlog_user']]) if col_map.get('qlog_user') else None,
-                                qlog_date=parse_date(row[col_map['qlog_date']]) if col_map.get('qlog_date') else None,
-                                qlog_time_in=safe_str(row[col_map['qlog_time_in']]) if col_map.get('qlog_time_in') else None,
-                                qlog_time_call=safe_str(row[col_map['qlog_time_call']]) if col_map.get('qlog_time_call') else None,
-                                qlog_time_end=safe_str(row[col_map['qlog_time_end']]) if col_map.get('qlog_time_end') else None,
-                                wait_time_seconds=safe_int(row[col_map['wait_time_seconds']]) if col_map.get('wait_time_seconds') else None,
-                                appointment_code=safe_str(row[col_map['appointment_code']]) if col_map.get('appointment_code') else None,
-                                qlog_status=safe_str(row[col_map['qlog_status']]) if col_map.get('qlog_status') else None,
-                                sla_status=safe_str(row[col_map['sla_status']]) if col_map.get('sla_status') else None,
-                            ))
-                            if idx % 1000 == 0:
-                                progress.progress(int(idx / total * 80))
+                        # Prepare data using vectorized operations (much faster than iterrows)
+                        status_text.text("กำลังเตรียมข้อมูล...")
+                        import_df = pd.DataFrame()
+                        import_df['upload_id'] = upload.id
 
-                        session.bulk_save_objects(records)
+                        # Map columns using vectorized operations
+                        import_df['qlog_id'] = df[col_map['qlog_id']].astype(str).str.strip() if col_map.get('qlog_id') else None
+                        import_df['branch_code'] = df[col_map['branch_code']].astype(str).str.strip() if col_map.get('branch_code') else None
+                        import_df['qlog_type'] = df[col_map['qlog_type']].astype(str).str.strip() if col_map.get('qlog_type') else None
+                        import_df['qlog_num'] = pd.to_numeric(df[col_map['qlog_num']], errors='coerce').astype('Int64') if col_map.get('qlog_num') else None
+                        import_df['qlog_user'] = df[col_map['qlog_user']].astype(str).str.strip() if col_map.get('qlog_user') else None
+                        import_df['qlog_date'] = pd.to_datetime(df[col_map['qlog_date']], errors='coerce').dt.date if col_map.get('qlog_date') else None
+                        import_df['qlog_time_in'] = df[col_map['qlog_time_in']].astype(str).str.strip() if col_map.get('qlog_time_in') else None
+                        import_df['qlog_time_call'] = df[col_map['qlog_time_call']].astype(str).str.strip() if col_map.get('qlog_time_call') else None
+                        import_df['qlog_time_end'] = df[col_map['qlog_time_end']].astype(str).str.strip() if col_map.get('qlog_time_end') else None
+                        import_df['wait_time_seconds'] = pd.to_numeric(df[col_map['wait_time_seconds']], errors='coerce').astype('Int64') if col_map.get('wait_time_seconds') else None
+                        import_df['appointment_code'] = df[col_map['appointment_code']].astype(str).str.strip() if col_map.get('appointment_code') else None
+                        import_df['qlog_status'] = df[col_map['qlog_status']].astype(str).str.strip() if col_map.get('qlog_status') else None
+                        import_df['sla_status'] = df[col_map['sla_status']].astype(str).str.strip() if col_map.get('sla_status') else None
+
+                        # Clean up NaN values
+                        import_df = import_df.replace({'nan': None, 'None': None, '': None, 'NaT': None})
+                        progress.progress(30)
+
+                        # Use bulk insert (much faster than ORM objects)
+                        status_text.text("กำลังนำเข้าข้อมูล...")
+                        from sqlalchemy import insert
+                        records = import_df.to_dict('records')
+
+                        # Insert in batches of 1000 for better performance
+                        batch_size = 1000
+                        total_batches = (len(records) + batch_size - 1) // batch_size
+                        for i in range(0, len(records), batch_size):
+                            batch = records[i:i+batch_size]
+                            session.execute(insert(QLog), batch)
+                            batch_num = i // batch_size + 1
+                            progress.progress(30 + int(batch_num / total_batches * 60))
+                            status_text.text(f"กำลังนำเข้า batch {batch_num}/{total_batches}...")
+
                         session.commit()
                         progress.progress(100)
+                        status_text.empty()
                         st.success(f"นำเข้าสำเร็จ! {total:,} รายการ")
                         st.balloons()
                     except Exception as e:
