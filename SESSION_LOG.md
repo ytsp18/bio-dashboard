@@ -2,74 +2,81 @@
 
 ## สิ่งที่ทำเสร็จแล้ว (31 Jan 2026)
 
-### 5. แก้ไข Bug ใน Appointment Upload
+### 6. ทดสอบ Upload ทุก Tab สำเร็จ
 
-#### Bug 1: Column Mapping ไม่ตรงกัน
+| Tab | ไฟล์ | จำนวน Records | สถานะ |
+|-----|------|---------------|-------|
+| Appointment | appointment-october.csv | 3,117 | ✅ สำเร็จ |
+| QLog | qlog-october.csv | 3,018 | ✅ สำเร็จ |
+| Bio Raw | ALL-OCT-2025-V1.csv | 3,022 (G: 2,881, B: 132) | ✅ สำเร็จ |
+
+---
+
+### 5. แก้ไข Bug ใน Upload
+
+#### Bug 1: Column Mapping ไม่ตรงกัน (Appointment)
 **อาการ:** APPOINTMENT_CODE แสดงค่าของ GROUP_ID แทน (ข้อมูล shift ไป 1 column)
 
 **สาเหตุ:** ไฟล์ CSV มี data columns (28) มากกว่า header columns (27) ทำให้ pandas ใช้ column แรกของ data เป็น index โดยอัตโนมัติ
 
 **วิธีแก้ไข:** ใช้ `pd.read_csv(uploaded_file, index_col=False)` เพื่อป้องกันไม่ให้ pandas ใช้ column แรกเป็น index
 
-**ไฟล์ที่แก้:** `pages/1_📤_Upload.py` (line 302-307)
-
-```python
-# Read CSV with index_col=False to prevent pandas from using first column as index
-import warnings
-with warnings.catch_warnings():
-    warnings.filterwarnings('ignore', message='Length of header or names does not match')
-    df = pd.read_csv(uploaded_appt, index_col=False)
-```
-
 ---
 
 #### Bug 2: StringDataRightTruncation
 **อาการ:** `psycopg2.errors.StringDataRightTruncation: value too long for type character varying(20)`
 
-**สาเหตุ:** column `form_type` ใน PostgreSQL กำหนดเป็น `VARCHAR(20)` แต่ค่าจริงเป็นภาษาไทยยาวมาก เช่น `'ขอใบอนุญาตทำงาน มาตรา 62 BOI Single Window'`
+**สาเหตุ:** column `form_type` ใน PostgreSQL กำหนดเป็น `VARCHAR(20)` แต่ค่าจริงเป็นภาษาไทยยาวมาก
 
 **วิธีแก้ไข:**
-1. แก้ไข model ใน `database/models.py`:
-   - `form_type`: VARCHAR(20) → VARCHAR(255)
-   - `card_id`: VARCHAR(20) → VARCHAR(30)
-   - `work_permit_no`: VARCHAR(20) → VARCHAR(30)
-
-2. เพิ่ม migration script ใน `database/connection.py` เพื่อ ALTER table ที่มีอยู่แล้ว
-
-**ไฟล์ที่แก้:**
-- `database/models.py` (line 351-353)
-- `database/connection.py` (line 165-188)
+- แก้ไข model ใน `database/models.py`: form_type VARCHAR(255), card_id VARCHAR(30), work_permit_no VARCHAR(30)
+- เพิ่ม migration script ใน `database/connection.py` เพื่อ ALTER table ที่มีอยู่แล้ว
 
 ---
 
 #### Bug 3: Import ช้ามาก (Performance)
-**อาการ:** การนำเข้า 3,117 รายการใช้เวลานานกว่าปกติ
+**อาการ:** การนำเข้า 3,000+ รายการใช้เวลานานมาก
 
-**สาเหตุ:**
-- ใช้ `df.iterrows()` ซึ่งช้ามากใน Python
-- สร้าง ORM objects ทีละตัวใน loop
-- ใช้ `bulk_save_objects()` ซึ่งยังไม่เร็วที่สุด
+**สาเหตุ:** ใช้ `df.iterrows()` + ORM objects ทีละตัว
 
-**วิธีแก้ไข:** ใช้ vectorized pandas operations + SQLAlchemy bulk insert
+**วิธีแก้ไข:**
+- ใช้ vectorized pandas operations + SQLAlchemy bulk insert
+- ใช้ batch_size = 100 เพื่อหลีกเลี่ยง PostgreSQL parameter limit
 
-**ไฟล์ที่แก้:** `pages/1_📤_Upload.py` (line 354-378)
+---
+
+#### Bug 4: numpy.int64 compatibility
+**อาการ:** `psycopg2.ProgrammingError: can't adapt type 'numpy.int64'`
+
+**สาเหตุ:** `value_counts()` return numpy.int64 ซึ่ง psycopg2 ไม่รองรับ
+
+**วิธีแก้ไข:** แปลงเป็น Python int ก่อนใส่ database
+```python
+good = int(status_counts.get('G', 0))
+bad = int(status_counts.get('B', 0))
+```
+
+---
+
+#### Bug 5: Encoding ภาษาไทย (Bio Raw)
+**อาการ:** ภาษาไทยแสดงเป็นตัวอักษรอ่านไม่ออก เช่น `¡Ôล¾Ôล¾!ก็มล่Ô»NË0...`
+
+**สาเหตุ:** ใช้ encoding ผิด (cp1252/latin1 แทน windows-874/tis-620)
+
+**วิธีแก้ไข:**
+- เพิ่ม Thai encodings: `windows-874`, `tis-620`, `cp874`
+- ตรวจสอบ encoding โดยเช็ค Thai unicode range (0E00-0E7F)
+- ตรวจจับ garbage characters จาก wrong encoding
 
 ```python
-# Prepare data using vectorized operations (much faster than iterrows)
-import_df = pd.DataFrame()
-import_df['upload_id'] = upload.id
-import_df['appointment_id'] = df[col_map['appointment_id']].astype(str).str.strip()
-# ... other columns ...
-
-# Use bulk insert with executemany (faster than ORM objects)
-from sqlalchemy import insert
-records = import_df.to_dict('records')
-
-# Insert in batches of 1000 for better performance
-batch_size = 1000
-for i in range(0, len(records), batch_size):
-    batch = records[i:i+batch_size]
-    session.execute(insert(Appointment), batch)
+encodings = ['utf-8', 'utf-8-sig', 'windows-874', 'tis-620', 'cp874', 'cp1252', 'latin1']
+for enc in encodings:
+    df = pd.read_csv(file, encoding=enc)
+    # Verify Thai characters
+    has_thai = any('\u0e00' <= c <= '\u0e7f' for c in sample_str)
+    has_garbage = any(ord(c) > 127 and not ('\u0e00' <= c <= '\u0e7f') for c in sample_str)
+    if has_thai or not has_garbage:
+        break
 ```
 
 ---
@@ -81,6 +88,10 @@ for i in range(0, len(records), batch_size):
 | `9af44de` | Fix CSV column alignment using index_col=False |
 | `32eb3f1` | Fix StringDataRightTruncation for appointments table |
 | `ecc7f69` | Optimize Appointment import performance with bulk insert |
+| `f235ee7` | Fix PostgreSQL parameter limit error in bulk insert |
+| `b300290` | Fix encoding issue for CSV uploads - support multiple encodings |
+| `ad445a8` | Fix numpy.int64 compatibility with psycopg2 |
+| `7051c5b` | Fix Thai encoding detection for CSV uploads |
 
 ---
 
@@ -112,26 +123,18 @@ for i in range(0, len(records), batch_size):
 - เพิ่ม Metrics: นัดหมายทั้งหมด, มา Check-in, No-Show, อัตรา Check-in
 - เพิ่ม Bar Chart แสดงรายวัน: นัดหมาย vs มา Check-in vs No-Show
 - เพิ่ม Pie Chart สัดส่วน Check-in / No-Show
-- แสดงข้อความเมื่อยังไม่มีข้อมูล Appointment/QLog
 
-### 4. Bug Fixes
-- แก้ปัญหา NaN date ใส่ PostgreSQL ไม่ได้
-- แก้ปัญหา `row.get()` เป็น `row[]`
+---
 
-## งานที่ค้าง (Pending)
-
-### 1. ทดสอบ Upload
-- ทดสอบ Upload Appointment, QLog, Bio Raw ให้ครบ
-- อาจยังมี bug ที่ต้องแก้
-
-### 2. ไฟล์ที่เกี่ยวข้อง
+## ไฟล์ที่เกี่ยวข้อง
 | ไฟล์ | คำอธิบาย |
 |------|----------|
 | `database/models.py` | ตาราง Appointment, QLog, BioRecord |
-| `pages/1_📤_Upload.py` | หน้า Upload 4 tabs |
+| `database/connection.py` | Migration scripts สำหรับ ALTER columns |
+| `pages/1_📤_Upload.py` | หน้า Upload 4 tabs + encoding detection |
 | `pages/2_📈_Overview.py` | Dashboard หลัก + No-Show Analysis |
 
-### 3. Column Mapping ที่ใช้
+## Column Mapping ที่ใช้
 **Appointment:**
 - APPOINTMENT_CODE → appointment_id
 - APPOINTMENT_DATE → appt_date
@@ -148,7 +151,7 @@ for i in range(0, len(records), batch_size):
 - SLA Start, SLA Stop, SLA Duration
 
 ## Git Status
-- Last commit: `ecc7f69` - Optimize Appointment import performance with bulk insert
+- Last commit: `7051c5b` - Fix Thai encoding detection for CSV uploads
 - Branch: main
 - Remote: https://github.com/ytsp18/bio-dashboard.git
 
