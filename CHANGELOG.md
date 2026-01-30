@@ -28,6 +28,13 @@ All notable changes to Bio Dashboard project are documented in this file.
   - Chart 1: ศูนย์แรกรับ (OB) with OB capacity line
   - Chart 2: ศูนย์บริการ (SC) with SC capacity line
   - Each chart has its own average line
+  - Added 80% warning line (yellow dashed) to both charts
+
+- **Treemap Color Thresholds**
+  - 🟢 Green = Normal (<80%)
+  - 🟡 Yellow = Warning (80-89%)
+  - 🔴 Red = Over capacity (≥90%)
+  - ⚫ Gray = No capacity data
 
 ### Changed
 - **Page Menu Reordering**

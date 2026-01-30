@@ -36,7 +36,11 @@
 5. **แยกกราฟตามประเภทศูนย์**
    - Chart 1: ศูนย์แรกรับ (OB) - สีม่วง + Capacity OB (เขียว)
    - Chart 2: ศูนย์บริการ (SC) - สีฟ้า + Capacity SC (เขียว)
-   - แต่ละกราฟมีเส้นค่าเฉลี่ย (แดงประ)
+   - แต่ละกราฟมีเส้นค่าเฉลี่ย (แดงจุด) และเส้น 80% Warning (เหลืองประ)
+
+6. **Threshold สีใหม่**
+   - กราฟ: เพิ่มเส้น 80% Warning (เหลืองประ)
+   - Treemap: 🟢 <80%, 🟡 80-89%, 🔴 ≥90%, ⚫ ไม่มี Capacity
 
 **Bug Fix:**
 - JSON Serialization Error: ลบ lambda formatter ใน ECharts tooltip
@@ -56,6 +60,8 @@
 | `de16482` | Add capacity limit line to charts, reorder menu |
 | `ea86d21` | Split daily chart into separate OB and SC charts |
 | `f2d3038` | Treemap: show branch_code in box, full name in tooltip |
+| `ef2c54c` | Add 80% warning line to charts, enhance treemap tooltip |
+| `4140ddf` | Treemap: adjust thresholds - yellow at 80%, red at 90% |
 
 **Version:** 1.3.8
 
@@ -416,7 +422,7 @@ for enc in encodings:
 - Version: 1.3.8
 - Branch: main
 - Remote: https://github.com/ytsp18/bio-dashboard.git
-- Latest Commit: `f2d3038` - Treemap: show branch_code in box, full name in tooltip
+- Latest Commit: `4140ddf` - Treemap: adjust thresholds - yellow at 80%, red at 90%
 
 ## วิธีทดสอบ No-Show Analysis
 1. อัพโหลดไฟล์ Appointment (appointment-*.csv) ในหน้า Upload > Tab "📅 Appointment"
