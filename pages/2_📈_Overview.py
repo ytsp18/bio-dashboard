@@ -10,8 +10,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import init_db, get_session
-from database.models import Card, Report, DeliveryCard
-from sqlalchemy import func, and_, or_, case
+from database.models import Card, Report, DeliveryCard, Appointment, QLog
+from sqlalchemy import func, and_, or_, case, literal
 from utils.theme import apply_theme
 from utils.auth_check import require_login
 from utils.logger import log_perf, log_info
@@ -257,6 +257,123 @@ def get_date_range():
         session.close()
         duration = (time.perf_counter() - start_time) * 1000
         log_perf("get_date_range", duration)
+
+
+@st.cache_data(ttl=300)
+def get_noshow_stats(start_date, end_date, selected_branches=None):
+    """
+    Get No-show statistics from Appointment and QLog tables.
+    No-show = Appointment (STATUS='SUCCESS') - QLog (QLOG_STATUS='S')
+    """
+    start_time = time.perf_counter()
+    session = get_session()
+    try:
+        # Check if we have Appointment data
+        has_appt_data = session.query(Appointment).first() is not None
+        has_qlog_data = session.query(QLog).first() is not None
+
+        if not has_appt_data:
+            return {
+                'has_data': False,
+                'total_appointments': 0,
+                'checked_in': 0,
+                'no_show': 0,
+                'daily_data': []
+            }
+
+        # Build date filter for Appointment
+        appt_filters = [
+            Appointment.appt_date >= start_date,
+            Appointment.appt_date <= end_date,
+            Appointment.appt_status == 'SUCCESS'  # Only confirmed appointments
+        ]
+
+        # Add branch filter if specified
+        if selected_branches and len(selected_branches) > 0:
+            appt_filters.append(Appointment.branch_code.in_(selected_branches))
+
+        # Total appointments (confirmed)
+        total_appts = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
+            and_(*appt_filters)
+        ).scalar() or 0
+
+        # Get all appointment IDs for the period
+        appt_ids_subq = session.query(Appointment.appointment_id).filter(
+            and_(*appt_filters)
+        ).distinct().subquery()
+
+        # Count check-ins from QLog
+        if has_qlog_data:
+            qlog_filters = [
+                QLog.qlog_date >= start_date,
+                QLog.qlog_date <= end_date,
+                QLog.qlog_status == 'S',  # Successfully served
+                QLog.appointment_code.in_(session.query(appt_ids_subq))
+            ]
+            if selected_branches and len(selected_branches) > 0:
+                qlog_filters.append(QLog.branch_code.in_(selected_branches))
+
+            checked_in = session.query(func.count(func.distinct(QLog.appointment_code))).filter(
+                and_(*qlog_filters)
+            ).scalar() or 0
+        else:
+            checked_in = 0
+
+        no_show = total_appts - checked_in
+
+        # Daily breakdown for chart
+        daily_data = []
+
+        # Get daily appointment counts
+        daily_appts = session.query(
+            Appointment.appt_date,
+            func.count(func.distinct(Appointment.appointment_id)).label('total')
+        ).filter(
+            and_(*appt_filters)
+        ).group_by(Appointment.appt_date).all()
+
+        # Get daily check-in counts from QLog
+        if has_qlog_data:
+            daily_checkins = session.query(
+                QLog.qlog_date,
+                func.count(func.distinct(QLog.appointment_code)).label('checkin')
+            ).filter(
+                QLog.qlog_date >= start_date,
+                QLog.qlog_date <= end_date,
+                QLog.qlog_status == 'S',
+                QLog.appointment_code.in_(session.query(appt_ids_subq))
+            )
+            if selected_branches and len(selected_branches) > 0:
+                daily_checkins = daily_checkins.filter(QLog.branch_code.in_(selected_branches))
+            daily_checkins = daily_checkins.group_by(QLog.qlog_date).all()
+            checkin_map = {d.qlog_date: d.checkin for d in daily_checkins}
+        else:
+            checkin_map = {}
+
+        # Combine into daily_data
+        for d in daily_appts:
+            checkin = checkin_map.get(d.appt_date, 0)
+            daily_data.append({
+                'date': d.appt_date,
+                'total_appt': d.total,
+                'checked_in': checkin,
+                'no_show': d.total - checkin
+            })
+
+        # Sort by date
+        daily_data = sorted(daily_data, key=lambda x: x['date'])
+
+        return {
+            'has_data': True,
+            'total_appointments': total_appts,
+            'checked_in': checked_in,
+            'no_show': no_show,
+            'daily_data': daily_data
+        }
+    finally:
+        session.close()
+        duration = (time.perf_counter() - start_time) * 1000
+        log_perf(f"get_noshow_stats({start_date} to {end_date})", duration)
 
 
 st.set_page_config(page_title="Overview - Bio Dashboard", page_icon="📈", layout="wide")
@@ -563,6 +680,161 @@ else:
         st_echarts(options=appt_options, height="350px", key="daily_appt_chart")
     else:
         st.info("ไม่มีข้อมูลในช่วงเวลาที่เลือก")
+
+    # ==================== NO-SHOW ANALYSIS (FROM RAW DATA) ====================
+    noshow_stats = get_noshow_stats(start_date, end_date, selected_branches)
+
+    if noshow_stats['has_data']:
+        st.markdown("---")
+        st.markdown("### 📅 การวิเคราะห์ No-Show (จากข้อมูล Raw)")
+        st.caption("📌 ข้อมูลจากตาราง Appointment และ QLog | No-Show = นัดหมายแล้วไม่มา Check-in")
+
+        # Metrics row
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("📋 นัดหมายทั้งหมด", f"{noshow_stats['total_appointments']:,}")
+        with col2:
+            st.metric("✅ มา Check-in", f"{noshow_stats['checked_in']:,}")
+        with col3:
+            noshow_pct = (noshow_stats['no_show'] / noshow_stats['total_appointments'] * 100) if noshow_stats['total_appointments'] > 0 else 0
+            st.metric("❌ No-Show", f"{noshow_stats['no_show']:,}", f"{noshow_pct:.1f}%")
+        with col4:
+            checkin_pct = (noshow_stats['checked_in'] / noshow_stats['total_appointments'] * 100) if noshow_stats['total_appointments'] > 0 else 0
+            st.metric("📊 อัตรามา Check-in", f"{checkin_pct:.1f}%")
+
+        # Daily No-Show Chart
+        if noshow_stats['daily_data']:
+            noshow_df = pd.DataFrame(noshow_stats['daily_data'])
+            noshow_dates = [d.strftime('%d/%m') if hasattr(d, 'strftime') else str(d) for d in noshow_df['date']]
+
+            noshow_chart_options = {
+                "animation": True,
+                "animationDuration": 800,
+                "backgroundColor": "transparent",
+                "tooltip": {
+                    "trigger": "axis",
+                    "axisPointer": {"type": "cross"},
+                    "backgroundColor": "rgba(30, 41, 59, 0.95)",
+                    "borderColor": "#475569",
+                    "textStyle": {"color": "#F1F5F9"},
+                },
+                "legend": {
+                    "data": ["นัดหมาย (Appointment)", "มา Check-in", "No-Show"],
+                    "bottom": 0,
+                    "textStyle": {"color": "#9CA3AF"},
+                },
+                "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "10%", "containLabel": True},
+                "xAxis": {
+                    "type": "category",
+                    "data": noshow_dates,
+                    "axisLine": {"lineStyle": {"color": "#374151"}},
+                    "axisLabel": {"color": "#9CA3AF", "rotate": 45 if len(noshow_dates) > 15 else 0},
+                },
+                "yAxis": {
+                    "type": "value",
+                    "axisLine": {"lineStyle": {"color": "#374151"}},
+                    "axisLabel": {"color": "#9CA3AF"},
+                    "splitLine": {"lineStyle": {"color": "#1F2937"}},
+                },
+                "series": [
+                    {
+                        "name": "นัดหมาย (Appointment)",
+                        "type": "bar",
+                        "data": noshow_df['total_appt'].tolist(),
+                        "itemStyle": {"color": "#3B82F6"},
+                        "barMaxWidth": 40,
+                    },
+                    {
+                        "name": "มา Check-in",
+                        "type": "bar",
+                        "data": noshow_df['checked_in'].tolist(),
+                        "itemStyle": {"color": "#10B981"},
+                        "barMaxWidth": 40,
+                    },
+                    {
+                        "name": "No-Show",
+                        "type": "line",
+                        "data": noshow_df['no_show'].tolist(),
+                        "itemStyle": {"color": "#EF4444"},
+                        "lineStyle": {"width": 3, "type": "dashed"},
+                        "symbol": "circle",
+                        "symbolSize": 8,
+                        "smooth": True,
+                        "label": {
+                            "show": len(noshow_dates) <= 10,
+                            "position": "top",
+                            "color": "#EF4444",
+                            "fontSize": 11,
+                            "fontWeight": "bold"
+                        }
+                    },
+                ]
+            }
+            st_echarts(options=noshow_chart_options, height="400px", key="noshow_chart")
+
+            # Pie chart for No-Show ratio
+            col1, col2 = st.columns(2)
+            with col1:
+                noshow_pie = {
+                    "animation": True,
+                    "backgroundColor": "transparent",
+                    "tooltip": {
+                        "trigger": "item",
+                        "backgroundColor": "rgba(30, 41, 59, 0.95)",
+                        "borderColor": "#475569",
+                        "textStyle": {"color": "#F1F5F9"},
+                        "formatter": "{b}: {c} ({d}%)"
+                    },
+                    "legend": {
+                        "orient": "horizontal",
+                        "bottom": 0,
+                        "textStyle": {"color": "#9CA3AF"},
+                    },
+                    "series": [{
+                        "name": "สถานะนัดหมาย",
+                        "type": "pie",
+                        "radius": ["40%", "70%"],
+                        "center": ["50%", "45%"],
+                        "avoidLabelOverlap": True,
+                        "itemStyle": {
+                            "borderRadius": 8,
+                            "borderColor": "#1A1F2E",
+                            "borderWidth": 2
+                        },
+                        "label": {
+                            "show": True,
+                            "color": "#F1F5F9",
+                            "formatter": "{d}%"
+                        },
+                        "data": [
+                            {"value": noshow_stats['checked_in'], "name": "มา Check-in", "itemStyle": {"color": "#10B981"}},
+                            {"value": noshow_stats['no_show'], "name": "No-Show", "itemStyle": {"color": "#EF4444"}}
+                        ]
+                    }]
+                }
+                st.markdown("**สัดส่วน Check-in / No-Show**")
+                st_echarts(options=noshow_pie, height="280px", key="noshow_pie")
+
+            with col2:
+                # Info box
+                st.markdown("""
+                <div style="background: linear-gradient(135deg, #1E293B, #0F172A); border-radius: 12px; padding: 20px; border: 1px solid #374151;">
+                    <h4 style="color: #F1F5F9; margin: 0 0 16px 0;">📊 สรุปข้อมูล No-Show</h4>
+                    <ul style="color: #9CA3AF; margin: 0; padding-left: 20px;">
+                        <li><b style="color: #3B82F6;">นัดหมาย (Appointment)</b> - จำนวนคนที่นัดหมายไว้ (STATUS=SUCCESS)</li>
+                        <li><b style="color: #10B981;">มา Check-in</b> - จำนวนคนที่มา Check-in จริง (QLOG_STATUS=S)</li>
+                        <li><b style="color: #EF4444;">No-Show</b> - นัดหมายแล้วไม่มา = นัดหมาย - Check-in</li>
+                    </ul>
+                    <hr style="border-color: #374151; margin: 16px 0;">
+                    <p style="color: #6B7280; font-size: 0.85rem; margin: 0;">
+                        💡 ข้อมูลมาจากไฟล์ Appointment และ QLog ที่อัพโหลดแยก
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.markdown("---")
+        st.markdown("### 📅 การวิเคราะห์ No-Show")
+        st.info("⚠️ ยังไม่มีข้อมูล Appointment/QLog - กรุณาอัพโหลดไฟล์ Appointment และ QLog ในหน้า Upload เพื่อดูการวิเคราะห์ No-Show")
 
     st.markdown("---")
 

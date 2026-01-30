@@ -293,27 +293,36 @@ with tab2:
 
         try:
             if uploaded_appt.name.endswith('.csv'):
-                # Read header first to get expected column count
-                uploaded_appt.seek(0)
-                header_line = uploaded_appt.readline().decode('utf-8').strip()
-                expected_cols = len(header_line.split(','))
-                uploaded_appt.seek(0)
+                # Try multiple encodings for CSV files
+                encodings = ['utf-8', 'utf-8-sig', 'cp1252', 'tis-620', 'latin1']
+                df = None
+                for enc in encodings:
+                    try:
+                        uploaded_appt.seek(0)
+                        # Read header first to get expected column count
+                        header_line = uploaded_appt.readline().decode(enc).strip()
+                        expected_cols = len(header_line.split(','))
+                        uploaded_appt.seek(0)
 
-                # Read CSV with index_col=False to prevent pandas from using first column as index
-                # This is necessary because some CSV files have more data columns than header columns
-                import warnings
-                with warnings.catch_warnings():
-                    warnings.filterwarnings('ignore', message='Length of header or names does not match')
-                    df = pd.read_csv(uploaded_appt, index_col=False)
+                        # Read CSV with index_col=False to prevent pandas from using first column as index
+                        import warnings
+                        with warnings.catch_warnings():
+                            warnings.filterwarnings('ignore', message='Length of header or names does not match')
+                            df = pd.read_csv(uploaded_appt, index_col=False, encoding=enc)
 
-                # Verify columns are correct - if APPOINTMENT_CODE is not first column, there's a problem
-                if len(df.columns) > 0 and df.columns[0] != 'APPOINTMENT_CODE':
-                    # Try reading again without index_col parameter and reset index
-                    uploaded_appt.seek(0)
-                    df = pd.read_csv(uploaded_appt)
-                    if df.index.dtype == 'object':
-                        df = df.reset_index()
-                        df.columns = header_line.split(',') + ['_extra'] if len(df.columns) > expected_cols else df.columns
+                        # Verify columns are correct - if APPOINTMENT_CODE is not first column, there's a problem
+                        if len(df.columns) > 0 and df.columns[0] != 'APPOINTMENT_CODE':
+                            uploaded_appt.seek(0)
+                            df = pd.read_csv(uploaded_appt, encoding=enc)
+                            if df.index.dtype == 'object':
+                                df = df.reset_index()
+                                df.columns = header_line.split(',') + ['_extra'] if len(df.columns) > expected_cols else df.columns
+                        break
+                    except (UnicodeDecodeError, LookupError):
+                        continue
+                if df is None:
+                    st.error("ไม่สามารถอ่านไฟล์ได้ - กรุณาตรวจสอบ encoding ของไฟล์")
+                    st.stop()
             else:
                 df = pd.read_excel(uploaded_appt)
 
@@ -480,7 +489,19 @@ with tab3:
         st.success(f"เลือกไฟล์: **{uploaded_qlog.name}**")
 
         try:
-            df = pd.read_csv(uploaded_qlog)
+            # Try multiple encodings for CSV files
+            encodings = ['utf-8', 'utf-8-sig', 'cp1252', 'tis-620', 'latin1']
+            df = None
+            for enc in encodings:
+                try:
+                    uploaded_qlog.seek(0)
+                    df = pd.read_csv(uploaded_qlog, encoding=enc)
+                    break
+                except (UnicodeDecodeError, LookupError):
+                    continue
+            if df is None:
+                st.error("ไม่สามารถอ่านไฟล์ได้ - กรุณาตรวจสอบ encoding ของไฟล์")
+                st.stop()
 
             col_map = {}
             for target, names in QLOG_COLUMNS.items():
@@ -653,7 +674,19 @@ with tab4:
 
         try:
             if uploaded_bio.name.endswith('.csv'):
-                df = pd.read_csv(uploaded_bio)
+                # Try multiple encodings for CSV files
+                encodings = ['utf-8', 'utf-8-sig', 'cp1252', 'tis-620', 'latin1']
+                df = None
+                for enc in encodings:
+                    try:
+                        uploaded_bio.seek(0)
+                        df = pd.read_csv(uploaded_bio, encoding=enc)
+                        break
+                    except (UnicodeDecodeError, LookupError):
+                        continue
+                if df is None:
+                    st.error("ไม่สามารถอ่านไฟล์ได้ - กรุณาตรวจสอบ encoding ของไฟล์")
+                    st.stop()
             else:
                 df = pd.read_excel(uploaded_bio)
 
