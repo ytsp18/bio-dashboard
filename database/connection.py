@@ -252,3 +252,85 @@ def _run_migrations():
                 conn.execute(text(sql))
             conn.commit()
         _log(f"Migrations applied: {len(migrations)} change(s)")
+
+    # Load branch master data from Excel if table is empty
+    _load_branch_master_if_needed()
+
+
+def _load_branch_master_if_needed():
+    """Load branch master data from Excel file if table is empty."""
+    from .models import BranchMaster
+    import pandas as pd
+
+    session = get_session()
+    try:
+        # Check if branch_master table has data
+        count = session.query(BranchMaster).count()
+        if count > 0:
+            return  # Already has data
+
+        # Find the Excel file
+        import os
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        excel_path = os.path.join(base_dir, 'Data Master Branch.xlsx')
+
+        if not os.path.exists(excel_path):
+            _log(f"Branch master file not found: {excel_path}")
+            return
+
+        # Read Excel file
+        df = pd.read_excel(excel_path, sheet_name=0)
+
+        # Map columns
+        records = []
+        for _, row in df.iterrows():
+            branch_code = str(row.get('branch_code', '')).strip()
+            if not branch_code:
+                continue
+
+            max_cap = row.get('จำนวน max ที่จองได้ (คน)')
+            if pd.notna(max_cap):
+                max_cap = int(max_cap)
+            else:
+                max_cap = None
+
+            records.append(BranchMaster(
+                province_code=str(row.get('province_code', '')).strip() or None,
+                branch_code=branch_code,
+                branch_name=str(row.get('branch_name', '')).strip() or None,
+                branch_name_en=str(row.get('branch_name_en', '')).strip() or None,
+                branch_address=str(row.get('branch_address', '')).strip() or None,
+                branch_address_en=str(row.get('branch_address_en', '')).strip() or None,
+                max_capacity=max_cap,
+            ))
+
+        if records:
+            session.add_all(records)
+            session.commit()
+            _log(f"Loaded {len(records)} branch master records from Excel")
+    except Exception as e:
+        session.rollback()
+        _log(f"Error loading branch master: {e}")
+    finally:
+        session.close()
+
+
+def get_branch_name_map():
+    """Get cached branch_code -> branch_name mapping from BranchMaster."""
+    from .models import BranchMaster
+
+    session = get_session()
+    try:
+        branches = session.query(
+            BranchMaster.branch_code,
+            BranchMaster.branch_name
+        ).all()
+        return {b.branch_code: b.branch_name for b in branches if b.branch_code}
+    finally:
+        session.close()
+
+
+@st.cache_data(ttl=3600)
+def get_branch_name_map_cached():
+    """Get cached branch_code -> branch_name mapping (cached for 1 hour)."""
+    return get_branch_name_map()

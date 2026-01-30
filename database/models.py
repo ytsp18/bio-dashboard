@@ -390,7 +390,7 @@ class QLog(Base):
     upload_id = Column(Integer, ForeignKey('qlog_uploads.id', ondelete='CASCADE'), nullable=False)
 
     # Core QLog info
-    qlog_id = Column(String(50))
+    qlog_id = Column(String(50), index=True)
     branch_code = Column(String(20), index=True)
     qlog_type = Column(String(10))  # A, B
     qlog_typename = Column(String(50))
@@ -462,7 +462,7 @@ class BioRecord(Base):
     branch_code = Column(String(20), index=True)
     card_id = Column(String(30))
     work_permit_no = Column(String(30))
-    serial_number = Column(String(30), index=True)
+    serial_number = Column(String(30), index=True)  # NOT unique - same serial can have multiple records (G/B status changes)
 
     # Print info
     print_status = Column(String(10), index=True)  # G=Good, B=Bad
@@ -511,6 +511,27 @@ class CardDeliveryUpload(Base):
     uploaded_by = Column(String(50))
 
     card_deliveries = relationship("CardDeliveryRecord", back_populates="upload", cascade="all, delete-orphan")
+
+
+class BranchMaster(Base):
+    """Branch Master - reference table for branch_code -> branch_name mapping."""
+    __tablename__ = 'branch_master'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    province_code = Column(String(20))
+    branch_code = Column(String(30), unique=True, nullable=False, index=True)
+    branch_name = Column(String(255))
+    branch_name_en = Column(String(255))
+    branch_address = Column(Text)
+    branch_address_en = Column(Text)
+    max_capacity = Column(Integer)  # จำนวน max ที่จองได้
+    created_at = Column(DateTime, default=now_th)
+    updated_at = Column(DateTime, default=now_th, onupdate=now_th)
+
+    __table_args__ = (
+        Index('ix_branch_master_code', 'branch_code'),
+        Index('ix_branch_master_province', 'province_code'),
+    )
 
 
 class CardDeliveryRecord(Base):

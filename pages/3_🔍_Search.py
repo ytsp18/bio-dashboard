@@ -7,7 +7,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database.connection import init_db, get_session
+from database.connection import init_db, get_session, get_branch_name_map_cached
 from database.models import Card, BadCard, AnomalySLA, WrongCenter
 from services.data_service import DataService
 from sqlalchemy import func, or_, and_
@@ -363,6 +363,9 @@ try:
             st.markdown('<div class="section-header">ผลการค้นหา</div>', unsafe_allow_html=True)
             st.success(f"พบ **{len(results):,}** รายการ" + (f" (แสดงสูงสุด {limit:,})" if len(results) == limit else ""))
 
+            # Get branch name mapping from BranchMaster
+            branch_name_map = get_branch_name_map_cached()
+
             # Convert to DataFrame
             data = []
             for card in results:
@@ -377,13 +380,15 @@ try:
                 if card.wait_over_1hour:
                     flags.append("รอ>1ชม")
 
+                # Get branch name from BranchMaster, fallback to card's branch_name
+                branch_name = branch_name_map.get(card.branch_code, card.branch_name or card.branch_code or '-')
+
                 data.append({
                     'Appointment ID': card.appointment_id,
                     'Card ID': card.card_id,
                     'Serial Number': card.serial_number,
                     'Work Permit': card.work_permit_no or '-',
-                    'รหัสศูนย์': card.branch_code,
-                    'ชื่อศูนย์': card.branch_name[:30] if card.branch_name else '-',
+                    'ศูนย์บริการ': branch_name[:50] if branch_name else '-',
                     'สถานะ': status_icon,
                     'SLA (นาที)': round(card.sla_minutes, 2) if card.sla_minutes else 0,
                     'Flags': ', '.join(flags) if flags else '-',
@@ -464,7 +469,7 @@ try:
                                     detail_data.append({
                                         'Serial': card.serial_number,
                                         'Card ID': card.card_id,
-                                        'ศูนย์': card.branch_code,
+                                        'ศูนย์': branch_name_map.get(card.branch_code, card.branch_code or '-'),
                                         'Operator': card.operator or '-',
                                         'วันที่พิมพ์': str(card.print_date),
                                         'SLA (นาที)': round(card.sla_minutes, 2) if card.sla_minutes else '-'
@@ -479,7 +484,7 @@ try:
                                         'Appointment': card.appointment_id,
                                         'Card ID': card.card_id,
                                         'สถานะ': 'ดี' if card.print_status == 'G' else 'เสีย',
-                                        'ศูนย์': card.branch_code,
+                                        'ศูนย์': branch_name_map.get(card.branch_code, card.branch_code or '-'),
                                         'วันที่พิมพ์': str(card.print_date)
                                     })
                                 st.dataframe(pd.DataFrame(detail_data), use_container_width=True, hide_index=True)
@@ -521,11 +526,12 @@ try:
 
             with col2:
                 st.markdown("##### ศูนย์บริการ")
+                # Get branch name from BranchMaster
+                selected_branch_name = branch_name_map.get(selected.branch_code, selected.branch_name or '-')
                 st.markdown(f"""
                 | รายการ | ค่า |
                 |--------|-----|
-                | รหัสศูนย์ | `{selected.branch_code or '-'}` |
-                | ชื่อศูนย์ | {selected.branch_name or '-'} |
+                | ศูนย์บริการ | {selected_branch_name} |
                 | ศูนย์ที่นัด | `{selected.appt_branch or '-'}` |
                 | วันที่นัด | {selected.appt_date or '-'} |
                 | สถานะนัดหมาย | {selected.appt_status or '-'} |

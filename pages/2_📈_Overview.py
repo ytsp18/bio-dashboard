@@ -9,8 +9,8 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database.connection import init_db, get_session
-from database.models import Card, Report, DeliveryCard, Appointment, QLog, CardDeliveryRecord, CardDeliveryUpload
+from database.connection import init_db, get_session, get_branch_name_map_cached
+from database.models import Card, Report, DeliveryCard, Appointment, QLog, CardDeliveryRecord, CardDeliveryUpload, BranchMaster
 from sqlalchemy import func, and_, or_, case, literal
 from utils.theme import apply_theme
 from utils.auth_check import require_login
@@ -22,18 +22,28 @@ init_db()
 # Cached function for branch list
 @st.cache_data(ttl=600)
 def get_branch_list():
-    """Get list of all branches."""
+    """Get list of all branches from BranchMaster (primary) with fallback to Card table."""
     session = get_session()
     try:
-        branches = session.query(
-            Card.branch_code,
-            Card.branch_name
+        # First try to get from BranchMaster (authoritative source)
+        branch_master_map = get_branch_name_map_cached()
+
+        # Get all branch_codes that have data in cards table
+        card_branches = session.query(
+            Card.branch_code
         ).filter(
             Card.branch_code.isnot(None),
             Card.branch_code != ''
         ).distinct().order_by(Card.branch_code).all()
 
-        return [(b.branch_code, b.branch_name or b.branch_code) for b in branches]
+        result = []
+        for b in card_branches:
+            code = b.branch_code
+            # Get name from BranchMaster first, fallback to code
+            name = branch_master_map.get(code, code)
+            result.append((code, name))
+
+        return result
     finally:
         session.close()
 

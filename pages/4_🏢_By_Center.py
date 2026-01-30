@@ -11,8 +11,8 @@ import re
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database.connection import init_db, get_session
-from database.models import Card
+from database.connection import init_db, get_session, get_branch_name_map_cached
+from database.models import Card, BranchMaster
 from services.data_service import DataService
 from sqlalchemy import func, and_, case, or_
 from utils.theme import apply_theme, render_theme_toggle
@@ -256,11 +256,16 @@ try:
             ).all()
 
             if center_stats:
-                # Build province mapping
+                # Get branch name mapping from BranchMaster
+                branch_name_map = get_branch_name_map_cached()
+
+                # Build province mapping using BranchMaster names
                 province_to_centers = {}
                 center_to_province = {}
                 for cs in center_stats:
-                    province = extract_province_from_name(cs.branch_name)
+                    # Get branch name from BranchMaster first
+                    branch_name = branch_name_map.get(cs.branch_code, cs.branch_name)
+                    province = extract_province_from_name(branch_name)
                     if province:
                         if province not in province_to_centers:
                             province_to_centers[province] = []
@@ -281,14 +286,20 @@ try:
 
                 with col2:
                     if search_type == 'รหัสศูนย์':
+                        # Show branch_code with name from BranchMaster
                         branch_options = ['ทั้งหมด'] + sorted([cs.branch_code for cs in center_stats if cs.branch_code])
                         selected_filter = st.selectbox(
-                            "เลือกรหัสศูนย์",
+                            "เลือกศูนย์",
                             options=branch_options,
+                            format_func=lambda x: branch_name_map.get(x, x) if x != 'ทั้งหมด' else x,
                             key="center_code_filter"
                         )
                     elif search_type == 'ชื่อศูนย์':
-                        name_options = ['ทั้งหมด'] + sorted([f"{cs.branch_code} - {cs.branch_name[:40] if cs.branch_name else 'N/A'}" for cs in center_stats])
+                        # Build options using BranchMaster names
+                        name_options = ['ทั้งหมด'] + sorted([
+                            f"{cs.branch_code} - {branch_name_map.get(cs.branch_code, cs.branch_name)[:50] if branch_name_map.get(cs.branch_code, cs.branch_name) else 'N/A'}"
+                            for cs in center_stats
+                        ])
                         selected_filter = st.selectbox(
                             "เลือกชื่อศูนย์",
                             options=name_options,
@@ -356,9 +367,10 @@ try:
                         good_rate = (cs.good_count / cs.total * 100) if cs.total > 0 else 0
                         bad_rate = (cs.bad_count / cs.total * 100) if cs.total > 0 else 0
                         province = center_to_province.get(cs.branch_code, '-')
+                        # Get branch name from BranchMaster
+                        branch_name = branch_name_map.get(cs.branch_code, cs.branch_name or '-')
                         center_data.append({
-                            'รหัสศูนย์': cs.branch_code,
-                            'ชื่อศูนย์': (cs.branch_name[:35] + '...') if cs.branch_name and len(cs.branch_name) > 35 else cs.branch_name or '-',
+                            'ศูนย์บริการ': (branch_name[:50] + '...') if branch_name and len(branch_name) > 50 else branch_name,
                             'จังหวัด': province,
                             'จำนวนทั้งหมด': cs.total,
                             'บัตรดี': cs.good_count or 0,
@@ -462,6 +474,9 @@ try:
                         formatted_values = [f"{int(v):,}" for v in top_df[chart_metric].tolist()]
 
                     # ECharts Bar Chart - Light Theme
+                    # Show branch names in chart (truncated for display)
+                    chart_labels = [name[:20] + '...' if len(name) > 20 else name for name in top_df['ศูนย์บริการ'].tolist()]
+
                     bar_options = {
                         "animation": True,
                         "animationDuration": 1000,
@@ -482,17 +497,18 @@ try:
                         "grid": {
                             "left": "3%",
                             "right": "4%",
-                            "bottom": "15%",
+                            "bottom": "20%",
                             "top": "15%",
                             "containLabel": True
                         },
                         "xAxis": {
                             "type": "category",
-                            "data": top_df['รหัสศูนย์'].tolist(),
+                            "data": chart_labels,
                             "axisLabel": {
                                 "color": "#64748B",
                                 "rotate": 45,
-                                "fontSize": 10
+                                "fontSize": 9,
+                                "interval": 0
                             },
                             "axisLine": {"lineStyle": {"color": "#E2E8F0"}}
                         },
@@ -559,8 +575,8 @@ try:
                             y='SLA เฉลี่ย',
                             size='บัตรดี',
                             color='อัตราบัตรดี (%)',
-                            hover_name='รหัสศูนย์',
-                            hover_data=['ชื่อศูนย์', 'จังหวัด'],
+                            hover_name='ศูนย์บริการ',
+                            hover_data=['จังหวัด'],
                             title='ความสัมพันธ์ระหว่างจำนวนบัตรและ SLA' + filter_text,
                             color_continuous_scale='RdYlGn',
                             labels={
@@ -580,36 +596,36 @@ try:
 
                     with col1:
                         st.markdown("##### 🥇 Top 10 - บัตรดีมากที่สุด")
-                        top_good = df.nlargest(10, 'บัตรดี')[['รหัสศูนย์', 'ชื่อศูนย์', 'จังหวัด', 'บัตรดี', 'อัตราบัตรดี (%)', 'SLA เฉลี่ย']]
+                        top_good = df.nlargest(10, 'บัตรดี')[['ศูนย์บริการ', 'จังหวัด', 'บัตรดี', 'อัตราบัตรดี (%)', 'SLA เฉลี่ย']]
                         st.dataframe(top_good, use_container_width=True, hide_index=True)
 
                         st.markdown("##### ⚡ Top 10 - SLA เร็วที่สุด")
                         # Filter only centers with significant volume
                         df_significant = df[df['จำนวนทั้งหมด'] >= 10]
                         if not df_significant.empty:
-                            top_sla = df_significant.nsmallest(10, 'SLA เฉลี่ย')[['รหัสศูนย์', 'ชื่อศูนย์', 'จังหวัด', 'SLA เฉลี่ย', 'จำนวนทั้งหมด']]
+                            top_sla = df_significant.nsmallest(10, 'SLA เฉลี่ย')[['ศูนย์บริการ', 'จังหวัด', 'SLA เฉลี่ย', 'จำนวนทั้งหมด']]
                             st.dataframe(top_sla, use_container_width=True, hide_index=True)
 
                         st.markdown("##### 🌟 Top 10 - อัตราบัตรดีสูงสุด")
                         df_sig = df[df['จำนวนทั้งหมด'] >= 10]
                         if not df_sig.empty:
-                            top_rate = df_sig.nlargest(10, 'อัตราบัตรดี (%)')[['รหัสศูนย์', 'ชื่อศูนย์', 'จังหวัด', 'อัตราบัตรดี (%)', 'จำนวนทั้งหมด']]
+                            top_rate = df_sig.nlargest(10, 'อัตราบัตรดี (%)')[['ศูนย์บริการ', 'จังหวัด', 'อัตราบัตรดี (%)', 'จำนวนทั้งหมด']]
                             st.dataframe(top_rate, use_container_width=True, hide_index=True)
 
                     with col2:
                         st.markdown("##### ⚠️ Bottom 10 - SLA ช้าที่สุด")
-                        bottom_sla = df.nlargest(10, 'SLA เฉลี่ย')[['รหัสศูนย์', 'ชื่อศูนย์', 'จังหวัด', 'SLA เฉลี่ย', 'SLA เกิน', 'จำนวนทั้งหมด']]
+                        bottom_sla = df.nlargest(10, 'SLA เฉลี่ย')[['ศูนย์บริการ', 'จังหวัด', 'SLA เฉลี่ย', 'SLA เกิน', 'จำนวนทั้งหมด']]
                         st.dataframe(bottom_sla, use_container_width=True, hide_index=True)
 
                         st.markdown("##### 📉 Bottom 10 - อัตราบัตรดีต่ำสุด")
                         df_sig = df[df['จำนวนทั้งหมด'] >= 10]
                         if not df_sig.empty:
-                            bottom_rate = df_sig.nsmallest(10, 'อัตราบัตรดี (%)')[['รหัสศูนย์', 'ชื่อศูนย์', 'จังหวัด', 'อัตราบัตรดี (%)', 'บัตรเสีย', 'จำนวนทั้งหมด']]
+                            bottom_rate = df_sig.nsmallest(10, 'อัตราบัตรดี (%)')[['ศูนย์บริการ', 'จังหวัด', 'อัตราบัตรดี (%)', 'บัตรเสีย', 'จำนวนทั้งหมด']]
                             st.dataframe(bottom_rate, use_container_width=True, hide_index=True)
 
                         st.markdown("##### 🚨 ศูนย์ที่มีข้อผิดปกติมาก")
                         df['รวมผิดปกติ'] = df['SLA เกิน'] + df['ผิดศูนย์'] + df['ผิดวัน']
-                        anomaly_centers = df.nlargest(10, 'รวมผิดปกติ')[['รหัสศูนย์', 'ชื่อศูนย์', 'จังหวัด', 'SLA เกิน', 'ผิดศูนย์', 'ผิดวัน', 'รวมผิดปกติ']]
+                        anomaly_centers = df.nlargest(10, 'รวมผิดปกติ')[['ศูนย์บริการ', 'จังหวัด', 'SLA เกิน', 'ผิดศูนย์', 'ผิดวัน', 'รวมผิดปกติ']]
                         st.dataframe(anomaly_centers, use_container_width=True, hide_index=True)
 
                 with tab4:
@@ -630,9 +646,10 @@ try:
 
                     with col2:
                         if detail_search_type == 'รหัสศูนย์':
-                            detail_options = [(cs.branch_code, f"{cs.branch_code}") for cs in filtered_center_stats]
+                            # Show branch name from BranchMaster in dropdown
+                            detail_options = [(cs.branch_code, branch_name_map.get(cs.branch_code, cs.branch_code)) for cs in filtered_center_stats]
                             selected_detail = st.selectbox(
-                                "เลือกรหัส",
+                                "เลือกศูนย์",
                                 options=detail_options,
                                 format_func=lambda x: x[1],
                                 key="detail_code"
@@ -640,9 +657,10 @@ try:
                             selected_center_code = selected_detail[0] if selected_detail else None
 
                         elif detail_search_type == 'ชื่อศูนย์':
-                            detail_options = [(cs.branch_code, f"{cs.branch_code} - {cs.branch_name[:40] if cs.branch_name else 'N/A'}") for cs in filtered_center_stats]
+                            # Show full branch name from BranchMaster
+                            detail_options = [(cs.branch_code, branch_name_map.get(cs.branch_code, cs.branch_name)[:60] if branch_name_map.get(cs.branch_code, cs.branch_name) else 'N/A') for cs in filtered_center_stats]
                             selected_detail = st.selectbox(
-                                "เลือกชื่อ",
+                                "เลือกศูนย์",
                                 options=detail_options,
                                 format_func=lambda x: x[1],
                                 key="detail_name"
@@ -658,10 +676,10 @@ try:
                                 key="detail_province"
                             )
 
-                            # Then select center in that province
+                            # Then select center in that province - show branch name
                             centers_in_prov = [cs for cs in filtered_center_stats if center_to_province.get(cs.branch_code, 'ไม่ระบุ') == selected_province]
                             if centers_in_prov:
-                                detail_options = [(cs.branch_code, f"{cs.branch_code} - {cs.branch_name[:40] if cs.branch_name else 'N/A'}") for cs in centers_in_prov]
+                                detail_options = [(cs.branch_code, branch_name_map.get(cs.branch_code, cs.branch_name)[:60] if branch_name_map.get(cs.branch_code, cs.branch_name) else 'N/A') for cs in centers_in_prov]
                                 selected_detail = st.selectbox(
                                     "เลือกศูนย์",
                                     options=detail_options,
@@ -678,7 +696,9 @@ try:
 
                         if center_info:
                             province_name = center_to_province.get(center_info.branch_code, '-')
-                            st.markdown(f"### 🏢 {center_info.branch_name or center_info.branch_code}")
+                            # Get branch name from BranchMaster
+                            display_branch_name = branch_name_map.get(center_info.branch_code, center_info.branch_name or center_info.branch_code)
+                            st.markdown(f"### 🏢 {display_branch_name}")
                             st.markdown(f"**จังหวัด:** {province_name}")
 
                             # Metrics
@@ -1067,8 +1087,7 @@ try:
 
                             if centers_in_region:
                                 centers_data = pd.DataFrame([{
-                                    'รหัสศูนย์': c.branch_code,
-                                    'ชื่อศูนย์': (c.branch_name[:40] + '...') if c.branch_name and len(c.branch_name) > 40 else c.branch_name or '-',
+                                    'ศูนย์บริการ': (branch_name_map.get(c.branch_code, c.branch_name)[:50] + '...') if len(branch_name_map.get(c.branch_code, c.branch_name) or '') > 50 else branch_name_map.get(c.branch_code, c.branch_name or '-'),
                                     'จำนวน': c.total,
                                     'บัตรดี': c.good or 0,
                                     'อัตราบัตรดี (%)': round((c.good or 0) / c.total * 100, 1) if c.total > 0 else 0,
@@ -1082,7 +1101,7 @@ try:
 
                                 fig_centers = px.bar(
                                     centers_data.head(20),
-                                    x='รหัสศูนย์',
+                                    x='ศูนย์บริการ',
                                     y='จำนวน',
                                     color='อัตราบัตรดี (%)',
                                     title=f'ศูนย์ในภูมิภาค {region_name} (Top 20)',

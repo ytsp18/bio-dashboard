@@ -7,7 +7,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database.connection import init_db, get_session
+from database.connection import init_db, get_session, get_branch_name_map_cached
 from database.models import Card, Report
 from services.data_service import DataService
 from sqlalchemy import func, and_
@@ -122,6 +122,9 @@ try:
             results = query.order_by(Card.print_date.desc()).limit(5000).all()
 
         if results:
+            # Get branch name mapping from BranchMaster
+            branch_name_map = get_branch_name_map_cached()
+
             # Convert to DataFrame with columns ordered by importance
             data = []
             for card in results:
@@ -137,6 +140,9 @@ try:
                 if card.emergency:
                     flags.append("Emergency")
 
+                # Get branch name from BranchMaster
+                branch_name = branch_name_map.get(card.branch_code, card.branch_name or card.branch_code or '-')
+
                 # Order columns by importance - key card data first
                 data.append({
                     # Primary card identification
@@ -148,8 +154,7 @@ try:
                     'วันที่พิมพ์': card.print_date,
                     'ผู้ให้บริการ': card.operator or '-',
                     # Center info
-                    'รหัสศูนย์': card.branch_code or '-',
-                    'ชื่อศูนย์': (card.branch_name[:50] if card.branch_name else '-'),
+                    'ศูนย์บริการ': (branch_name[:60] if branch_name else '-'),
                     'ภูมิภาค': card.region or '-',
                     # SLA info
                     'SLA (นาที)': round(card.sla_minutes, 2) if card.sla_minutes else None,
@@ -194,7 +199,7 @@ try:
             # Column selector - reordered for better visibility
             col_groups = {
                 'ข้อมูลหลัก (บัตร)': ['Appointment ID', 'Card ID', 'Serial Number', 'Work Permit', 'สถานะ', 'วันที่พิมพ์', 'ผู้ให้บริการ'],
-                'ข้อมูลศูนย์': ['รหัสศูนย์', 'ชื่อศูนย์', 'ภูมิภาค'],
+                'ข้อมูลศูนย์': ['ศูนย์บริการ', 'ภูมิภาค'],
                 'ข้อมูล SLA': ['SLA (นาที)', 'SLA Start', 'SLA Stop', 'SLA Duration', 'SLA Confirm Type', 'SLA Over 12min'],
                 'ข้อมูล Queue': ['Qlog ID', 'Qlog Branch', 'Qlog Date', 'Qlog Queue No', 'Qlog Type', 'Time In', 'Time Call', 'Wait (นาที)', 'Wait Time (HMS)', 'Qlog SLA Status'],
                 'ข้อมูลนัดหมาย': ['วันที่นัด', 'ศูนย์ที่นัด', 'สถานะนัดหมาย', 'Wrong Date', 'Wrong Branch'],
