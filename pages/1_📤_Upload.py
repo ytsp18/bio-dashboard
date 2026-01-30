@@ -13,7 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.connection import init_db, get_session
 from database.models import (
     Report, Card, BadCard, CenterStat, AnomalySLA, WrongCenter, CompleteDiff, DeliveryCard,
-    AppointmentUpload, Appointment, QLogUpload, QLog, BioUpload, BioRecord
+    AppointmentUpload, Appointment, QLogUpload, QLog, BioUpload, BioRecord,
+    CardDeliveryUpload, CardDeliveryRecord
 )
 from services.data_service import DataService
 from services.excel_parser import ExcelParser
@@ -155,11 +156,12 @@ def find_column(df, possible_names):
 
 # ==================== MAIN TABS ====================
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Bio Unified Report",
     "📅 Appointment",
     "⏱️ QLog",
-    "🖨️ Bio Raw"
+    "🖨️ Bio Raw",
+    "📦 Card Delivery"
 ])
 
 
@@ -926,5 +928,217 @@ with tab4:
                         st.rerun()
         else:
             st.info("ยังไม่มีข้อมูล Bio Raw")
+    finally:
+        session.close()
+
+
+# ==================== TAB 5: CARD DELIVERY ====================
+with tab5:
+    st.markdown('<div class="section-header section-header-purple">📦 ข้อมูล Card Delivery (บัตรจัดส่ง)</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="info-box">
+        <strong>ไฟล์ที่รองรับ:</strong> Card-Delivery-Report-*.xlsx<br>
+        <strong>ลักษณะข้อมูล:</strong> เลขนัดหมายขึ้นต้นด้วย 68, 69 (ไม่มี SLA time)
+    </div>
+    """, unsafe_allow_html=True)
+
+    uploaded_card_delivery = st.file_uploader(
+        "เลือกไฟล์ Card Delivery",
+        type=['xlsx', 'csv'],
+        key="card_delivery_uploader"
+    )
+
+    if uploaded_card_delivery:
+        try:
+            # Read file
+            if uploaded_card_delivery.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_card_delivery)
+            else:
+                df = pd.read_excel(uploaded_card_delivery, sheet_name=0)
+
+            total = len(df)
+
+            # Column mapping for Card Delivery
+            col_map = {}
+            columns_lower = {c.lower(): c for c in df.columns}
+
+            # Map columns
+            col_mappings = {
+                'appointment_id': ['appointment_id'],
+                'serial_number': ['serial_number'],
+                'alien_card_id': ['alien_card_id'],
+                'branch_code': ['branch_code'],
+                'print_status': ['print_status'],
+                'print_remark': ['print_remark'],
+                'print_status_id': ['print_status_id'],
+                'send_status_id': ['send_status_id'],
+                'send_flag': ['send_flag'],
+                'send_date': ['send_date'],
+                'create_by': ['create_by'],
+                'create_date': ['create_date'],
+                'update_by': ['update_by'],
+                'update_date': ['update_date'],
+                'versions': ['versions'],
+            }
+
+            for key, patterns in col_mappings.items():
+                for pattern in patterns:
+                    if pattern in columns_lower:
+                        col_map[key] = columns_lower[pattern]
+                        break
+
+            st.success(f"เลือกไฟล์: {uploaded_card_delivery.name}")
+
+            # Get date range from create_date
+            if col_map.get('create_date'):
+                df['_create_date'] = pd.to_datetime(df[col_map['create_date']], errors='coerce')
+                min_date = df['_create_date'].min().date() if pd.notna(df['_create_date'].min()) else None
+                max_date = df['_create_date'].max().date() if pd.notna(df['_create_date'].max()) else None
+            else:
+                min_date = max_date = None
+
+            # Status counts
+            if col_map.get('print_status'):
+                status_counts = df[col_map['print_status']].value_counts()
+                good = status_counts.get('G', 0)
+                bad = status_counts.get('B', 0)
+            else:
+                good = bad = 0
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("จำนวน Records", f"{total:,}")
+            with col2:
+                st.metric("Good (G)", f"{good:,}")
+            with col3:
+                st.metric("Bad (B)", f"{bad:,}")
+            with col4:
+                st.metric("ช่วงวันที่", f"{min_date} - {max_date}" if min_date else "-")
+
+            # Preview
+            st.dataframe(df.head(5), use_container_width=True, hide_index=True)
+
+            # Import button
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("📥 นำเข้า Card Delivery", type="primary", use_container_width=True, key="import_card_delivery"):
+                    progress = st.progress(0)
+                    status_text = st.empty()
+                    session = get_session()
+                    try:
+                        status_text.text("กำลังสร้าง upload record...")
+                        upload = CardDeliveryUpload(
+                            filename=uploaded_card_delivery.name,
+                            date_from=min_date, date_to=max_date,
+                            total_records=total,
+                            total_good=good,
+                            total_bad=bad,
+                            uploaded_by=st.session_state.get('username', 'unknown')
+                        )
+                        session.add(upload)
+                        session.flush()
+                        upload_id = upload.id
+                        progress.progress(10)
+
+                        # Prepare data
+                        status_text.text("กำลังเตรียมข้อมูล...")
+                        import_df = pd.DataFrame({
+                            'upload_id': upload_id,
+                            'appointment_id': df[col_map['appointment_id']].astype(str).str.strip() if col_map.get('appointment_id') else None,
+                            'serial_number': df[col_map['serial_number']].astype(str).str.strip() if col_map.get('serial_number') else None,
+                            'alien_card_id': df[col_map['alien_card_id']].astype(str).str.strip() if col_map.get('alien_card_id') else None,
+                            'branch_code': df[col_map['branch_code']].astype(str).str.strip() if col_map.get('branch_code') else None,
+                            'print_status': df[col_map['print_status']].astype(str).str.strip() if col_map.get('print_status') else None,
+                            'print_remark': df[col_map['print_remark']].astype(str).str.strip() if col_map.get('print_remark') else None,
+                            'print_status_id': pd.to_numeric(df[col_map['print_status_id']], errors='coerce') if col_map.get('print_status_id') else None,
+                            'send_status_id': pd.to_numeric(df[col_map['send_status_id']], errors='coerce') if col_map.get('send_status_id') else None,
+                            'send_flag': df[col_map['send_flag']].astype(str).str.strip() if col_map.get('send_flag') else None,
+                            'send_date': pd.to_datetime(df[col_map['send_date']], errors='coerce') if col_map.get('send_date') else None,
+                            'create_by': df[col_map['create_by']].astype(str).str.strip() if col_map.get('create_by') else None,
+                            'create_date': pd.to_datetime(df[col_map['create_date']], errors='coerce') if col_map.get('create_date') else None,
+                            'update_by': df[col_map['update_by']].astype(str).str.strip() if col_map.get('update_by') else None,
+                            'update_date': pd.to_datetime(df[col_map['update_date']], errors='coerce') if col_map.get('update_date') else None,
+                            'versions': pd.to_numeric(df[col_map['versions']], errors='coerce') if col_map.get('versions') else None,
+                        })
+                        import_df = import_df.replace({'nan': None, 'None': None, '': None})
+                        progress.progress(30)
+
+                        # Use PostgreSQL COPY for maximum speed
+                        status_text.text("กำลังนำเข้าข้อมูล...")
+                        from database.connection import is_sqlite
+                        from io import StringIO
+
+                        total_records = len(import_df)
+
+                        if is_sqlite:
+                            import_df.to_sql('card_delivery_records', session.bind, if_exists='append', index=False, method='multi', chunksize=5000)
+                            progress.progress(95)
+                        else:
+                            # PostgreSQL: use COPY protocol
+                            conn = session.connection().connection
+                            cursor = conn.cursor()
+
+                            columns = ['upload_id', 'appointment_id', 'serial_number', 'alien_card_id', 'branch_code',
+                                       'print_status', 'print_remark', 'print_status_id', 'send_status_id', 'send_flag',
+                                       'send_date', 'create_by', 'create_date', 'update_by', 'update_date', 'versions']
+
+                            status_text.text("กำลังเตรียมข้อมูลสำหรับ COPY...")
+                            buffer = StringIO()
+                            import_df[columns].to_csv(buffer, index=False, header=False, na_rep='\\N')
+                            buffer.seek(0)
+                            progress.progress(50)
+
+                            status_text.text(f"กำลังนำเข้า {total_records:,} รายการด้วย COPY...")
+                            cursor.copy_expert("""
+                                COPY card_delivery_records (upload_id, appointment_id, serial_number, alien_card_id, branch_code,
+                                    print_status, print_remark, print_status_id, send_status_id, send_flag,
+                                    send_date, create_by, create_date, update_by, update_date, versions)
+                                FROM STDIN WITH (FORMAT CSV, NULL '\\N')
+                            """, buffer)
+                            progress.progress(95)
+
+                        session.commit()
+
+                        # Free memory
+                        del import_df, df
+                        gc.collect()
+                        progress.progress(100)
+                        status_text.empty()
+                        st.success(f"นำเข้าสำเร็จ! {total:,} รายการ (G: {good:,} | B: {bad:,})")
+                        st.balloons()
+                    except Exception as e:
+                        session.rollback()
+                        st.error(f"เกิดข้อผิดพลาด: {str(e)}")
+                    finally:
+                        session.close()
+
+        except Exception as e:
+            st.error(f"เกิดข้อผิดพลาด: {str(e)}")
+
+    # Show existing
+    st.markdown("---")
+    st.markdown("#### 📋 ข้อมูล Card Delivery ในระบบ")
+    session = get_session()
+    try:
+        uploads = session.query(CardDeliveryUpload).order_by(CardDeliveryUpload.upload_date.desc()).all()
+        if uploads:
+            data = [{'ID': u.id, 'ชื่อไฟล์': u.filename[:30], 'ช่วงวันที่': f"{u.date_from} - {u.date_to}", 'G': u.total_good or 0, 'B': u.total_bad or 0} for u in uploads]
+            st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+
+            if can_delete():
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    sel = st.selectbox("เลือกไฟล์ที่ต้องการลบ", [(u.id, u.filename) for u in uploads], format_func=lambda x: x[1], key="del_card_delivery")
+                with col2:
+                    st.write("")
+                    st.write("")
+                    if st.button("🗑️ ลบ", key="btn_del_card_delivery"):
+                        session.query(CardDeliveryRecord).filter(CardDeliveryRecord.upload_id == sel[0]).delete()
+                        session.query(CardDeliveryUpload).filter(CardDeliveryUpload.id == sel[0]).delete()
+                        session.commit()
+                        st.success("ลบสำเร็จ!")
+                        st.rerun()
+        else:
+            st.info("ยังไม่มีข้อมูล Card Delivery")
     finally:
         session.close()

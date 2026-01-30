@@ -492,3 +492,63 @@ class BioRecord(Base):
         Index('ix_bio_records_date_status', 'print_date', 'print_status'),
         Index('ix_bio_records_branch_date', 'branch_code', 'print_date'),
     )
+
+
+# ============== Card Delivery Data Models ==============
+
+class CardDeliveryUpload(Base):
+    """Metadata for Card Delivery file uploads."""
+    __tablename__ = 'card_delivery_uploads'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    filename = Column(String(255), nullable=False)
+    upload_date = Column(DateTime, default=now_th)
+    date_from = Column(Date)
+    date_to = Column(Date)
+    total_records = Column(Integer, default=0)
+    total_good = Column(Integer, default=0)
+    total_bad = Column(Integer, default=0)
+    uploaded_by = Column(String(50))
+
+    card_deliveries = relationship("CardDeliveryRecord", back_populates="upload", cascade="all, delete-orphan")
+
+
+class CardDeliveryRecord(Base):
+    """Card Delivery records (cards printed for delivery, appointment starts with 68/69)."""
+    __tablename__ = 'card_delivery_records'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    upload_id = Column(Integer, ForeignKey('card_delivery_uploads.id', ondelete='CASCADE'), nullable=False)
+
+    # Core identifiers
+    appointment_id = Column(String(50), index=True)  # เลขนัดหมาย 68xxx, 69xxx
+    serial_number = Column(String(30), index=True)
+    alien_card_id = Column(String(30), index=True)  # Card ID (alien_card_id in source)
+    branch_code = Column(String(20), index=True)
+
+    # Print info
+    print_status = Column(String(10), index=True)  # G=Good, B=Bad
+    print_remark = Column(String(500))  # เหตุผลถ้า B
+    print_status_id = Column(Integer)
+
+    # Send info
+    send_status_id = Column(Integer)
+    send_flag = Column(String(10))  # Y/N
+    send_date = Column(DateTime, index=True)
+
+    # Audit info
+    create_by = Column(String(100))  # Operator
+    create_date = Column(DateTime, index=True)  # วันที่พิมพ์
+    update_by = Column(String(100))
+    update_date = Column(DateTime)
+    versions = Column(Integer)
+
+    # Relationship
+    upload = relationship("CardDeliveryUpload", back_populates="card_deliveries")
+
+    __table_args__ = (
+        Index('ix_card_delivery_appt_id', 'appointment_id'),
+        Index('ix_card_delivery_serial', 'serial_number'),
+        Index('ix_card_delivery_date_status', 'create_date', 'print_status'),
+        Index('ix_card_delivery_branch', 'branch_code'),
+    )
