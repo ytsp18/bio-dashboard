@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy import func, and_, or_, desc
 from sqlalchemy.orm import Session
 
-from database.connection import session_scope, get_session
+from database.connection import session_scope, get_session, get_engine
 from database.models import Report, Card, BadCard, CenterStat, AnomalySLA, WrongCenter, CompleteDiff, DeliveryCard
 from services.excel_parser import ExcelParser
 
@@ -118,177 +118,137 @@ class DataService:
             session.flush()
 
             cards_imported = 0
-            BATCH_SIZE = 500  # Commit every 500 records to avoid timeout
 
-            # Helper function to get enriched values from Sheet 13 row (pandas Series)
-            def get_enriched_value(enriched_row, key, default=None):
-                """Get value from enriched pandas Series row."""
-                if enriched_row is None or isinstance(enriched_row, dict):
-                    return default
+            # Helper function to safely convert to string
+            def safe_str(val):
+                return str(val) if pd.notna(val) else None
+
+            # Helper function to safely convert to float
+            def safe_float(val):
                 try:
-                    val = enriched_row.get(key)
-                    if pd.notna(val):
-                        return str(val)
-                except:
-                    pass
-                return default
+                    return float(val) if pd.notna(val) else None
+                except (ValueError, TypeError):
+                    return None
+
+            # Helper function to safely convert to bool
+            def safe_bool(val, default=False):
+                return bool(val) if pd.notna(val) else default
 
             if not use_sheet_13_only:
-                # Import from Sheet 2 (good cards) with Sheet 13 enrichment
-                for _, row in good_cards_df.iterrows():
-                    appt_id = str(row.get('appointment_id', '')) if pd.notna(row.get('appointment_id')) else None
-                    serial = str(row.get('serial_number', '')) if pd.notna(row.get('serial_number')) else None
+                # Build enrichment lookup from Sheet 13
+                sheet13_df = all_data.set_index('serial_number') if 'serial_number' in all_data.columns and len(all_data) > 0 else pd.DataFrame()
 
-                    # Try to get enriched data from Sheet 13 using serial_number
-                    enriched = sheet13_lookup.get(serial) if serial else None
+                # Prepare good cards DataFrame for bulk insert
+                if len(good_cards_df) > 0:
+                    cards_df = good_cards_df.copy()
+                    cards_df['report_id'] = report.id
+                    cards_df['print_status'] = 'G'
+                    cards_df['sla_minutes'] = pd.to_numeric(cards_df.get('sla_minutes'), errors='coerce')
+                    cards_df['sla_over_12min'] = cards_df['sla_minutes'].apply(lambda x: x > 12 if pd.notna(x) else False)
+                    cards_df['print_date'] = cards_df['print_date'].apply(lambda x: parser.parse_date_value(x, report_month))
 
-                    # Safe float conversion for sla_minutes
-                    sla_val = row.get('sla_minutes')
-                    try:
-                        sla_minutes = float(sla_val) if pd.notna(sla_val) else None
-                    except (ValueError, TypeError):
-                        sla_minutes = None
+                    # Enrich from Sheet 13 if available
+                    if len(sheet13_df) > 0 and 'serial_number' in cards_df.columns:
+                        for col in ['form_id', 'form_type', 'sla_start', 'sla_stop', 'sla_duration',
+                                    'qlog_id', 'qlog_branch', 'qlog_type', 'qlog_time_in', 'qlog_time_call',
+                                    'qlog_sla_status', 'appt_branch', 'appt_status']:
+                            if col in sheet13_df.columns:
+                                cards_df[col] = cards_df['serial_number'].map(sheet13_df[col])
 
-                    # Check if SLA over 12 minutes
-                    sla_over_12 = sla_minutes > 12 if sla_minutes is not None else False
+                    # Select only needed columns and rename
+                    col_mapping = {
+                        'appointment_id': 'appointment_id', 'branch_code': 'branch_code',
+                        'branch_name': 'branch_name', 'region': 'region', 'card_id': 'card_id',
+                        'serial_number': 'serial_number', 'work_permit_no': 'work_permit_no',
+                        'sla_minutes': 'sla_minutes', 'operator': 'operator', 'print_date': 'print_date',
+                        'form_id': 'form_id', 'form_type': 'form_type', 'sla_start': 'sla_start',
+                        'sla_stop': 'sla_stop', 'sla_duration': 'sla_duration', 'qlog_id': 'qlog_id',
+                        'qlog_branch': 'qlog_branch', 'qlog_type': 'qlog_type', 'qlog_time_in': 'qlog_time_in',
+                        'qlog_time_call': 'qlog_time_call', 'qlog_sla_status': 'qlog_sla_status',
+                        'appt_branch': 'appt_branch', 'appt_status': 'appt_status',
+                        'report_id': 'report_id', 'print_status': 'print_status', 'sla_over_12min': 'sla_over_12min'
+                    }
+                    import_cols = [c for c in col_mapping.keys() if c in cards_df.columns]
+                    import_df = cards_df[import_cols].copy()
+                    import_df = import_df.replace({pd.NA: None, pd.NaT: None, 'nan': None, 'None': None})
 
-                    card = Card(
-                        report_id=report.id,
-                        appointment_id=appt_id,
-                        branch_code=str(row.get('branch_code', '')) if pd.notna(row.get('branch_code')) else None,
-                        branch_name=str(row.get('branch_name', '')) if pd.notna(row.get('branch_name')) else None,
-                        region=str(row.get('region', '')) if pd.notna(row.get('region')) else None,
-                        card_id=str(row.get('card_id', '')) if pd.notna(row.get('card_id')) else None,
-                        serial_number=str(row.get('serial_number', '')) if pd.notna(row.get('serial_number')) else None,
-                        work_permit_no=str(row.get('work_permit_no', '')) if pd.notna(row.get('work_permit_no')) else None,
-                        print_status='G',
-                        sla_minutes=sla_minutes,
-                        operator=str(row.get('operator', '')) if pd.notna(row.get('operator')) else None,
-                        print_date=parser.parse_date_value(row.get('print_date'), report_month),
-                        sla_over_12min=sla_over_12,
-                        # Enriched from Sheet 13 if available
-                        form_id=get_enriched_value(enriched, 'form_id'),
-                        form_type=get_enriched_value(enriched, 'form_type'),
-                        sla_start=get_enriched_value(enriched, 'sla_start'),
-                        sla_stop=get_enriched_value(enriched, 'sla_stop'),
-                        sla_duration=get_enriched_value(enriched, 'sla_duration'),
-                        qlog_id=get_enriched_value(enriched, 'qlog_id'),
-                        qlog_branch=get_enriched_value(enriched, 'qlog_branch'),
-                        qlog_type=get_enriched_value(enriched, 'qlog_type'),
-                        qlog_time_in=get_enriched_value(enriched, 'qlog_time_in'),
-                        qlog_time_call=get_enriched_value(enriched, 'qlog_time_call'),
-                        qlog_sla_status=get_enriched_value(enriched, 'qlog_sla_status'),
-                        appt_branch=get_enriched_value(enriched, 'appt_branch'),
-                        appt_status=get_enriched_value(enriched, 'appt_status'),
-                    )
-                    session.add(card)
-                    cards_imported += 1
+                    # Use pandas to_sql for fast bulk insert
+                    import_df.to_sql('cards', get_engine(), if_exists='append', index=False, method='multi', chunksize=500)
+                    cards_imported += len(import_df)
 
-                    # Commit in batches to avoid timeout
-                    if cards_imported % BATCH_SIZE == 0:
-                        session.flush()
+                # Prepare bad cards DataFrame for bulk insert
+                if len(bad_cards_df) > 0:
+                    cards_df = bad_cards_df.copy()
+                    cards_df['report_id'] = report.id
+                    cards_df['print_status'] = 'B'
+                    cards_df['print_date'] = cards_df['print_date'].apply(lambda x: parser.parse_date_value(x, report_month))
 
-                # Import from Sheet 3 (bad cards) with Sheet 13 enrichment
-                for _, row in bad_cards_df.iterrows():
-                    appt_id = str(row.get('appointment_id', '')) if pd.notna(row.get('appointment_id')) else None
-                    serial = str(row.get('serial_number', '')) if pd.notna(row.get('serial_number')) else None
-                    # Use serial_number for lookup
-                    enriched = sheet13_lookup.get(serial) if serial else None
+                    # Rename reject_reason to reject_type
+                    if 'reject_reason' in cards_df.columns:
+                        cards_df['reject_type'] = cards_df['reject_reason']
 
-                    card = Card(
-                        report_id=report.id,
-                        appointment_id=appt_id,
-                        branch_code=str(row.get('branch_code', '')) if pd.notna(row.get('branch_code')) else None,
-                        branch_name=str(row.get('branch_name', '')) if pd.notna(row.get('branch_name')) else None,
-                        region=str(row.get('region', '')) if pd.notna(row.get('region')) else None,
-                        card_id=str(row.get('card_id', '')) if pd.notna(row.get('card_id')) else None,
-                        serial_number=str(row.get('serial_number', '')) if pd.notna(row.get('serial_number')) else None,
-                        print_status='B',
-                        reject_type=str(row.get('reject_reason', '')) if pd.notna(row.get('reject_reason')) else None,
-                        operator=str(row.get('operator', '')) if pd.notna(row.get('operator')) else None,
-                        print_date=parser.parse_date_value(row.get('print_date'), report_month),
-                        # Enriched from Sheet 13
-                        form_id=get_enriched_value(enriched, 'form_id'),
-                        form_type=get_enriched_value(enriched, 'form_type'),
-                        sla_start=get_enriched_value(enriched, 'sla_start'),
-                        sla_stop=get_enriched_value(enriched, 'sla_stop'),
-                        sla_duration=get_enriched_value(enriched, 'sla_duration'),
-                        qlog_id=get_enriched_value(enriched, 'qlog_id'),
-                        qlog_type=get_enriched_value(enriched, 'qlog_type'),
-                        qlog_sla_status=get_enriched_value(enriched, 'qlog_sla_status'),
-                    )
-                    session.add(card)
-                    cards_imported += 1
+                    # Enrich from Sheet 13 if available
+                    if len(sheet13_df) > 0 and 'serial_number' in cards_df.columns:
+                        for col in ['form_id', 'form_type', 'sla_start', 'sla_stop', 'sla_duration',
+                                    'qlog_id', 'qlog_type', 'qlog_sla_status']:
+                            if col in sheet13_df.columns:
+                                cards_df[col] = cards_df['serial_number'].map(sheet13_df[col])
 
-                    # Commit in batches to avoid timeout
-                    if cards_imported % BATCH_SIZE == 0:
-                        session.flush()
+                    col_mapping = {
+                        'appointment_id': 'appointment_id', 'branch_code': 'branch_code',
+                        'branch_name': 'branch_name', 'region': 'region', 'card_id': 'card_id',
+                        'serial_number': 'serial_number', 'reject_type': 'reject_type',
+                        'operator': 'operator', 'print_date': 'print_date',
+                        'form_id': 'form_id', 'form_type': 'form_type', 'sla_start': 'sla_start',
+                        'sla_stop': 'sla_stop', 'sla_duration': 'sla_duration', 'qlog_id': 'qlog_id',
+                        'qlog_type': 'qlog_type', 'qlog_sla_status': 'qlog_sla_status',
+                        'report_id': 'report_id', 'print_status': 'print_status'
+                    }
+                    import_cols = [c for c in col_mapping.keys() if c in cards_df.columns]
+                    import_df = cards_df[import_cols].copy()
+                    import_df = import_df.replace({pd.NA: None, pd.NaT: None, 'nan': None, 'None': None})
+
+                    import_df.to_sql('cards', get_engine(), if_exists='append', index=False, method='multi', chunksize=500)
+                    cards_imported += len(import_df)
 
             else:
-                # Import from Sheet 13 (all data) - preferred source with full details
-                for _, row in all_data.iterrows():
-                    # Safe float conversion for sla_minutes
-                    sla_val = row.get('sla_minutes')
-                    try:
-                        sla_minutes = float(sla_val) if pd.notna(sla_val) else None
-                    except (ValueError, TypeError):
-                        sla_minutes = None
+                # Import from Sheet 13 (all data) - use pandas to_sql for speed
+                if len(all_data) > 0:
+                    cards_df = all_data.copy()
+                    cards_df['report_id'] = report.id
+                    cards_df['sla_minutes'] = pd.to_numeric(cards_df.get('sla_minutes'), errors='coerce')
+                    cards_df['sla_over_12min'] = cards_df['sla_minutes'].apply(lambda x: x > 12 if pd.notna(x) else False)
+                    cards_df['print_date'] = cards_df['print_date'].apply(lambda x: parser.parse_date_value(x, report_month))
+                    if 'qlog_date' in cards_df.columns:
+                        cards_df['qlog_date'] = cards_df['qlog_date'].apply(lambda x: parser.parse_date_value(x, report_month))
+                    if 'appt_date' in cards_df.columns:
+                        cards_df['appt_date'] = cards_df['appt_date'].apply(lambda x: parser.parse_date_value(x, report_month))
 
-                    # Calculate sla_over_12min if not in data
-                    sla_over_12 = row.get('sla_over_12min')
-                    if pd.isna(sla_over_12) and sla_minutes is not None:
-                        sla_over_12 = sla_minutes > 12
-                    else:
-                        sla_over_12 = bool(sla_over_12) if pd.notna(sla_over_12) else False
+                    # Convert boolean columns
+                    bool_cols = ['wrong_date', 'wrong_branch', 'is_mobile_unit', 'is_ob_center',
+                                 'old_appointment', 'is_valid_sla_status', 'wait_over_1hour', 'emergency']
+                    for col in bool_cols:
+                        if col in cards_df.columns:
+                            cards_df[col] = cards_df[col].apply(lambda x: bool(x) if pd.notna(x) else False)
 
-                    card = Card(
-                        report_id=report.id,
-                        appointment_id=str(row.get('appointment_id', '')) if pd.notna(row.get('appointment_id')) else None,
-                        form_id=str(row.get('form_id', '')) if pd.notna(row.get('form_id')) else None,
-                        form_type=str(row.get('form_type', '')) if pd.notna(row.get('form_type')) else None,
-                        branch_code=str(row.get('branch_code', '')) if pd.notna(row.get('branch_code')) else None,
-                        branch_name=str(row.get('branch_name', '')) if pd.notna(row.get('branch_name')) else None,
-                        region=str(row.get('region', '')) if pd.notna(row.get('region')) else None,
-                        card_id=str(row.get('card_id', '')) if pd.notna(row.get('card_id')) else None,
-                        work_permit_no=str(row.get('work_permit_no', '')) if pd.notna(row.get('work_permit_no')) else None,
-                        serial_number=str(row.get('serial_number', '')) if pd.notna(row.get('serial_number')) else None,
-                        print_status=str(row.get('print_status', '')) if pd.notna(row.get('print_status')) else None,
-                        reject_type=str(row.get('reject_type', '')) if pd.notna(row.get('reject_type')) else None,
-                        operator=str(row.get('operator', '')) if pd.notna(row.get('operator')) else None,
-                        print_date=parser.parse_date_value(row.get('print_date'), report_month),
-                        sla_start=str(row.get('sla_start', '')) if pd.notna(row.get('sla_start')) else None,
-                        sla_stop=str(row.get('sla_stop', '')) if pd.notna(row.get('sla_stop')) else None,
-                        sla_duration=str(row.get('sla_duration', '')) if pd.notna(row.get('sla_duration')) else None,
-                        sla_minutes=sla_minutes,
-                        qlog_id=str(row.get('qlog_id', '')) if pd.notna(row.get('qlog_id')) else None,
-                        qlog_branch=str(row.get('qlog_branch', '')) if pd.notna(row.get('qlog_branch')) else None,
-                        qlog_date=parser.parse_date_value(row.get('qlog_date'), report_month),
-                        qlog_queue_no=float(row.get('qlog_queue_no')) if pd.notna(row.get('qlog_queue_no')) else None,
-                        qlog_type=str(row.get('qlog_type', '')) if pd.notna(row.get('qlog_type')) else None,
-                        qlog_time_in=str(row.get('qlog_time_in', '')) if pd.notna(row.get('qlog_time_in')) else None,
-                        qlog_time_call=str(row.get('qlog_time_call', '')) if pd.notna(row.get('qlog_time_call')) else None,
-                        wait_time_minutes=float(row.get('wait_time_minutes')) if pd.notna(row.get('wait_time_minutes')) else None,
-                        wait_time_hms=str(row.get('wait_time_hms', '')) if pd.notna(row.get('wait_time_hms')) else None,
-                        qlog_sla_status=str(row.get('qlog_sla_status', '')) if pd.notna(row.get('qlog_sla_status')) else None,
-                        appt_date=parser.parse_date_value(row.get('appt_date'), report_month),
-                        appt_branch=str(row.get('appt_branch', '')) if pd.notna(row.get('appt_branch')) else None,
-                        appt_status=str(row.get('appt_status', '')) if pd.notna(row.get('appt_status')) else None,
-                        wrong_date=bool(row.get('wrong_date')) if pd.notna(row.get('wrong_date')) else False,
-                        wrong_branch=bool(row.get('wrong_branch')) if pd.notna(row.get('wrong_branch')) else False,
-                        is_mobile_unit=bool(row.get('is_mobile_unit')) if pd.notna(row.get('is_mobile_unit')) else False,
-                        is_ob_center=bool(row.get('is_ob_center')) if pd.notna(row.get('is_ob_center')) else False,
-                        old_appointment=bool(row.get('old_appointment')) if pd.notna(row.get('old_appointment')) else False,
-                        sla_over_12min=sla_over_12,
-                        is_valid_sla_status=bool(row.get('is_valid_sla_status')) if pd.notna(row.get('is_valid_sla_status')) else True,
-                        wait_over_1hour=bool(row.get('wait_over_1hour')) if pd.notna(row.get('wait_over_1hour')) else False,
-                        emergency=bool(row.get('emergency')) if pd.notna(row.get('emergency')) else False,
-                    )
-                    session.add(card)
-                    cards_imported += 1
+                    # Clean up NaN values
+                    cards_df = cards_df.replace({pd.NA: None, pd.NaT: None, 'nan': None, 'None': None})
 
-                    # Commit in batches to avoid timeout
-                    if cards_imported % BATCH_SIZE == 0:
-                        session.flush()
+                    # Select columns that exist in the dataframe
+                    possible_cols = ['report_id', 'appointment_id', 'form_id', 'form_type', 'branch_code',
+                                     'branch_name', 'region', 'card_id', 'work_permit_no', 'serial_number',
+                                     'print_status', 'reject_type', 'operator', 'print_date', 'sla_start',
+                                     'sla_stop', 'sla_duration', 'sla_minutes', 'qlog_id', 'qlog_branch',
+                                     'qlog_date', 'qlog_queue_no', 'qlog_type', 'qlog_time_in', 'qlog_time_call',
+                                     'wait_time_minutes', 'wait_time_hms', 'qlog_sla_status', 'appt_date',
+                                     'appt_branch', 'appt_status', 'wrong_date', 'wrong_branch', 'is_mobile_unit',
+                                     'is_ob_center', 'old_appointment', 'sla_over_12min', 'is_valid_sla_status',
+                                     'wait_over_1hour', 'emergency']
+                    import_cols = [c for c in possible_cols if c in cards_df.columns]
+                    import_df = cards_df[import_cols].copy()
+
+                    import_df.to_sql('cards', get_engine(), if_exists='append', index=False, method='multi', chunksize=500)
+                    cards_imported = len(import_df)
 
             # Import to BadCard table (separate table for bad cards summary)
             bad_imported = 0
