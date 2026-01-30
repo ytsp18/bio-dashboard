@@ -313,3 +313,182 @@ class LoginAttempt(Base):
     __table_args__ = (
         Index('ix_login_attempts_ip_time', 'ip_address', 'timestamp'),
     )
+
+
+# ============== Appointment Data Models ==============
+
+class AppointmentUpload(Base):
+    """Metadata for appointment file uploads."""
+    __tablename__ = 'appointment_uploads'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    filename = Column(String(255), nullable=False)
+    upload_date = Column(DateTime, default=now_th)
+    date_from = Column(Date)  # วันที่เริ่มต้นของข้อมูลในไฟล์
+    date_to = Column(Date)    # วันที่สิ้นสุดของข้อมูลในไฟล์
+    total_records = Column(Integer, default=0)
+    uploaded_by = Column(String(50))
+
+    appointments = relationship("Appointment", back_populates="upload", cascade="all, delete-orphan")
+
+
+class Appointment(Base):
+    """All appointment records (scheduled appointments)."""
+    __tablename__ = 'appointments'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    upload_id = Column(Integer, ForeignKey('appointment_uploads.id', ondelete='CASCADE'), nullable=False)
+
+    # Core appointment info
+    appointment_id = Column(String(50), index=True, nullable=False)
+    appt_date = Column(Date, index=True)  # วันนัด
+    appt_time = Column(String(20))        # เวลานัด (ถ้ามี)
+    branch_code = Column(String(20), index=True)
+    branch_name = Column(String(255))
+
+    # Person info
+    form_id = Column(String(50))
+    form_type = Column(String(20))
+    card_id = Column(String(20))
+    work_permit_no = Column(String(20))
+
+    # Status
+    appt_status = Column(String(50))  # สถานะนัดหมาย (confirmed, cancelled, etc.)
+
+    # Relationship
+    upload = relationship("AppointmentUpload", back_populates="appointments")
+
+    __table_args__ = (
+        Index('ix_appointments_appt_id', 'appointment_id'),
+        Index('ix_appointments_date', 'appt_date'),
+        Index('ix_appointments_branch_date', 'branch_code', 'appt_date'),
+    )
+
+
+# ============== QLog Data Models ==============
+
+class QLogUpload(Base):
+    """Metadata for QLog file uploads."""
+    __tablename__ = 'qlog_uploads'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    filename = Column(String(255), nullable=False)
+    upload_date = Column(DateTime, default=now_th)
+    date_from = Column(Date)
+    date_to = Column(Date)
+    total_records = Column(Integer, default=0)
+    uploaded_by = Column(String(50))
+
+    qlogs = relationship("QLog", back_populates="upload", cascade="all, delete-orphan")
+
+
+class QLog(Base):
+    """QLog records (check-in data from queue system)."""
+    __tablename__ = 'qlogs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    upload_id = Column(Integer, ForeignKey('qlog_uploads.id', ondelete='CASCADE'), nullable=False)
+
+    # Core QLog info
+    qlog_id = Column(String(50))
+    branch_code = Column(String(20), index=True)
+    qlog_type = Column(String(10))  # A, B
+    qlog_typename = Column(String(50))
+    qlog_num = Column(Integer)  # Queue number
+    qlog_counter = Column(Integer)  # Counter number
+
+    # User/Operator
+    qlog_user = Column(String(50))  # Operator who served
+
+    # Time info
+    qlog_date = Column(Date, index=True)
+    qlog_time_in = Column(String(20))  # Check-in time
+    qlog_time_call = Column(String(20))  # Called time
+    qlog_time_end = Column(String(20))  # End time
+
+    # Wait time (calculated from time_in to time_call)
+    wait_time_seconds = Column(Integer)  # QLOG_COUNTWAIT
+
+    # Appointment link
+    appointment_code = Column(String(50), index=True)
+    appointment_time = Column(String(20))
+
+    # Status
+    qlog_status = Column(String(10))  # S=Success, W=Waiting, 0=Not served
+    sla_status = Column(String(10))  # LO, LI, EI, T, etc.
+    sla_time_start = Column(String(30))
+    sla_time_end = Column(String(30))
+
+    # Relationship
+    upload = relationship("QLogUpload", back_populates="qlogs")
+
+    __table_args__ = (
+        Index('ix_qlogs_appt_code', 'appointment_code'),
+        Index('ix_qlogs_date', 'qlog_date'),
+        Index('ix_qlogs_branch_date', 'branch_code', 'qlog_date'),
+    )
+
+
+# ============== Bio Raw Data Models ==============
+
+class BioUpload(Base):
+    """Metadata for Bio raw file uploads."""
+    __tablename__ = 'bio_uploads'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    filename = Column(String(255), nullable=False)
+    upload_date = Column(DateTime, default=now_th)
+    date_from = Column(Date)
+    date_to = Column(Date)
+    total_records = Column(Integer, default=0)
+    total_good = Column(Integer, default=0)
+    total_bad = Column(Integer, default=0)
+    uploaded_by = Column(String(50))
+
+    bio_records = relationship("BioRecord", back_populates="upload", cascade="all, delete-orphan")
+
+
+class BioRecord(Base):
+    """Bio raw records (card printing data from Bio system)."""
+    __tablename__ = 'bio_records'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    upload_id = Column(Integer, ForeignKey('bio_uploads.id', ondelete='CASCADE'), nullable=False)
+
+    # Core identifiers
+    appointment_id = Column(String(50), index=True)
+    form_id = Column(String(50))
+    form_type = Column(String(20))
+    branch_code = Column(String(20), index=True)
+    card_id = Column(String(30))
+    work_permit_no = Column(String(30))
+    serial_number = Column(String(30), index=True)
+
+    # Print info
+    print_status = Column(String(10), index=True)  # G=Good, B=Bad
+    reject_type = Column(String(255))
+    operator = Column(String(50))  # OS ID
+    print_date = Column(Date, index=True)
+
+    # SLA info
+    sla_start = Column(String(30))
+    sla_stop = Column(String(30))
+    sla_duration = Column(String(20))
+    sla_minutes = Column(Float)  # Calculated from duration
+    sla_confirm_type = Column(String(20))
+
+    # Additional info
+    rate_service = Column(Float)
+    doe_id = Column(String(50))
+    doe_comment = Column(String(255))
+    emergency = Column(Integer)
+
+    # Relationship
+    upload = relationship("BioUpload", back_populates="bio_records")
+
+    __table_args__ = (
+        Index('ix_bio_records_appt_id', 'appointment_id'),
+        Index('ix_bio_records_serial', 'serial_number'),
+        Index('ix_bio_records_date_status', 'print_date', 'print_status'),
+        Index('ix_bio_records_branch_date', 'branch_code', 'print_date'),
+    )
