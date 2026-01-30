@@ -21,13 +21,27 @@
    - Link ไปหน้ารายละเอียด
 
 3. **หน้า "ปริมาณการนัดหมาย"** (3_📆_Forecast.py)
-   - Tab รายวัน: กราฟ + ตารางข้อมูล
-   - Tab รายศูนย์: Horizontal bar chart + ตาราง Capacity
+   - Tab รายวัน: กราฟแยก OB และ SC พร้อม Capacity line แยก
+   - Tab รายศูนย์: Treemap + Horizontal bar chart + ตาราง Capacity
    - Tab ตารางรายละเอียด: Pivot table (ศูนย์ × วัน) + Export CSV
-   - เส้น Capacity limit สีเขียว
+
+4. **Treemap Visualization**
+   - ขนาดกล่อง = ปริมาณนัดหมาย
+   - สี = สถานะ (🟢 ปกติ, 🟡 ใกล้เต็ม, 🔴 เกิน, ⚫ ไม่มี Capacity)
+   - แสดง branch_code ในกล่อง
+   - Tooltip แสดงรายละเอียดครบ (ชื่อเต็ม, นัดหมาย, Capacity, %)
+   - สลับ มุมมองรายวัน/รายเดือน
+   - กรองตามประเภทศูนย์ (ทั้งหมด, OB, SC)
+
+5. **แยกกราฟตามประเภทศูนย์**
+   - Chart 1: ศูนย์แรกรับ (OB) - สีม่วง + Capacity OB (เขียว)
+   - Chart 2: ศูนย์บริการ (SC) - สีฟ้า + Capacity SC (เขียว)
+   - แต่ละกราฟมีเส้นค่าเฉลี่ย (แดงประ)
 
 **Bug Fix:**
 - JSON Serialization Error: ลบ lambda formatter ใน ECharts tooltip
+- Mobile Unit Detection: เปลี่ยนจาก `startswith('MB-')` เป็น `'-MB-' in branch_code`
+- Total Capacity: 24,860 → 12,540 (ไม่รวม 77 หน่วยเคลื่อนที่)
 
 **Menu Reorder:**
 - เปลี่ยน Forecast จาก 2.5_ เป็น 3_ ให้อยู่หลัง Overview
@@ -40,6 +54,8 @@
 | `7552cc8` | Fix WAITING status for upcoming appointments |
 | `7e3f5bf` | Rename Forecast page, change title |
 | `de16482` | Add capacity limit line to charts, reorder menu |
+| `ea86d21` | Split daily chart into separate OB and SC charts |
+| `f2d3038` | Treemap: show branch_code in box, full name in tooltip |
 
 **Version:** 1.3.8
 
@@ -400,7 +416,7 @@ for enc in encodings:
 - Version: 1.3.8
 - Branch: main
 - Remote: https://github.com/ytsp18/bio-dashboard.git
-- Latest Commit: `de16482` - Add capacity limit line to charts, reorder menu
+- Latest Commit: `f2d3038` - Treemap: show branch_code in box, full name in tooltip
 
 ## วิธีทดสอบ No-Show Analysis
 1. อัพโหลดไฟล์ Appointment (appointment-*.csv) ในหน้า Upload > Tab "📅 Appointment"

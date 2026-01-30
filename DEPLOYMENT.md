@@ -432,7 +432,7 @@ For issues, check:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.3.8 | 2026-01-31 | **Feature**: Workload Forecast, capacity line, menu reorder |
+| 1.3.8 | 2026-01-31 | **Feature**: Workload Forecast, Treemap, OB/SC charts, capacity line |
 | 1.3.7 | 2026-01-31 | **Security**: SQL Injection fix, credential rotation |
 | 1.3.6 | 2026-01-31 | COPY protocol, Card Delivery, Duplicate Check |
 | 1.3.5 | 2026-01-31 | Card Delivery upload support |

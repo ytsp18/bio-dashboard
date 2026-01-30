@@ -298,12 +298,23 @@ streamlit-aggrid>=0.3.0
   - เปรียบเทียบปริมาณนัดหมาย vs total_capacity
   - Summary ใน Overview + หน้ารายละเอียดแยก
 
+- **Feature: Treemap Visualization**
+  - แสดง branch_code ในกล่อง, ชื่อเต็มใน tooltip
+  - Rich tooltip: ชื่อศูนย์, รหัส, นัดหมาย, Capacity, สถานะ
+  - สลับมุมมองรายวัน/รายเดือน
+  - กรองตามประเภทศูนย์ (ทั้งหมด, OB, SC)
+
+- **Feature: Separate OB/SC Charts**
+  - แยกกราฟรายวันเป็น 2 กราฟ: แรกรับ (OB) และ บริการ (SC)
+  - แต่ละกราฟมี Capacity line และค่าเฉลี่ยของตัวเอง
+
 - **UI: Page Menu Reorder**
   - Forecast (3_) อยู่หลัง Overview (2_)
   - Pages renumbered: Search (4_), By Center (5_), etc.
 
-- **Bug Fix: JSON Serialization Error**
-  - ลบ lambda formatter ที่ไม่ serializable
+- **Bug Fix: Mobile Unit Detection**
+  - เปลี่ยนจาก `startswith('MB-')` เป็น `'-MB-' in branch_code`
+  - Total Capacity: 24,860 → 12,540
 
 - **Version: 1.3.8**
 

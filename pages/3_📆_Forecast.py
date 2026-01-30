@@ -390,6 +390,10 @@ if stats['has_data']:
             avg_ob = sum(ob_data) / len(ob_data) if ob_data else 0
             avg_sc = sum(sc_data) / len(sc_data) if sc_data else 0
 
+            # Calculate 80% warning threshold
+            ob_warning_80 = int(ob_capacity * 0.8) if ob_capacity else 0
+            sc_warning_80 = int(sc_capacity * 0.8) if sc_capacity else 0
+
             # ===== Chart 1: ศูนย์แรกรับ (OB) =====
             st.markdown("#### 🟣 ศูนย์แรกรับ (OB)")
             ob_chart_options = {
@@ -404,7 +408,7 @@ if stats['has_data']:
                     "textStyle": {"color": "#F1F5F9"},
                 },
                 "legend": {
-                    "data": ["แรกรับ (OB)", "Capacity OB", "ค่าเฉลี่ย OB"],
+                    "data": ["แรกรับ (OB)", "Capacity OB", "80% Warning", "ค่าเฉลี่ย OB"],
                     "bottom": 0,
                     "textStyle": {"color": "#9CA3AF"},
                 },
@@ -444,16 +448,24 @@ if stats['has_data']:
                         "symbol": "none",
                     },
                     {
+                        "name": "80% Warning",
+                        "type": "line",
+                        "data": [ob_warning_80] * len(upcoming_dates),
+                        "itemStyle": {"color": "#F59E0B"},
+                        "lineStyle": {"width": 2, "type": "dashed"},
+                        "symbol": "none",
+                    },
+                    {
                         "name": "ค่าเฉลี่ย OB",
                         "type": "line",
                         "data": [round(avg_ob)] * len(upcoming_dates),
                         "itemStyle": {"color": "#EF4444"},
-                        "lineStyle": {"width": 2, "type": "dashed"},
+                        "lineStyle": {"width": 2, "type": "dotted"},
                         "symbol": "none",
                     }
                 ]
             }
-            st.markdown(f"**เส้นเขียว** = Capacity OB ({ob_capacity:,}) | **เส้นประแดง** = ค่าเฉลี่ย ({round(avg_ob):,})")
+            st.markdown(f"**เส้นเขียว** = Capacity ({ob_capacity:,}) | **เส้นประเหลือง** = 80% ({ob_warning_80:,}) | **เส้นจุดแดง** = ค่าเฉลี่ย ({round(avg_ob):,})")
             st_echarts(options=ob_chart_options, height="350px", key="forecast_ob_chart")
 
             # ===== Chart 2: ศูนย์บริการ (SC) =====
@@ -470,7 +482,7 @@ if stats['has_data']:
                     "textStyle": {"color": "#F1F5F9"},
                 },
                 "legend": {
-                    "data": ["บริการ (SC)", "Capacity SC", "ค่าเฉลี่ย SC"],
+                    "data": ["บริการ (SC)", "Capacity SC", "80% Warning", "ค่าเฉลี่ย SC"],
                     "bottom": 0,
                     "textStyle": {"color": "#9CA3AF"},
                 },
@@ -510,16 +522,24 @@ if stats['has_data']:
                         "symbol": "none",
                     },
                     {
+                        "name": "80% Warning",
+                        "type": "line",
+                        "data": [sc_warning_80] * len(upcoming_dates),
+                        "itemStyle": {"color": "#F59E0B"},
+                        "lineStyle": {"width": 2, "type": "dashed"},
+                        "symbol": "none",
+                    },
+                    {
                         "name": "ค่าเฉลี่ย SC",
                         "type": "line",
                         "data": [round(avg_sc)] * len(upcoming_dates),
                         "itemStyle": {"color": "#EF4444"},
-                        "lineStyle": {"width": 2, "type": "dashed"},
+                        "lineStyle": {"width": 2, "type": "dotted"},
                         "symbol": "none",
                     }
                 ]
             }
-            st.markdown(f"**เส้นเขียว** = Capacity SC ({sc_capacity:,}) | **เส้นประแดง** = ค่าเฉลี่ย ({round(avg_sc):,})")
+            st.markdown(f"**เส้นเขียว** = Capacity ({sc_capacity:,}) | **เส้นประเหลือง** = 80% ({sc_warning_80:,}) | **เส้นจุดแดง** = ค่าเฉลี่ย ({round(avg_sc):,})")
             st_echarts(options=sc_chart_options, height="350px", key="forecast_sc_chart")
 
             # Summary by type
@@ -650,15 +670,22 @@ if stats['has_data']:
                 })
 
             if treemap_data:
-                # Build tooltip data with full names
-                # Since ECharts tooltip formatter can't use JS, we use name field creatively
-                # Format: "CODE\n\nFull Name" - shows code in label, full details on hover
+                # Build enhanced tooltip by encoding info in name field
+                # ECharts treemap tooltip shows {b} = name, {c} = value
+                # We'll create a rich name that includes all info for tooltip
                 for item in treemap_data:
-                    # Store original code for label
-                    item["label_text"] = item["name"]
-                    # Create rich tooltip content
                     status_emoji = "🟢" if item["status"] == "normal" else ("🟡" if item["status"] == "warning" else ("🔴" if item["status"] == "over" else "⚫"))
-                    item["tooltip_info"] = f"{item['branch_name']}\n{status_emoji} {item['usage_pct']}"
+                    # Keep branch_code for label display
+                    item["display_code"] = item["name"]
+                    # Create rich tooltip name with full details
+                    tooltip_lines = [
+                        f"📍 {item['branch_name']}",
+                        f"🔢 รหัส: {item['name']}",
+                        f"📊 นัดหมาย: {item['value_label']}",
+                        f"📈 Capacity: {item['capacity_label']}",
+                        f"{status_emoji} ใช้งาน: {item['usage_pct']}"
+                    ]
+                    item["tooltip_name"] = "\n".join(tooltip_lines)
 
                 treemap_options = {
                     "animation": True,
@@ -667,13 +694,24 @@ if stats['has_data']:
                         "trigger": "item",
                         "backgroundColor": "rgba(30, 41, 59, 0.95)",
                         "borderColor": "#475569",
-                        "textStyle": {"color": "#F1F5F9", "fontSize": 12},
-                        "extraCssText": "max-width: 300px; white-space: normal;",
+                        "borderRadius": 8,
+                        "padding": [10, 14],
+                        "textStyle": {"color": "#F1F5F9", "fontSize": 13, "lineHeight": 22},
+                        "extraCssText": "max-width: 350px; white-space: pre-wrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3);",
+                        "formatter": "{b}"
                     },
                     "series": [
                         {
                             "type": "treemap",
-                            "data": treemap_data,
+                            "data": [
+                                {
+                                    "name": item["tooltip_name"],
+                                    "value": item["value"],
+                                    "itemStyle": item["itemStyle"],
+                                    "label": {"formatter": item["display_code"]}
+                                }
+                                for item in treemap_data
+                            ],
                             "roam": False,
                             "nodeClick": False,
                             "width": "100%",
@@ -681,7 +719,6 @@ if stats['has_data']:
                             "breadcrumb": {"show": False},
                             "label": {
                                 "show": True,
-                                "formatter": "{b}",  # Shows branch_code
                                 "color": "#FFFFFF",
                                 "fontSize": 9,
                                 "fontWeight": "bold",

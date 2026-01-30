@@ -13,19 +13,45 @@ All notable changes to Bio Dashboard project are documented in this file.
   - By center breakdown with usage percentage
   - Over-capacity warnings
 
+- **Treemap Visualization Enhancements**
+  - Show branch_code in treemap boxes (compact view)
+  - Rich tooltip on hover with full details:
+    - 📍 Full center name
+    - 🔢 Branch code
+    - 📊 Appointment count
+    - 📈 Capacity info
+    - Status emoji (🟢🟡🔴⚫)
+  - Daily/Monthly view toggle
+  - Filter by center type (แรกรับ OB / บริการ SC)
+
+- **Separate Charts by Center Type**
+  - Chart 1: ศูนย์แรกรับ (OB) with OB capacity line
+  - Chart 2: ศูนย์บริการ (SC) with SC capacity line
+  - Each chart has its own average line
+
 ### Changed
 - **Page Menu Reordering**
   - Forecast page now appears after Overview (was 2.5_, now 3_)
   - All subsequent pages renumbered (Search: 4_, By Center: 5_, etc.)
   - Profile page moved to 10_
 
+- **Mobile Unit Exclusion**
+  - Mobile units (branch_code contains `-MB-`) excluded from total capacity
+  - Fixed detection: changed from `startswith('MB-')` to `'-MB-' in branch_code`
+  - Applies to both Overview and Forecast pages
+
 ### Fixed
 - **JSON Serialization Error in Forecast**
   - Removed lambda formatter from ECharts tooltip (not JSON serializable)
 
+- **Total Capacity Calculation**
+  - Was showing 24,860 (incorrect) - included mobile units
+  - Now shows 12,540 (correct) - excludes 77 mobile units
+
 ### Files Modified
-- `pages/2_📈_Overview.py` - Added capacity line to upcoming appointments chart
-- `pages/3_📆_Forecast.py` - New page with detailed forecast (renamed from 2.5_)
+- `pages/2_📈_Overview.py` - Added capacity line, fixed mobile unit detection
+- `pages/3_📆_Forecast.py` - New page with detailed forecast, treemap, separate OB/SC charts
+- `pages/1_📤_Upload.py` - Duplicate check before import
 - All pages renumbered to accommodate Forecast after Overview
 
 ---

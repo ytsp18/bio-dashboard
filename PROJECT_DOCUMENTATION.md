@@ -442,7 +442,7 @@ credentials:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.3.8 | Jan 31, 2026 | **Feature**: Workload Forecast, capacity line, menu reorder |
+| 1.3.8 | Jan 31, 2026 | **Feature**: Workload Forecast, Treemap, OB/SC charts, capacity line |
 | 1.3.7 | Jan 31, 2026 | **Security**: SQL Injection fix, credential rotation |
 | 1.3.6 | Jan 31, 2026 | Duplicate data check, emergency column fix |
 | 1.3.5 | Jan 31, 2026 | Card Delivery upload support (68/69 appointments) |
