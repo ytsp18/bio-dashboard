@@ -124,6 +124,7 @@ def get_upcoming_appointments_full(selected_branches=None, days_ahead=30):
         ).scalar() or 0
 
         # Get capacity map from BranchMaster
+        # Exclude mobile units (MB-*) from total_capacity as they operate on-demand (max 160/day)
         capacity_map = {}
         total_capacity = 0
         branch_capacities = session.query(
@@ -132,7 +133,9 @@ def get_upcoming_appointments_full(selected_branches=None, days_ahead=30):
         ).filter(BranchMaster.max_capacity.isnot(None)).all()
         for bc in branch_capacities:
             capacity_map[bc.branch_code] = bc.max_capacity
-            total_capacity += bc.max_capacity
+            # Only add to total_capacity if NOT a mobile unit (MB-*)
+            if not str(bc.branch_code).upper().startswith('MB-'):
+                total_capacity += bc.max_capacity
 
         # Daily breakdown
         chart_end_date = min(end_date, max_future_date)
