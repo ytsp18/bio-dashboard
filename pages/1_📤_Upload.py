@@ -373,7 +373,7 @@ with tab2:
 
                         # Prepare data using vectorized operations (much faster than iterrows)
                         import_df = pd.DataFrame()
-                        import_df['upload_id'] = upload.id
+                        import_df['upload_id'] = [upload.id] * len(df)  # Must use list to create column with same value
                         import_df['appointment_id'] = df[col_map['appointment_id']].astype(str).str.strip() if col_map.get('appointment_id') else None
                         import_df['appt_date'] = pd.to_datetime(df[col_map['appt_date']], errors='coerce').dt.date if col_map.get('appt_date') else None
                         import_df['branch_code'] = df[col_map['branch_code']].astype(str).str.strip() if col_map.get('branch_code') else None
@@ -531,7 +531,7 @@ with tab3:
                         # Prepare data using vectorized operations (much faster than iterrows)
                         status_text.text("กำลังเตรียมข้อมูล...")
                         import_df = pd.DataFrame()
-                        import_df['upload_id'] = upload.id
+                        import_df['upload_id'] = [upload.id] * len(df)  # Must use list to create column with same value
 
                         # Map columns using vectorized operations
                         import_df['qlog_id'] = df[col_map['qlog_id']].astype(str).str.strip() if col_map.get('qlog_id') else None
@@ -710,7 +710,7 @@ with tab4:
                         # Prepare data using vectorized operations (much faster than iterrows)
                         status_text.text("กำลังเตรียมข้อมูล...")
                         import_df = pd.DataFrame()
-                        import_df['upload_id'] = upload.id
+                        import_df['upload_id'] = [upload.id] * len(df)  # Must use list to create column with same value
 
                         # Map columns using vectorized operations
                         import_df['appointment_id'] = df[col_map['appointment_id']].astype(str).str.strip() if col_map.get('appointment_id') else None
