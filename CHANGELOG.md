@@ -2,6 +2,27 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.3.5] - 2026-01-31
+
+### Added
+- **Card Delivery Upload Support**
+  - New Tab "📦 Card Delivery" in Upload page
+  - Support for Card-Delivery-Report-*.xlsx files
+  - Handles appointment IDs starting with 68/69 (delivery appointments)
+  - No SLA time data (different from Bio Raw)
+  - Database models: `CardDeliveryUpload`, `CardDeliveryRecord`
+  - Uses COPY protocol for fast bulk insert
+  - Test: 196 records (G: 191, B: 5) uploaded successfully
+  - Files: `database/models.py`, `pages/1_📤_Upload.py`
+
+### Fixed
+- **numpy.int64 PostgreSQL Error**
+  - Problem: `can't adapt type 'numpy.int64'` when inserting Card Delivery
+  - Solution: Convert pandas value_counts() results to Python int
+  - Files: `pages/1_📤_Upload.py`
+
+---
+
 ## [1.3.4] - 2026-01-31
 
 ### Performance
