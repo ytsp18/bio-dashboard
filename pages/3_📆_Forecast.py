@@ -600,7 +600,7 @@ if stats['has_data']:
                     key="center_type_filter"
                 )
 
-            st.markdown("**ขนาดกล่อง** = ปริมาณนัดหมาย | **สี** = 🟢 ปกติ (<80%) | 🟡 ใกล้เต็ม (80-99%) | 🔴 เกิน (≥100%) | ⚫ ไม่มี Capacity")
+            st.markdown("**ขนาดกล่อง** = ปริมาณนัดหมาย | **สี** = 🟢 ปกติ (<80%) | 🟡 ใกล้เต็ม (80-89%) | 🔴 เกิน (≥90%) | ⚫ ไม่มี Capacity")
 
             # Calculate days in range for monthly calculation
             today = date.today()
@@ -643,17 +643,18 @@ if stats['has_data']:
                     capacity_label = f"{monthly_capacity:,} ({days_in_range} วัน)" if monthly_capacity else "N/A"
 
                 # Determine color based on usage
+                # 🟢 Green = <80%, 🟡 Yellow = 80-89%, 🔴 Red = ≥90%
                 if capacity is None:
                     color = '#6B7280'  # Gray - no capacity data
                     status = 'unknown'
-                elif usage_pct and usage_pct >= 100:
-                    color = '#EF4444'  # Red
+                elif usage_pct and usage_pct >= 90:
+                    color = '#EF4444'  # Red - ≥90%
                     status = 'over'
                 elif usage_pct and usage_pct >= 80:
-                    color = '#F59E0B'  # Yellow
+                    color = '#F59E0B'  # Yellow - 80-89%
                     status = 'warning'
                 else:
-                    color = '#10B981'  # Green
+                    color = '#10B981'  # Green - <80%
                     status = 'normal'
 
                 usage_text = f"{usage_pct:.0f}%" if usage_pct else "N/A"
