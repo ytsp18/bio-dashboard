@@ -439,33 +439,77 @@ if stats['has_data']:
         if stats['by_center']:
             # Treemap - Appointments vs Capacity
             st.markdown("#### 🗺️ Treemap: ปริมาณนัดหมาย vs Capacity")
+
+            # Treemap view mode selector
+            treemap_col1, treemap_col2 = st.columns([3, 1])
+            with treemap_col2:
+                treemap_mode = st.radio(
+                    "มุมมอง",
+                    options=["รายวัน", "รายเดือน"],
+                    horizontal=True,
+                    key="treemap_mode"
+                )
+
             st.markdown("**ขนาดกล่อง** = ปริมาณนัดหมาย | **สี** = 🟢 ปกติ (<80%) | 🟡 ใกล้เต็ม (80-99%) | 🔴 เกิน (≥100%) | ⚫ ไม่มี Capacity")
 
-            # Prepare treemap data
+            # Calculate days in range for monthly calculation
+            today = date.today()
+            chart_end_date = stats.get('max_date', today + timedelta(days=days_ahead-1))
+            if chart_end_date:
+                days_in_range = (chart_end_date - today).days + 1
+            else:
+                days_in_range = days_ahead
+
+            # Prepare treemap data based on mode
             treemap_data = []
             for c in stats['by_center']:
-                # Determine color based on status
-                if c['capacity'] is None:
+                capacity = c['capacity']
+
+                if treemap_mode == "รายวัน":
+                    # Daily view: use avg_daily vs daily capacity
+                    display_value = c['avg_daily']
+                    if capacity:
+                        usage_pct = (c['avg_daily'] / capacity) * 100
+                    else:
+                        usage_pct = None
+                    value_label = f"{c['avg_daily']:.0f}/วัน"
+                    capacity_label = f"{capacity:,}/วัน" if capacity else "N/A"
+                else:
+                    # Monthly view: use total count vs monthly capacity (capacity * days)
+                    display_value = c['count']
+                    monthly_capacity = capacity * days_in_range if capacity else None
+                    if monthly_capacity:
+                        usage_pct = (c['count'] / monthly_capacity) * 100
+                    else:
+                        usage_pct = None
+                    value_label = f"{c['count']:,} ({days_in_range} วัน)"
+                    capacity_label = f"{monthly_capacity:,} ({days_in_range} วัน)" if monthly_capacity else "N/A"
+
+                # Determine color based on usage
+                if capacity is None:
                     color = '#6B7280'  # Gray - no capacity data
-                elif c['status'] == 'over':
+                    status = 'unknown'
+                elif usage_pct and usage_pct >= 100:
                     color = '#EF4444'  # Red
-                elif c['status'] == 'warning':
+                    status = 'over'
+                elif usage_pct and usage_pct >= 80:
                     color = '#F59E0B'  # Yellow
+                    status = 'warning'
                 else:
                     color = '#10B981'  # Green
+                    status = 'normal'
 
-                # Build label with usage info
-                usage_text = f"{c['usage_pct']:.0f}%" if c['usage_pct'] else "N/A"
-                capacity_text = f"{c['capacity']:,}" if c['capacity'] else "N/A"
+                usage_text = f"{usage_pct:.0f}%" if usage_pct else "N/A"
 
                 treemap_data.append({
                     "name": c['branch_name'][:25] + '...' if len(c['branch_name']) > 25 else c['branch_name'],
-                    "value": c['count'],
+                    "value": round(display_value, 1),
                     "itemStyle": {"color": color},
                     "branch_code": c['branch_code'],
-                    "avg_daily": c['avg_daily'],
-                    "capacity": capacity_text,
-                    "usage_pct": usage_text
+                    "value_label": value_label,
+                    "capacity_label": capacity_label,
+                    "usage_pct": usage_text,
+                    "status": status
                 })
 
             treemap_options = {
@@ -476,7 +520,6 @@ if stats['has_data']:
                     "backgroundColor": "rgba(30, 41, 59, 0.95)",
                     "borderColor": "#475569",
                     "textStyle": {"color": "#F1F5F9"},
-                    "formatter": "{b}<br/>นัดหมายรวม: {c:,}<br/>เฉลี่ย/วัน: {a}<br/>Capacity: -<br/>ใช้งาน: -"
                 },
                 "series": [
                     {
@@ -513,7 +556,13 @@ if stats['has_data']:
                 ]
             }
 
-            st_echarts(options=treemap_options, height="350px", key="forecast_treemap")
+            st_echarts(options=treemap_options, height="350px", key=f"forecast_treemap_{treemap_mode}")
+
+            # Show mode description
+            if treemap_mode == "รายวัน":
+                st.caption("📌 แสดงค่าเฉลี่ยนัดหมายต่อวัน เทียบกับ Capacity ต่อวัน")
+            else:
+                st.caption(f"📌 แสดงนัดหมายรวม {days_in_range} วัน เทียบกับ Capacity รวม ({days_in_range} วัน)")
 
             st.markdown("---")
 
