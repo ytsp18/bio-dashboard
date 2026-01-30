@@ -299,8 +299,14 @@ with tab2:
             total = len(df)
             if col_map['appt_date']:
                 df['_date'] = df[col_map['appt_date']].apply(parse_date)
-                min_date = df['_date'].dropna().min()
-                max_date = df['_date'].dropna().max()
+                valid_dates = df['_date'].dropna()
+                min_date = valid_dates.min() if len(valid_dates) > 0 else None
+                max_date = valid_dates.max() if len(valid_dates) > 0 else None
+                # Convert pandas NaT to None
+                if pd.isna(min_date):
+                    min_date = None
+                if pd.isna(max_date):
+                    max_date = None
             else:
                 min_date = max_date = None
 
@@ -430,8 +436,13 @@ with tab3:
             total = len(df)
             if col_map['qlog_date']:
                 df['_date'] = df[col_map['qlog_date']].apply(parse_date)
-                min_date = df['_date'].dropna().min()
-                max_date = df['_date'].dropna().max()
+                valid_dates = df['_date'].dropna()
+                min_date = valid_dates.min() if len(valid_dates) > 0 else None
+                max_date = valid_dates.max() if len(valid_dates) > 0 else None
+                if pd.isna(min_date):
+                    min_date = None
+                if pd.isna(max_date):
+                    max_date = None
             else:
                 min_date = max_date = None
 
@@ -580,8 +591,13 @@ with tab4:
             total = len(df)
             if col_map['print_date']:
                 df['_date'] = df[col_map['print_date']].apply(parse_date)
-                min_date = df['_date'].dropna().min()
-                max_date = df['_date'].dropna().max()
+                valid_dates = df['_date'].dropna()
+                min_date = valid_dates.min() if len(valid_dates) > 0 else None
+                max_date = valid_dates.max() if len(valid_dates) > 0 else None
+                if pd.isna(min_date):
+                    min_date = None
+                if pd.isna(max_date):
+                    max_date = None
             else:
                 min_date = max_date = None
 
