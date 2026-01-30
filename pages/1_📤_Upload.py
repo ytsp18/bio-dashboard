@@ -707,12 +707,12 @@ with tab4:
             else:
                 min_date = max_date = None
 
-            # Status counts
+            # Status counts - convert to int to avoid numpy.int64 issues with psycopg2
             status_col = col_map.get('print_status')
             if status_col:
                 status_counts = df[status_col].value_counts()
-                good = status_counts.get('G', 0)
-                bad = status_counts.get('B', 0)
+                good = int(status_counts.get('G', 0))
+                bad = int(status_counts.get('B', 0))
             else:
                 good = bad = 0
 
