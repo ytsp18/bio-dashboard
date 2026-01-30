@@ -386,7 +386,13 @@ if stats['has_data']:
                 elif '-SC-' in branch_code:
                     sc_capacity += cap
 
-            daily_chart_options = {
+            # Calculate averages
+            avg_ob = sum(ob_data) / len(ob_data) if ob_data else 0
+            avg_sc = sum(sc_data) / len(sc_data) if sc_data else 0
+
+            # ===== Chart 1: ศูนย์แรกรับ (OB) =====
+            st.markdown("#### 🟣 ศูนย์แรกรับ (OB)")
+            ob_chart_options = {
                 "animation": True,
                 "animationDuration": 800,
                 "backgroundColor": "transparent",
@@ -398,7 +404,7 @@ if stats['has_data']:
                     "textStyle": {"color": "#F1F5F9"},
                 },
                 "legend": {
-                    "data": ["แรกรับ (OB)", "บริการ (SC)", "อื่นๆ", "Capacity รวม", "ค่าเฉลี่ย"],
+                    "data": ["แรกรับ (OB)", "Capacity OB", "ค่าเฉลี่ย OB"],
                     "bottom": 0,
                     "textStyle": {"color": "#9CA3AF"},
                 },
@@ -419,25 +425,8 @@ if stats['has_data']:
                     {
                         "name": "แรกรับ (OB)",
                         "type": "bar",
-                        "stack": "total",
                         "data": ob_data,
                         "itemStyle": {"color": "#8B5CF6"},
-                        "barMaxWidth": 50,
-                    },
-                    {
-                        "name": "บริการ (SC)",
-                        "type": "bar",
-                        "stack": "total",
-                        "data": sc_data,
-                        "itemStyle": {"color": "#3B82F6"},
-                        "barMaxWidth": 50,
-                    },
-                    {
-                        "name": "อื่นๆ",
-                        "type": "bar",
-                        "stack": "total",
-                        "data": other_data,
-                        "itemStyle": {"color": "#6B7280"},
                         "barMaxWidth": 50,
                         "label": {
                             "show": len(upcoming_dates) <= 14,
@@ -447,38 +436,108 @@ if stats['has_data']:
                         }
                     },
                     {
-                        "name": "Capacity รวม",
+                        "name": "Capacity OB",
                         "type": "line",
-                        "data": [total_capacity] * len(upcoming_dates),
+                        "data": [ob_capacity] * len(upcoming_dates),
                         "itemStyle": {"color": "#10B981"},
                         "lineStyle": {"width": 3, "type": "solid"},
                         "symbol": "none",
                     },
                     {
-                        "name": "ค่าเฉลี่ย",
+                        "name": "ค่าเฉลี่ย OB",
                         "type": "line",
-                        "data": [round(avg_count)] * len(upcoming_dates),
+                        "data": [round(avg_ob)] * len(upcoming_dates),
                         "itemStyle": {"color": "#EF4444"},
                         "lineStyle": {"width": 2, "type": "dashed"},
                         "symbol": "none",
                     }
                 ]
             }
-            st.markdown(f"**🟣 แรกรับ (OB)** | **🔵 บริการ (SC)** | **⬛ อื่นๆ** | **เส้นเขียว** = Capacity รวม ({total_capacity:,}) | **เส้นประแดง** = ค่าเฉลี่ย")
-            st_echarts(options=daily_chart_options, height="400px", key="forecast_daily_chart")
+            st.markdown(f"**เส้นเขียว** = Capacity OB ({ob_capacity:,}) | **เส้นประแดง** = ค่าเฉลี่ย ({round(avg_ob):,})")
+            st_echarts(options=ob_chart_options, height="350px", key="forecast_ob_chart")
+
+            # ===== Chart 2: ศูนย์บริการ (SC) =====
+            st.markdown("#### 🔵 ศูนย์บริการ (SC)")
+            sc_chart_options = {
+                "animation": True,
+                "animationDuration": 800,
+                "backgroundColor": "transparent",
+                "tooltip": {
+                    "trigger": "axis",
+                    "axisPointer": {"type": "cross"},
+                    "backgroundColor": "rgba(30, 41, 59, 0.95)",
+                    "borderColor": "#475569",
+                    "textStyle": {"color": "#F1F5F9"},
+                },
+                "legend": {
+                    "data": ["บริการ (SC)", "Capacity SC", "ค่าเฉลี่ย SC"],
+                    "bottom": 0,
+                    "textStyle": {"color": "#9CA3AF"},
+                },
+                "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "10%", "containLabel": True},
+                "xAxis": {
+                    "type": "category",
+                    "data": upcoming_dates,
+                    "axisLine": {"lineStyle": {"color": "#374151"}},
+                    "axisLabel": {"color": "#9CA3AF", "rotate": 45 if len(upcoming_dates) > 15 else 0},
+                },
+                "yAxis": {
+                    "type": "value",
+                    "axisLine": {"lineStyle": {"color": "#374151"}},
+                    "axisLabel": {"color": "#9CA3AF"},
+                    "splitLine": {"lineStyle": {"color": "#1F2937"}},
+                },
+                "series": [
+                    {
+                        "name": "บริการ (SC)",
+                        "type": "bar",
+                        "data": sc_data,
+                        "itemStyle": {"color": "#3B82F6"},
+                        "barMaxWidth": 50,
+                        "label": {
+                            "show": len(upcoming_dates) <= 14,
+                            "position": "top",
+                            "color": "#9CA3AF",
+                            "fontSize": 10,
+                        }
+                    },
+                    {
+                        "name": "Capacity SC",
+                        "type": "line",
+                        "data": [sc_capacity] * len(upcoming_dates),
+                        "itemStyle": {"color": "#10B981"},
+                        "lineStyle": {"width": 3, "type": "solid"},
+                        "symbol": "none",
+                    },
+                    {
+                        "name": "ค่าเฉลี่ย SC",
+                        "type": "line",
+                        "data": [round(avg_sc)] * len(upcoming_dates),
+                        "itemStyle": {"color": "#EF4444"},
+                        "lineStyle": {"width": 2, "type": "dashed"},
+                        "symbol": "none",
+                    }
+                ]
+            }
+            st.markdown(f"**เส้นเขียว** = Capacity SC ({sc_capacity:,}) | **เส้นประแดง** = ค่าเฉลี่ย ({round(avg_sc):,})")
+            st_echarts(options=sc_chart_options, height="350px", key="forecast_sc_chart")
 
             # Summary by type
             total_ob = sum(ob_data)
             total_sc = sum(sc_data)
             total_other = sum(other_data)
 
-            col_sum1, col_sum2, col_sum3 = st.columns(3)
+            st.markdown("---")
+            st.markdown("#### 📊 สรุปรวม")
+            col_sum1, col_sum2, col_sum3, col_sum4 = st.columns(4)
             with col_sum1:
-                st.metric("🟣 แรกรับ (OB)", f"{total_ob:,}", help=f"Capacity รวม: {ob_capacity:,}/วัน")
+                st.metric("🟣 แรกรับ (OB)", f"{total_ob:,}", help=f"Capacity: {ob_capacity:,}/วัน")
             with col_sum2:
-                st.metric("🔵 บริการ (SC)", f"{total_sc:,}", help=f"Capacity รวม: {sc_capacity:,}/วัน")
+                st.metric("🔵 บริการ (SC)", f"{total_sc:,}", help=f"Capacity: {sc_capacity:,}/วัน")
             with col_sum3:
-                st.metric("⬛ อื่นๆ (MB)", f"{total_other:,}", help="รวมหน่วยเคลื่อนที่และอื่นๆ")
+                st.metric("⬛ อื่นๆ (MB)", f"{total_other:,}", help="รวมหน่วยเคลื่อนที่")
+            with col_sum4:
+                st.metric("📊 รวมทั้งหมด", f"{total_ob + total_sc + total_other:,}")
 
             # Daily stats table
             with st.expander("📋 ดูข้อมูลรายวัน"):
