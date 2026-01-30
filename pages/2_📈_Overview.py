@@ -402,7 +402,8 @@ def get_upcoming_appointments(selected_branches=None):
         daily_data = [{'date': d.appt_date, 'count': d.total} for d in daily_appts]
 
         # Get capacity map from BranchMaster
-        # Exclude mobile units (MB-*) from total_capacity as they operate on-demand (max 160/day)
+        # Exclude mobile units (-MB-) from total_capacity as they operate on-demand (max 160/day)
+        # Mobile units have branch_code like ACR-MB-S-001, BKK-MB-S-001 (contains -MB-)
         capacity_map = {}
         total_capacity = 0
         branch_capacities = session.query(
@@ -411,8 +412,8 @@ def get_upcoming_appointments(selected_branches=None):
         ).filter(BranchMaster.max_capacity.isnot(None)).all()
         for bc in branch_capacities:
             capacity_map[bc.branch_code] = bc.max_capacity
-            # Only add to total_capacity if NOT a mobile unit (MB-*)
-            if not str(bc.branch_code).upper().startswith('MB-'):
+            # Only add to total_capacity if NOT a mobile unit (contains -MB-)
+            if '-MB-' not in str(bc.branch_code).upper():
                 total_capacity += bc.max_capacity
 
         # By center breakdown with capacity (top 15 centers with most appointments in next 7 days)
