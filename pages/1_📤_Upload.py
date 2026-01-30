@@ -691,8 +691,10 @@ with tab4:
             with col2:
                 if st.button("📥 นำเข้า Bio Raw", type="primary", use_container_width=True, key="import_bio"):
                     progress = st.progress(0)
+                    status_text = st.empty()
                     session = get_session()
                     try:
+                        status_text.text("กำลังสร้าง upload record...")
                         upload = BioUpload(
                             filename=uploaded_bio.name,
                             date_from=min_date, date_to=max_date,
@@ -703,35 +705,58 @@ with tab4:
                         )
                         session.add(upload)
                         session.flush()
+                        progress.progress(10)
 
-                        records = []
-                        for idx, row in df.iterrows():
-                            sla_dur = row[col_map['sla_duration']] if col_map.get('sla_duration') else None
-                            records.append(BioRecord(
-                                upload_id=upload.id,
-                                appointment_id=safe_str(row[col_map['appointment_id']]) if col_map.get('appointment_id') else None,
-                                form_id=safe_str(row[col_map['form_id']]) if col_map.get('form_id') else None,
-                                form_type=safe_str(row[col_map['form_type']]) if col_map.get('form_type') else None,
-                                branch_code=safe_str(row[col_map['branch_code']]) if col_map.get('branch_code') else None,
-                                card_id=safe_str(row[col_map['card_id']]) if col_map.get('card_id') else None,
-                                work_permit_no=safe_str(row[col_map['work_permit_no']]) if col_map.get('work_permit_no') else None,
-                                serial_number=safe_str(row[col_map['serial_number']]) if col_map.get('serial_number') else None,
-                                print_status=safe_str(row[col_map['print_status']]) if col_map.get('print_status') else None,
-                                reject_type=safe_str(row[col_map['reject_type']]) if col_map.get('reject_type') else None,
-                                operator=safe_str(row[col_map['operator']]) if col_map.get('operator') else None,
-                                print_date=parse_date(row[col_map['print_date']]) if col_map.get('print_date') else None,
-                                sla_start=safe_str(row[col_map['sla_start']]) if col_map.get('sla_start') else None,
-                                sla_stop=safe_str(row[col_map['sla_stop']]) if col_map.get('sla_stop') else None,
-                                sla_duration=safe_str(sla_dur),
-                                sla_minutes=parse_sla_duration(sla_dur),
-                                emergency=safe_int(row[col_map['emergency']]) if col_map.get('emergency') else None,
-                            ))
-                            if idx % 1000 == 0:
-                                progress.progress(int(idx / total * 80))
+                        # Prepare data using vectorized operations (much faster than iterrows)
+                        status_text.text("กำลังเตรียมข้อมูล...")
+                        import_df = pd.DataFrame()
+                        import_df['upload_id'] = upload.id
 
-                        session.bulk_save_objects(records)
+                        # Map columns using vectorized operations
+                        import_df['appointment_id'] = df[col_map['appointment_id']].astype(str).str.strip() if col_map.get('appointment_id') else None
+                        import_df['form_id'] = df[col_map['form_id']].astype(str).str.strip() if col_map.get('form_id') else None
+                        import_df['form_type'] = df[col_map['form_type']].astype(str).str.strip() if col_map.get('form_type') else None
+                        import_df['branch_code'] = df[col_map['branch_code']].astype(str).str.strip() if col_map.get('branch_code') else None
+                        import_df['card_id'] = df[col_map['card_id']].astype(str).str.strip() if col_map.get('card_id') else None
+                        import_df['work_permit_no'] = df[col_map['work_permit_no']].astype(str).str.strip() if col_map.get('work_permit_no') else None
+                        import_df['serial_number'] = df[col_map['serial_number']].astype(str).str.strip() if col_map.get('serial_number') else None
+                        import_df['print_status'] = df[col_map['print_status']].astype(str).str.strip() if col_map.get('print_status') else None
+                        import_df['reject_type'] = df[col_map['reject_type']].astype(str).str.strip() if col_map.get('reject_type') else None
+                        import_df['operator'] = df[col_map['operator']].astype(str).str.strip() if col_map.get('operator') else None
+                        import_df['print_date'] = pd.to_datetime(df[col_map['print_date']], errors='coerce').dt.date if col_map.get('print_date') else None
+                        import_df['sla_start'] = df[col_map['sla_start']].astype(str).str.strip() if col_map.get('sla_start') else None
+                        import_df['sla_stop'] = df[col_map['sla_stop']].astype(str).str.strip() if col_map.get('sla_stop') else None
+                        import_df['sla_duration'] = df[col_map['sla_duration']].astype(str).str.strip() if col_map.get('sla_duration') else None
+                        import_df['emergency'] = pd.to_numeric(df[col_map['emergency']], errors='coerce').astype('Int64') if col_map.get('emergency') else None
+
+                        # Calculate sla_minutes using vectorized operation
+                        if col_map.get('sla_duration'):
+                            import_df['sla_minutes'] = df[col_map['sla_duration']].apply(parse_sla_duration)
+                        else:
+                            import_df['sla_minutes'] = None
+
+                        # Clean up NaN values
+                        import_df = import_df.replace({'nan': None, 'None': None, '': None, 'NaT': None})
+                        progress.progress(30)
+
+                        # Use bulk insert (much faster than ORM objects)
+                        status_text.text("กำลังนำเข้าข้อมูล...")
+                        from sqlalchemy import insert
+                        records = import_df.to_dict('records')
+
+                        # Insert in batches of 1000 for better performance
+                        batch_size = 1000
+                        total_batches = (len(records) + batch_size - 1) // batch_size
+                        for i in range(0, len(records), batch_size):
+                            batch = records[i:i+batch_size]
+                            session.execute(insert(BioRecord), batch)
+                            batch_num = i // batch_size + 1
+                            progress.progress(30 + int(batch_num / total_batches * 60))
+                            status_text.text(f"กำลังนำเข้า batch {batch_num}/{total_batches}...")
+
                         session.commit()
                         progress.progress(100)
+                        status_text.empty()
                         st.success(f"นำเข้าสำเร็จ! {total:,} รายการ (G: {good:,} | B: {bad:,})")
                         st.balloons()
                     except Exception as e:
