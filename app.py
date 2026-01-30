@@ -138,3 +138,8 @@ if stats['report_count'] > 0:
             st.text(f"• {filename} ({report_date}) - บัตรดี: {total_good:,}, บัตรเสีย: {total_bad:,}")
 else:
     st.info("💡 ยังไม่มีข้อมูล กรุณาไปที่หน้า **Upload** เพื่ออัพโหลดไฟล์รายงาน")
+
+# Footer with version
+st.markdown("---")
+from __version__ import __version__, __release_date__
+st.caption(f"Bio Dashboard v{__version__} ({__release_date__})")
