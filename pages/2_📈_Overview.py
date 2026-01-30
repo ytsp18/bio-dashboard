@@ -304,6 +304,202 @@ def get_date_range():
 
 
 @st.cache_data(ttl=300)
+def get_upcoming_appointments(selected_branches=None):
+    """
+    Get upcoming appointments for workload forecasting.
+    Shows appointments from today onwards (future dates).
+    Includes capacity comparison from BranchMaster.max_capacity.
+    """
+    start_time = time.perf_counter()
+    session = get_session()
+    try:
+        from datetime import date as dt_date
+        today = dt_date.today()
+
+        # Check if we have Appointment data
+        has_appt_data = session.query(Appointment).first() is not None
+
+        if not has_appt_data:
+            return {
+                'has_data': False,
+                'today': 0,
+                'tomorrow': 0,
+                'next_7_days': 0,
+                'next_30_days': 0,
+                'daily_data': [],
+                'by_center': [],
+                'by_center_daily': [],
+                'over_capacity_count': 0,
+                'max_date': None
+            }
+
+        # Build base filter - only confirmed appointments
+        base_filters = [
+            Appointment.appt_date >= today,
+            Appointment.appt_status == 'SUCCESS'  # Only confirmed appointments
+        ]
+
+        # Add branch filter if specified
+        if selected_branches and len(selected_branches) > 0:
+            base_filters.append(Appointment.branch_code.in_(selected_branches))
+
+        # Get max appointment date in future
+        max_future_date = session.query(func.max(Appointment.appt_date)).filter(
+            and_(*base_filters)
+        ).scalar()
+
+        if not max_future_date:
+            return {
+                'has_data': False,
+                'today': 0,
+                'tomorrow': 0,
+                'next_7_days': 0,
+                'next_30_days': 0,
+                'daily_data': [],
+                'by_center': [],
+                'by_center_daily': [],
+                'over_capacity_count': 0,
+                'max_date': None
+            }
+
+        # Today's appointments
+        today_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
+            and_(*base_filters),
+            Appointment.appt_date == today
+        ).scalar() or 0
+
+        # Tomorrow's appointments
+        tomorrow = today + timedelta(days=1)
+        tomorrow_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
+            and_(*base_filters),
+            Appointment.appt_date == tomorrow
+        ).scalar() or 0
+
+        # Next 7 days (including today)
+        next_7_days = today + timedelta(days=6)
+        next_7_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
+            and_(*base_filters),
+            Appointment.appt_date <= next_7_days
+        ).scalar() or 0
+
+        # Next 30 days (including today)
+        next_30_days = today + timedelta(days=29)
+        next_30_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
+            and_(*base_filters),
+            Appointment.appt_date <= next_30_days
+        ).scalar() or 0
+
+        # Daily breakdown for chart (next 30 days or until max date)
+        chart_end_date = min(next_30_days, max_future_date)
+        daily_appts = session.query(
+            Appointment.appt_date,
+            func.count(func.distinct(Appointment.appointment_id)).label('total')
+        ).filter(
+            and_(*base_filters),
+            Appointment.appt_date <= chart_end_date
+        ).group_by(Appointment.appt_date).order_by(Appointment.appt_date).all()
+
+        daily_data = [{'date': d.appt_date, 'count': d.total} for d in daily_appts]
+
+        # Get capacity map from BranchMaster
+        capacity_map = {}
+        branch_capacities = session.query(
+            BranchMaster.branch_code,
+            BranchMaster.max_capacity
+        ).filter(BranchMaster.max_capacity.isnot(None)).all()
+        for bc in branch_capacities:
+            capacity_map[bc.branch_code] = bc.max_capacity
+
+        # By center breakdown with capacity (top 15 centers with most appointments in next 7 days)
+        branch_map = get_branch_name_map_cached()
+        by_center_query = session.query(
+            Appointment.branch_code,
+            func.count(func.distinct(Appointment.appointment_id)).label('total')
+        ).filter(
+            and_(*base_filters),
+            Appointment.appt_date <= next_7_days
+        ).group_by(Appointment.branch_code).order_by(
+            func.count(func.distinct(Appointment.appointment_id)).desc()
+        ).limit(15).all()
+
+        by_center = []
+        for c in by_center_query:
+            capacity = capacity_map.get(c.branch_code)
+            # Calculate average daily appointments for 7 days
+            avg_daily = c.total / 7
+            status = 'normal'
+            if capacity:
+                usage_pct = (avg_daily / capacity) * 100
+                if usage_pct >= 100:
+                    status = 'over'
+                elif usage_pct >= 80:
+                    status = 'warning'
+            else:
+                usage_pct = None
+
+            by_center.append({
+                'branch_code': c.branch_code,
+                'branch_name': branch_map.get(c.branch_code, c.branch_code),
+                'count': c.total,
+                'avg_daily': round(avg_daily, 1),
+                'capacity': capacity,
+                'usage_pct': round(usage_pct, 1) if usage_pct else None,
+                'status': status
+            })
+
+        # By center daily breakdown (for heatmap) - next 7 days
+        by_center_daily_query = session.query(
+            Appointment.branch_code,
+            Appointment.appt_date,
+            func.count(func.distinct(Appointment.appointment_id)).label('total')
+        ).filter(
+            and_(*base_filters),
+            Appointment.appt_date <= next_7_days
+        ).group_by(Appointment.branch_code, Appointment.appt_date).all()
+
+        by_center_daily = []
+        over_capacity_count = 0
+        for c in by_center_daily_query:
+            capacity = capacity_map.get(c.branch_code)
+            status = 'normal'
+            usage_pct = None
+            if capacity:
+                usage_pct = (c.total / capacity) * 100
+                if usage_pct >= 100:
+                    status = 'over'
+                    over_capacity_count += 1
+                elif usage_pct >= 80:
+                    status = 'warning'
+
+            by_center_daily.append({
+                'branch_code': c.branch_code,
+                'branch_name': branch_map.get(c.branch_code, c.branch_code),
+                'date': c.appt_date,
+                'count': c.total,
+                'capacity': capacity,
+                'usage_pct': round(usage_pct, 1) if usage_pct else None,
+                'status': status
+            })
+
+        return {
+            'has_data': True,
+            'today': today_count,
+            'tomorrow': tomorrow_count,
+            'next_7_days': next_7_count,
+            'next_30_days': next_30_count,
+            'daily_data': daily_data,
+            'by_center': by_center,
+            'by_center_daily': by_center_daily,
+            'over_capacity_count': over_capacity_count,
+            'max_date': max_future_date
+        }
+    finally:
+        session.close()
+        duration = (time.perf_counter() - start_time) * 1000
+        log_perf("get_upcoming_appointments", duration)
+
+
+@st.cache_data(ttl=300)
 def get_noshow_stats(start_date, end_date, selected_branches=None):
     """
     Get No-show statistics from Appointment and QLog tables.
@@ -825,6 +1021,116 @@ else:
         st.markdown("---")
         st.markdown("### 📅 ข้อมูลการนัดหมายและเข้าใช้บริการ")
         st.info("⚠️ ยังไม่มีข้อมูล Appointment/QLog - กรุณาอัพโหลดไฟล์ Appointment และ QLog ในหน้า Upload เพื่อดูข้อมูลการนัดหมาย")
+
+    # ==================== UPCOMING APPOINTMENTS (WORKLOAD FORECAST) ====================
+    upcoming_stats = get_upcoming_appointments(selected_branches)
+
+    if upcoming_stats['has_data']:
+        st.markdown("---")
+
+        # Header with link to detailed page
+        col_header, col_link = st.columns([5, 1])
+        with col_header:
+            st.markdown("### 📆 นัดหมายล่วงหน้า (Workload Forecast)")
+        with col_link:
+            st.page_link("pages/2.5_📆_Forecast.py", label="📊 ดูรายละเอียด", icon="➡️")
+
+        st.caption("📌 แสดงปริมาณการนัดหมายที่จะเกิดขึ้นในอนาคต เทียบกับ Capacity ของแต่ละศูนย์")
+
+        # Warning if over capacity
+        if upcoming_stats['over_capacity_count'] > 0:
+            st.warning(f"⚠️ พบ {upcoming_stats['over_capacity_count']} ศูนย์/วัน ที่มีนัดหมายเกิน Capacity - กรุณาเตรียมรับมือ!")
+
+        # Metrics row
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("📅 วันนี้", f"{upcoming_stats['today']:,}")
+        with col2:
+            st.metric("📆 พรุ่งนี้", f"{upcoming_stats['tomorrow']:,}")
+        with col3:
+            st.metric("📊 7 วันข้างหน้า", f"{upcoming_stats['next_7_days']:,}")
+        with col4:
+            st.metric("📈 30 วันข้างหน้า", f"{upcoming_stats['next_30_days']:,}")
+
+        # Daily forecast chart
+        if upcoming_stats['daily_data']:
+            upcoming_df = pd.DataFrame(upcoming_stats['daily_data'])
+            upcoming_dates = [d.strftime('%d/%m') if hasattr(d, 'strftime') else str(d) for d in upcoming_df['date']]
+
+            # Mark today and tomorrow
+            from datetime import date as dt_date
+            today_dt = dt_date.today()
+
+            # Calculate average for reference line
+            avg_count = upcoming_df['count'].mean() if len(upcoming_df) > 0 else 0
+
+            upcoming_chart_options = {
+                "animation": True,
+                "animationDuration": 800,
+                "backgroundColor": "transparent",
+                "tooltip": {
+                    "trigger": "axis",
+                    "axisPointer": {"type": "shadow"},
+                    "backgroundColor": "rgba(30, 41, 59, 0.95)",
+                    "borderColor": "#475569",
+                    "textStyle": {"color": "#F1F5F9"},
+                },
+                "legend": {
+                    "data": ["นัดหมายล่วงหน้า", "ค่าเฉลี่ย"],
+                    "bottom": 0,
+                    "textStyle": {"color": "#9CA3AF"},
+                },
+                "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "10%", "containLabel": True},
+                "xAxis": {
+                    "type": "category",
+                    "data": upcoming_dates,
+                    "axisLine": {"lineStyle": {"color": "#374151"}},
+                    "axisLabel": {"color": "#9CA3AF", "rotate": 45 if len(upcoming_dates) > 15 else 0},
+                },
+                "yAxis": {
+                    "type": "value",
+                    "axisLine": {"lineStyle": {"color": "#374151"}},
+                    "axisLabel": {"color": "#9CA3AF"},
+                    "splitLine": {"lineStyle": {"color": "#1F2937"}},
+                },
+                "series": [
+                    {
+                        "name": "นัดหมายล่วงหน้า",
+                        "type": "bar",
+                        "data": [
+                            {
+                                "value": row['count'],
+                                "itemStyle": {
+                                    "color": "#F59E0B" if row['date'] == today_dt else (
+                                        "#3B82F6" if row['date'] == today_dt + timedelta(days=1) else "#6366F1"
+                                    )
+                                }
+                            } for _, row in upcoming_df.iterrows()
+                        ],
+                        "barMaxWidth": 50,
+                        "label": {
+                            "show": len(upcoming_dates) <= 14,
+                            "position": "top",
+                            "color": "#9CA3AF",
+                            "fontSize": 10
+                        }
+                    },
+                    {
+                        "name": "ค่าเฉลี่ย",
+                        "type": "line",
+                        "data": [round(avg_count)] * len(upcoming_dates),
+                        "itemStyle": {"color": "#EF4444"},
+                        "lineStyle": {"width": 2, "type": "dashed"},
+                        "symbol": "none",
+                    }
+                ]
+            }
+            st.markdown("**📊 ปริมาณนัดหมายรายวัน** (สีส้ม = วันนี้, สีฟ้า = พรุ่งนี้, เส้นประแดง = ค่าเฉลี่ย)")
+            st_echarts(options=upcoming_chart_options, height="350px", key="upcoming_daily_chart")
+    else:
+        st.markdown("---")
+        st.markdown("### 📆 นัดหมายล่วงหน้า (Workload Forecast)")
+        st.info("⚠️ ยังไม่มีข้อมูลนัดหมายล่วงหน้า - กรุณาอัพโหลดไฟล์ Appointment ที่มีวันนัดในอนาคต")
 
     st.markdown("---")
 
