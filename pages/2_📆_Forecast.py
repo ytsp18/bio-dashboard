@@ -237,7 +237,7 @@ def get_upcoming_appointments_full(selected_branches=None, days_ahead=30):
         log_perf("get_upcoming_appointments_full", duration)
 
 
-st.set_page_config(page_title="Forecast - Bio Dashboard", page_icon="📆", layout="wide")
+st.set_page_config(page_title="ปริมาณการนัดหมาย - Bio Dashboard", page_icon="📆", layout="wide")
 
 require_login()
 apply_theme()
@@ -249,8 +249,8 @@ st.markdown("""
         <span style="font-size: 24px;">📆</span>
     </div>
     <div>
-        <h1 style="font-size: 1.75rem; font-weight: 700; color: #FAFAFA; margin: 0;">การพยากรณ์ปริมาณงาน</h1>
-        <p style="font-size: 0.9rem; color: #9CA3AF; margin: 0;">Workload Forecast - นัดหมายล่วงหน้า</p>
+        <h1 style="font-size: 1.75rem; font-weight: 700; color: #FAFAFA; margin: 0;">ปริมาณการนัดหมาย</h1>
+        <p style="font-size: 0.9rem; color: #9CA3AF; margin: 0;">Upcoming Appointments - นัดหมายล่วงหน้า</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
