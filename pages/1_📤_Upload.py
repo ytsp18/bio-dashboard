@@ -411,16 +411,16 @@ with tab2:
                         from sqlalchemy import insert
                         records = import_df.to_dict('records')
 
-                        # Insert in smaller batches (100 records) to avoid PostgreSQL parameter limit
-                        batch_size = 100
+                        # Insert in batches - larger batch = faster, but limited by PostgreSQL params
+                        # 7 columns * 1000 = 7000 params (well under 65535 limit)
+                        batch_size = 1000
                         total_batches = (len(records) + batch_size - 1) // batch_size
                         for i in range(0, len(records), batch_size):
                             batch = records[i:i+batch_size]
                             session.execute(insert(Appointment), batch)
                             batch_num = i // batch_size + 1
                             progress.progress(30 + int(batch_num / total_batches * 65))
-                            if batch_num % 10 == 0:
-                                status_text.text(f"กำลังนำเข้า batch {batch_num}/{total_batches}...")
+                            status_text.text(f"กำลังนำเข้า {min(i+batch_size, len(records)):,}/{len(records):,}...")
 
                         session.commit()
                         progress.progress(100)
@@ -600,16 +600,16 @@ with tab3:
                         from sqlalchemy import insert
                         records = import_df.to_dict('records')
 
-                        # Insert in smaller batches (100 records) to avoid PostgreSQL parameter limit
-                        batch_size = 100
+                        # Insert in batches - larger batch = faster
+                        # 13 columns * 500 = 6500 params (well under 65535 limit)
+                        batch_size = 500
                         total_batches = (len(records) + batch_size - 1) // batch_size
                         for i in range(0, len(records), batch_size):
                             batch = records[i:i+batch_size]
                             session.execute(insert(QLog), batch)
                             batch_num = i // batch_size + 1
                             progress.progress(30 + int(batch_num / total_batches * 65))
-                            if batch_num % 10 == 0:
-                                status_text.text(f"กำลังนำเข้า batch {batch_num}/{total_batches}...")
+                            status_text.text(f"กำลังนำเข้า {min(i+batch_size, len(records)):,}/{len(records):,}...")
 
                         session.commit()
                         progress.progress(100)
@@ -805,16 +805,16 @@ with tab4:
                         from sqlalchemy import insert
                         records = import_df.to_dict('records')
 
-                        # Insert in smaller batches (100 records) to avoid PostgreSQL parameter limit
-                        batch_size = 100
+                        # Insert in batches - larger batch = faster
+                        # 16 columns * 400 = 6400 params (well under 65535 limit)
+                        batch_size = 400
                         total_batches = (len(records) + batch_size - 1) // batch_size
                         for i in range(0, len(records), batch_size):
                             batch = records[i:i+batch_size]
                             session.execute(insert(BioRecord), batch)
                             batch_num = i // batch_size + 1
                             progress.progress(30 + int(batch_num / total_batches * 65))
-                            if batch_num % 10 == 0:
-                                status_text.text(f"กำลังนำเข้า batch {batch_num}/{total_batches}...")
+                            status_text.text(f"กำลังนำเข้า {min(i+batch_size, len(records)):,}/{len(records):,}...")
 
                         session.commit()
                         progress.progress(100)
