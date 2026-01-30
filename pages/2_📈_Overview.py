@@ -333,10 +333,10 @@ def get_upcoming_appointments(selected_branches=None):
                 'max_date': None
             }
 
-        # Build base filter - only confirmed appointments
+        # Build base filter - confirmed or waiting appointments (exclude CANCEL, EXPIRED)
         base_filters = [
             Appointment.appt_date >= today,
-            Appointment.appt_status == 'SUCCESS'  # Only confirmed appointments
+            Appointment.appt_status.in_(['SUCCESS', 'WAITING'])  # Include both confirmed and pending
         ]
 
         # Add branch filter if specified

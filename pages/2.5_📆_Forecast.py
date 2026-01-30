@@ -74,10 +74,10 @@ def get_upcoming_appointments_full(selected_branches=None, days_ahead=30):
                 'max_date': None
             }
 
-        # Build base filter - only confirmed appointments
+        # Build base filter - confirmed or waiting appointments (exclude CANCEL, EXPIRED)
         base_filters = [
             Appointment.appt_date >= today,
-            Appointment.appt_status == 'SUCCESS'
+            Appointment.appt_status.in_(['SUCCESS', 'WAITING'])  # Include both confirmed and pending
         ]
 
         if selected_branches and len(selected_branches) > 0:
