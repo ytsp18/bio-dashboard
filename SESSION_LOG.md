@@ -1,6 +1,74 @@
 # Session Log - 31 Jan 2026
 
-## สิ่งที่ทำเสร็จแล้ว (31 Jan 2026)
+## สิ่งที่ทำเสร็จแล้ว (31 Jan 2026 - Session 2)
+
+### 7. แก้ไข FK Violation และเพิ่มความเร็ว Upload
+
+#### ปัญหา: ForeignKeyViolation
+**อาการ:** `psycopg2.errors.ForeignKeyViolation: Key (upload_id)=(X) is not present in table`
+
+**สาเหตุ:** การใช้ `to_sql()` หรือ `COPY` command สร้าง connection ใหม่ที่มองไม่เห็น uncommitted FK rows
+
+**วิธีแก้ไข:** กลับไปใช้ `session.execute(insert(Model), batch)` ซึ่งทำงานใน transaction เดียวกัน
+
+```python
+from sqlalchemy import insert
+session.execute(insert(Appointment), batch)
+session.commit()
+```
+
+---
+
+#### การปรับปรุง Performance
+
+| Tab | Batch Size เดิม | Batch Size ใหม่ | รอบ insert (3000 records) |
+|-----|-----------------|-----------------|---------------------------|
+| Appointment | 100 → 1000 | **5,000** | 1 รอบ |
+| QLog | 100 → 500 | **4,000** | 1 รอบ |
+| Bio Raw | 100 → 400 | **3,000** | 1 รอบ |
+
+---
+
+### 8. รองรับไฟล์ขนาดใหญ่ 30MB+
+
+**การปรับปรุง:**
+- เพิ่ม `gc.collect()` ทุก 10 batches เพื่อคืน memory
+- ใช้ `low_memory=False` สำหรับไฟล์ใหญ่
+- ใช้ `iloc` slicing แทนการแปลง dict ทั้งหมดในครั้งเดียว
+- ลบ DataFrame หลัง import เสร็จ
+
+```python
+for batch_num in range(total_batches):
+    batch_df = import_df.iloc[start_idx:end_idx]
+    batch = batch_df.to_dict('records')
+    session.execute(insert(Model), batch)
+
+    if batch_num % 10 == 0:
+        gc.collect()
+
+# Free memory after import
+del import_df, df
+gc.collect()
+```
+
+**Config:**
+- `maxUploadSize = 200 MB` ใน `.streamlit/config.toml`
+
+---
+
+### Git Commits (31 Jan 2026 - Session 2)
+| Commit | Description |
+|--------|-------------|
+| `fbf9cbe` | Optimize upload for large files 30MB+ |
+| `306435d` | Increase batch sizes significantly for faster uploads |
+| `449d240` | Increase batch sizes for faster upload |
+| `dd692eb` | Revert to session-based insert to fix FK violation |
+| `ecace76` | Switch to pandas to_sql (caused FK error - reverted) |
+| `a01520c` | Increase batch_size from 100 to 500 |
+
+---
+
+## สิ่งที่ทำเสร็จแล้ว (31 Jan 2026 - Session 1)
 
 ### 6. ทดสอบ Upload ทุก Tab สำเร็จ
 
@@ -71,7 +139,7 @@ bad = int(status_counts.get('B', 0))
 ```python
 encodings = ['utf-8', 'utf-8-sig', 'windows-874', 'tis-620', 'cp874', 'cp1252', 'latin1']
 for enc in encodings:
-    df = pd.read_csv(file, encoding=enc)
+    df = pd.read_csv(file, encoding=enc, low_memory=False)
     # Verify Thai characters
     has_thai = any('\u0e00' <= c <= '\u0e7f' for c in sample_str)
     has_garbage = any(ord(c) > 127 and not ('\u0e00' <= c <= '\u0e7f') for c in sample_str)
@@ -81,17 +149,18 @@ for enc in encodings:
 
 ---
 
-### Git Commits (31 Jan 2026)
+### Git Commits (31 Jan 2026 - Session 1)
 | Commit | Description |
 |--------|-------------|
-| `7cb1691` | Fix CSV column mismatch bug in Appointment upload |
-| `9af44de` | Fix CSV column alignment using index_col=False |
-| `32eb3f1` | Fix StringDataRightTruncation for appointments table |
-| `ecc7f69` | Optimize Appointment import performance with bulk insert |
-| `f235ee7` | Fix PostgreSQL parameter limit error in bulk insert |
-| `b300290` | Fix encoding issue for CSV uploads - support multiple encodings |
-| `ad445a8` | Fix numpy.int64 compatibility with psycopg2 |
+| `33e6b28` | Update SESSION_LOG with all bug fixes and test results |
 | `7051c5b` | Fix Thai encoding detection for CSV uploads |
+| `ad445a8` | Fix numpy.int64 compatibility with psycopg2 |
+| `b300290` | Fix encoding issue for CSV uploads - support multiple encodings |
+| `f235ee7` | Fix PostgreSQL parameter limit error in bulk insert |
+| `ecc7f69` | Optimize Appointment import performance with bulk insert |
+| `32eb3f1` | Fix StringDataRightTruncation for appointments table |
+| `9af44de` | Fix CSV column alignment using index_col=False |
+| `7cb1691` | Fix CSV column mismatch bug in Appointment upload |
 
 ---
 
@@ -131,8 +200,9 @@ for enc in encodings:
 |------|----------|
 | `database/models.py` | ตาราง Appointment, QLog, BioRecord |
 | `database/connection.py` | Migration scripts สำหรับ ALTER columns |
-| `pages/1_📤_Upload.py` | หน้า Upload 4 tabs + encoding detection |
+| `pages/1_📤_Upload.py` | หน้า Upload 4 tabs + encoding detection + large file support |
 | `pages/2_📈_Overview.py` | Dashboard หลัก + No-Show Analysis |
+| `.streamlit/config.toml` | maxUploadSize = 200 MB |
 
 ## Column Mapping ที่ใช้
 **Appointment:**
@@ -151,7 +221,7 @@ for enc in encodings:
 - SLA Start, SLA Stop, SLA Duration
 
 ## Git Status
-- Last commit: `7051c5b` - Fix Thai encoding detection for CSV uploads
+- Last commit: `fbf9cbe` - Optimize upload for large files 30MB+
 - Branch: main
 - Remote: https://github.com/ytsp18/bio-dashboard.git
 
@@ -159,3 +229,12 @@ for enc in encodings:
 1. อัพโหลดไฟล์ Appointment (appointment-*.csv) ในหน้า Upload > Tab "📅 Appointment"
 2. อัพโหลดไฟล์ QLog (qlog-*.csv) ในหน้า Upload > Tab "⏱️ QLog"
 3. ไปที่หน้า Overview จะเห็น Section "📅 การวิเคราะห์ No-Show" แสดงขึ้นมา
+
+## Batch Size Configuration
+| Tab | Columns | Batch Size | Params per Batch |
+|-----|---------|------------|------------------|
+| Appointment | 8 | 5,000 | 40,000 |
+| QLog | 14 | 4,000 | 56,000 |
+| Bio Raw | 17 | 3,000 | 51,000 |
+
+(PostgreSQL limit: 65,535 params per query)
