@@ -369,23 +369,34 @@ with tab2:
                         )
                         session.add(upload)
                         session.flush()
+                        progress.progress(10)
 
-                        records = []
-                        for idx, row in df.iterrows():
-                            records.append(Appointment(
-                                upload_id=upload.id,
-                                appointment_id=safe_str(row[col_map['appointment_id']]) if col_map.get('appointment_id') else None,
-                                appt_date=parse_date(row[col_map['appt_date']]) if col_map.get('appt_date') else None,
-                                branch_code=safe_str(row[col_map['branch_code']]) if col_map.get('branch_code') else None,
-                                appt_status=safe_str(row[col_map['appt_status']]) if col_map.get('appt_status') else None,
-                                form_id=safe_str(row[col_map['form_id']]) if col_map.get('form_id') else None,
-                                form_type=safe_str(row[col_map['form_type']]) if col_map.get('form_type') else None,
-                                work_permit_no=safe_str(row[col_map['work_permit_no']]) if col_map.get('work_permit_no') else None,
-                            ))
-                            if idx % 1000 == 0:
-                                progress.progress(int(idx / total * 80))
+                        # Prepare data using vectorized operations (much faster than iterrows)
+                        import_df = pd.DataFrame()
+                        import_df['upload_id'] = upload.id
+                        import_df['appointment_id'] = df[col_map['appointment_id']].astype(str).str.strip() if col_map.get('appointment_id') else None
+                        import_df['appt_date'] = pd.to_datetime(df[col_map['appt_date']], errors='coerce').dt.date if col_map.get('appt_date') else None
+                        import_df['branch_code'] = df[col_map['branch_code']].astype(str).str.strip() if col_map.get('branch_code') else None
+                        import_df['appt_status'] = df[col_map['appt_status']].astype(str).str.strip() if col_map.get('appt_status') else None
+                        import_df['form_id'] = df[col_map['form_id']].astype(str).str.strip() if col_map.get('form_id') else None
+                        import_df['form_type'] = df[col_map['form_type']].astype(str).str.strip() if col_map.get('form_type') else None
+                        import_df['work_permit_no'] = df[col_map['work_permit_no']].astype(str).str.strip() if col_map.get('work_permit_no') else None
 
-                        session.bulk_save_objects(records)
+                        # Replace 'nan' strings with None
+                        import_df = import_df.replace({'nan': None, 'None': None, '': None})
+                        progress.progress(30)
+
+                        # Use bulk insert with executemany (faster than ORM objects)
+                        from sqlalchemy import insert
+                        records = import_df.to_dict('records')
+
+                        # Insert in batches of 1000 for better performance
+                        batch_size = 1000
+                        for i in range(0, len(records), batch_size):
+                            batch = records[i:i+batch_size]
+                            session.execute(insert(Appointment), batch)
+                            progress.progress(30 + int((i / len(records)) * 60))
+
                         session.commit()
                         progress.progress(100)
                         st.success(f"นำเข้าสำเร็จ! {total:,} รายการ")
