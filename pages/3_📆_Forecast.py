@@ -580,7 +580,7 @@ if stats['has_data']:
                 usage_text = f"{usage_pct:.0f}%" if usage_pct else "N/A"
 
                 treemap_data.append({
-                    "name": c['branch_name'][:25] + '...' if len(c['branch_name']) > 25 else c['branch_name'],
+                    "name": c['branch_name'],  # Full name - no truncation
                     "value": round(display_value, 1),
                     "itemStyle": {"color": color},
                     "branch_code": c['branch_code'],
@@ -613,8 +613,10 @@ if stats['has_data']:
                                 "show": True,
                                 "formatter": "{b}",
                                 "color": "#FFFFFF",
-                                "fontSize": 11,
+                                "fontSize": 10,
                                 "fontWeight": "bold",
+                                "overflow": "break",
+                                "lineOverflow": "truncate",
                             },
                             "upperLabel": {"show": False},
                             "itemStyle": {
