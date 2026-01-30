@@ -299,20 +299,21 @@ with tab2:
                 expected_cols = len(header_line.split(','))
                 uploaded_appt.seek(0)
 
-                # Read CSV - pandas may use first data column as index if data has more columns than header
-                df = pd.read_csv(uploaded_appt)
-
-                # Check if data was shifted (first column used as index)
-                # This happens when data rows have more columns than header
-                if df.index.dtype == 'object' and len(df.columns) == expected_cols - 1:
-                    # Reset index to make it a regular column
-                    uploaded_appt.seek(0)
+                # Read CSV with index_col=False to prevent pandas from using first column as index
+                # This is necessary because some CSV files have more data columns than header columns
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings('ignore', message='Length of header or names does not match')
                     df = pd.read_csv(uploaded_appt, index_col=False)
-                    # If still has issues, try with names parameter
-                    if 'APPOINTMENT_CODE' not in df.columns and 'Unnamed: 0' in df.columns:
-                        uploaded_appt.seek(0)
-                        header_names = header_line.split(',')
-                        df = pd.read_csv(uploaded_appt, skiprows=1, names=header_names)
+
+                # Verify columns are correct - if APPOINTMENT_CODE is not first column, there's a problem
+                if len(df.columns) > 0 and df.columns[0] != 'APPOINTMENT_CODE':
+                    # Try reading again without index_col parameter and reset index
+                    uploaded_appt.seek(0)
+                    df = pd.read_csv(uploaded_appt)
+                    if df.index.dtype == 'object':
+                        df = df.reset_index()
+                        df.columns = header_line.split(',') + ['_extra'] if len(df.columns) > expected_cols else df.columns
             else:
                 df = pd.read_excel(uploaded_appt)
 
