@@ -293,8 +293,8 @@ with tab2:
 
         try:
             if uploaded_appt.name.endswith('.csv'):
-                # Try multiple encodings for CSV files
-                encodings = ['utf-8', 'utf-8-sig', 'cp1252', 'tis-620', 'latin1']
+                # Try Thai encodings first (windows-874/tis-620), then others
+                encodings = ['utf-8', 'utf-8-sig', 'windows-874', 'tis-620', 'cp874', 'cp1252', 'latin1']
                 df = None
                 for enc in encodings:
                     try:
@@ -317,7 +317,15 @@ with tab2:
                             if df.index.dtype == 'object':
                                 df = df.reset_index()
                                 df.columns = header_line.split(',') + ['_extra'] if len(df.columns) > expected_cols else df.columns
-                        break
+
+                        # Verify encoding by checking for valid Thai characters
+                        sample_text = df.astype(str).values.flatten()[:100]
+                        sample_str = ' '.join(str(x) for x in sample_text)
+                        has_thai = any('\u0e00' <= c <= '\u0e7f' for c in sample_str)
+                        has_garbage = any(ord(c) > 127 and not ('\u0e00' <= c <= '\u0e7f') for c in sample_str if c not in ' \n\t')
+                        if has_thai or not has_garbage:
+                            break
+                        df = None
                     except (UnicodeDecodeError, LookupError):
                         continue
                 if df is None:
@@ -489,14 +497,21 @@ with tab3:
         st.success(f"เลือกไฟล์: **{uploaded_qlog.name}**")
 
         try:
-            # Try multiple encodings for CSV files
-            encodings = ['utf-8', 'utf-8-sig', 'cp1252', 'tis-620', 'latin1']
+            # Try Thai encodings first (windows-874/tis-620), then others
+            encodings = ['utf-8', 'utf-8-sig', 'windows-874', 'tis-620', 'cp874', 'cp1252', 'latin1']
             df = None
             for enc in encodings:
                 try:
                     uploaded_qlog.seek(0)
                     df = pd.read_csv(uploaded_qlog, encoding=enc)
-                    break
+                    # Verify encoding by checking for valid Thai characters
+                    sample_text = df.astype(str).values.flatten()[:100]
+                    sample_str = ' '.join(str(x) for x in sample_text)
+                    has_thai = any('\u0e00' <= c <= '\u0e7f' for c in sample_str)
+                    has_garbage = any(ord(c) > 127 and not ('\u0e00' <= c <= '\u0e7f') for c in sample_str if c not in ' \n\t')
+                    if has_thai or not has_garbage:
+                        break
+                    df = None
                 except (UnicodeDecodeError, LookupError):
                     continue
             if df is None:
@@ -674,14 +689,26 @@ with tab4:
 
         try:
             if uploaded_bio.name.endswith('.csv'):
-                # Try multiple encodings for CSV files
-                encodings = ['utf-8', 'utf-8-sig', 'cp1252', 'tis-620', 'latin1']
+                # Try Thai encodings first, then others
+                # windows-874/tis-620 are Thai encodings that should be tried before cp1252/latin1
+                encodings = ['utf-8', 'utf-8-sig', 'windows-874', 'tis-620', 'cp874', 'cp1252', 'latin1']
                 df = None
                 for enc in encodings:
                     try:
                         uploaded_bio.seek(0)
                         df = pd.read_csv(uploaded_bio, encoding=enc)
-                        break
+                        # Verify encoding is correct by checking for Thai characters
+                        # If data contains Thai, valid encoding should have Thai unicode range
+                        sample_text = df.astype(str).values.flatten()[:100]
+                        sample_str = ' '.join(str(x) for x in sample_text)
+                        # Check if contains valid Thai characters (unicode range 0E00-0E7F)
+                        has_thai = any('\u0e00' <= c <= '\u0e7f' for c in sample_str)
+                        has_garbage = any(ord(c) > 127 and not ('\u0e00' <= c <= '\u0e7f') for c in sample_str if c not in ' \n\t')
+                        # If we found Thai chars or no high-byte chars at all, this encoding is good
+                        if has_thai or not has_garbage:
+                            break
+                        # Otherwise try next encoding
+                        df = None
                     except (UnicodeDecodeError, LookupError):
                         continue
                 if df is None:
