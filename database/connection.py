@@ -162,6 +162,31 @@ def _run_migrations():
         if 'ix_cards_status_serial' not in existing_indexes:
             migrations.append("CREATE INDEX IF NOT EXISTS ix_cards_status_serial ON cards (print_status, serial_number)")
 
+    # ========== Fix VARCHAR column sizes for appointments ==========
+    # This fixes StringDataRightTruncation errors for Thai text fields
+    if 'appointments' in tables and not is_sqlite:
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                SELECT column_name, character_maximum_length
+                FROM information_schema.columns
+                WHERE table_name = 'appointments'
+                AND column_name IN ('form_type', 'card_id', 'work_permit_no')
+            """))
+
+            # Define target sizes for each column
+            appt_target_sizes = {
+                'form_type': 255,      # Thai form type descriptions are long
+                'card_id': 30,         # Card ID
+                'work_permit_no': 30   # Work permit number
+            }
+
+            for row in result:
+                col_name, current_size = row[0], row[1]
+                target_size = appt_target_sizes.get(col_name, 50)
+                if current_size and current_size < target_size:
+                    migrations.append(f"ALTER TABLE appointments ALTER COLUMN {col_name} TYPE VARCHAR({target_size})")
+                    _log(f"Queued column resize: appointments.{col_name} to VARCHAR({target_size})")
+
     # ========== Fix VARCHAR column sizes for complete_diffs ==========
     # This fixes StringDataRightTruncation errors
     if 'complete_diffs' in tables and not is_sqlite:

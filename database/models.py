@@ -348,9 +348,9 @@ class Appointment(Base):
 
     # Person info
     form_id = Column(String(50))
-    form_type = Column(String(20))
-    card_id = Column(String(20))
-    work_permit_no = Column(String(20))
+    form_type = Column(String(255))  # Form type description can be long (Thai text)
+    card_id = Column(String(30))
+    work_permit_no = Column(String(30))
 
     # Status
     appt_status = Column(String(50))  # สถานะนัดหมาย (confirmed, cancelled, etc.)
