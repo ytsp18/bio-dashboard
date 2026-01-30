@@ -436,6 +436,86 @@ if stats['has_data']:
         st.caption(f"📌 แสดงข้อมูล {days_ahead} วันข้างหน้า เทียบกับ Capacity ต่อวัน")
 
         if stats['by_center']:
+            # Treemap - Appointments vs Capacity
+            st.markdown("#### 🗺️ Treemap: ปริมาณนัดหมาย vs Capacity")
+            st.markdown("**ขนาดกล่อง** = ปริมาณนัดหมาย | **สี** = 🟢 ปกติ (<80%) | 🟡 ใกล้เต็ม (80-99%) | 🔴 เกิน (≥100%) | ⚫ ไม่มี Capacity")
+
+            # Prepare treemap data
+            treemap_data = []
+            for c in stats['by_center']:
+                # Determine color based on status
+                if c['capacity'] is None:
+                    color = '#6B7280'  # Gray - no capacity data
+                elif c['status'] == 'over':
+                    color = '#EF4444'  # Red
+                elif c['status'] == 'warning':
+                    color = '#F59E0B'  # Yellow
+                else:
+                    color = '#10B981'  # Green
+
+                # Build label with usage info
+                usage_text = f"{c['usage_pct']:.0f}%" if c['usage_pct'] else "N/A"
+                capacity_text = f"{c['capacity']:,}" if c['capacity'] else "N/A"
+
+                treemap_data.append({
+                    "name": c['branch_name'][:25] + '...' if len(c['branch_name']) > 25 else c['branch_name'],
+                    "value": c['count'],
+                    "itemStyle": {"color": color},
+                    "branch_code": c['branch_code'],
+                    "avg_daily": c['avg_daily'],
+                    "capacity": capacity_text,
+                    "usage_pct": usage_text
+                })
+
+            treemap_options = {
+                "animation": True,
+                "backgroundColor": "transparent",
+                "tooltip": {
+                    "trigger": "item",
+                    "backgroundColor": "rgba(30, 41, 59, 0.95)",
+                    "borderColor": "#475569",
+                    "textStyle": {"color": "#F1F5F9"},
+                    "formatter": "{b}<br/>นัดหมายรวม: {c:,}<br/>เฉลี่ย/วัน: {a}<br/>Capacity: -<br/>ใช้งาน: -"
+                },
+                "series": [
+                    {
+                        "type": "treemap",
+                        "data": treemap_data,
+                        "roam": False,
+                        "nodeClick": False,
+                        "width": "100%",
+                        "height": "100%",
+                        "breadcrumb": {"show": False},
+                        "label": {
+                            "show": True,
+                            "formatter": "{b}",
+                            "color": "#FFFFFF",
+                            "fontSize": 11,
+                            "fontWeight": "bold",
+                        },
+                        "upperLabel": {"show": False},
+                        "itemStyle": {
+                            "borderColor": "#1F2937",
+                            "borderWidth": 2,
+                            "gapWidth": 2
+                        },
+                        "levels": [
+                            {
+                                "itemStyle": {
+                                    "borderColor": "#374151",
+                                    "borderWidth": 2,
+                                    "gapWidth": 2
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            st_echarts(options=treemap_options, height="350px", key="forecast_treemap")
+
+            st.markdown("---")
+
             col1, col2 = st.columns([3, 2])
 
             with col1:
