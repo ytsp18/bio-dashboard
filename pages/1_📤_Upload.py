@@ -375,10 +375,33 @@ with tab2:
             # Preview
             st.dataframe(df.head(5), use_container_width=True, hide_index=True)
 
+            # Check for duplicates - block import if found
+            session = get_session()
+            duplicate_found = False
+            try:
+                if col_map.get('appointment_id'):
+                    file_appts = df[col_map['appointment_id']].astype(str).str.strip().unique().tolist()
+                    from sqlalchemy import text
+                    existing_appts = set()
+                    batch_size = 1000
+                    for i in range(0, len(file_appts), batch_size):
+                        batch = file_appts[i:i+batch_size]
+                        result = session.execute(
+                            text("SELECT appointment_id FROM appointments WHERE appointment_id IN :appts"),
+                            {"appts": tuple(batch) if len(batch) > 1 else (batch[0], batch[0])}
+                        )
+                        existing_appts.update(row[0] for row in result)
+
+                    if existing_appts:
+                        st.error(f"❌ พบ Appointment ID ซ้ำในฐานข้อมูล {len(existing_appts):,} รายการ - ไม่สามารถนำเข้าได้")
+                        duplicate_found = True
+            finally:
+                session.close()
+
             # Import
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
-                if st.button("📥 นำเข้า Appointment", type="primary", use_container_width=True, key="import_appt"):
+                if st.button("📥 นำเข้า Appointment", type="primary", use_container_width=True, key="import_appt", disabled=duplicate_found):
                     progress = st.progress(0)
                     status_text = st.empty()
                     session = get_session()
@@ -580,9 +603,32 @@ with tab3:
 
             st.dataframe(df.head(5), use_container_width=True, hide_index=True)
 
+            # Check for duplicates - block import if found
+            session = get_session()
+            duplicate_found = False
+            try:
+                if col_map.get('qlog_id'):
+                    file_qlogs = df[col_map['qlog_id']].astype(str).str.strip().unique().tolist()
+                    from sqlalchemy import text
+                    existing_qlogs = set()
+                    batch_size = 1000
+                    for i in range(0, len(file_qlogs), batch_size):
+                        batch = file_qlogs[i:i+batch_size]
+                        result = session.execute(
+                            text("SELECT qlog_id FROM qlogs WHERE qlog_id IN :ids"),
+                            {"ids": tuple(batch) if len(batch) > 1 else (batch[0], batch[0])}
+                        )
+                        existing_qlogs.update(row[0] for row in result)
+
+                    if existing_qlogs:
+                        st.error(f"❌ พบ QLog ID ซ้ำในฐานข้อมูล {len(existing_qlogs):,} รายการ - ไม่สามารถนำเข้าได้")
+                        duplicate_found = True
+            finally:
+                session.close()
+
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
-                if st.button("📥 นำเข้า QLog", type="primary", use_container_width=True, key="import_qlog"):
+                if st.button("📥 นำเข้า QLog", type="primary", use_container_width=True, key="import_qlog", disabled=duplicate_found):
                     progress = st.progress(0)
                     status_text = st.empty()
                     session = get_session()
@@ -804,6 +850,35 @@ with tab4:
 
             st.dataframe(df.head(5), use_container_width=True, hide_index=True)
 
+            # Check for duplicates before import (warning only)
+            # Bio Raw allows same serial with different status (G->B or B->G changes)
+            session = get_session()
+            try:
+                if col_map.get('serial_number') and col_map.get('print_status'):
+                    from sqlalchemy import text
+                    # Create composite key for checking
+                    df['_check_key'] = df[col_map['serial_number']].astype(str).str.strip() + '_' + df[col_map['print_status']].astype(str).str.strip()
+                    file_keys = df['_check_key'].unique().tolist()
+
+                    existing_keys = set()
+                    batch_size = 1000
+                    for i in range(0, len(file_keys), batch_size):
+                        batch = file_keys[i:i+batch_size]
+                        result = session.execute(
+                            text("SELECT serial_number || '_' || print_status FROM bio_records WHERE serial_number || '_' || print_status IN :keys"),
+                            {"keys": tuple(batch) if len(batch) > 1 else (batch[0], batch[0])}
+                        )
+                        existing_keys.update(row[0] for row in result)
+
+                    if existing_keys:
+                        st.warning(f"⚠️ พบข้อมูลซ้ำในฐานข้อมูล {len(existing_keys):,} รายการ (Serial+Status เดียวกัน)")
+
+                    # Clean up temp column
+                    if '_check_key' in df.columns:
+                        df = df.drop(columns=['_check_key'])
+            finally:
+                session.close()
+
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
                 if st.button("📥 นำเข้า Bio Raw", type="primary", use_container_width=True, key="import_bio"):
@@ -843,7 +918,7 @@ with tab4:
                             'sla_start': df[col_map['sla_start']].astype(str).str.strip() if col_map.get('sla_start') else None,
                             'sla_stop': df[col_map['sla_stop']].astype(str).str.strip() if col_map.get('sla_stop') else None,
                             'sla_duration': df[col_map['sla_duration']].astype(str).str.strip() if col_map.get('sla_duration') else None,
-                            'emergency': pd.to_numeric(df[col_map['emergency']], errors='coerce') if col_map.get('emergency') else None,
+                            'emergency': pd.to_numeric(df[col_map['emergency']], errors='coerce').astype('Int64') if col_map.get('emergency') else None,
                             'sla_minutes': df[col_map['sla_duration']].apply(parse_sla_duration) if col_map.get('sla_duration') else None,
                         })
                         import_df = import_df.replace({'nan': None, 'None': None, '': None})
@@ -870,8 +945,12 @@ with tab4:
 
                             # Convert DataFrame to CSV string buffer
                             status_text.text("กำลังเตรียมข้อมูลสำหรับ COPY...")
+                            # Fix: Convert float columns to int for PostgreSQL COPY
+                            copy_df = import_df[columns].copy()
+                            if 'emergency' in copy_df.columns:
+                                copy_df['emergency'] = copy_df['emergency'].apply(lambda x: int(x) if pd.notna(x) else None)
                             buffer = StringIO()
-                            import_df[columns].to_csv(buffer, index=False, header=False, na_rep='\\N')
+                            copy_df.to_csv(buffer, index=False, header=False, na_rep='\\N')
                             buffer.seek(0)
                             progress.progress(50)
 
@@ -1018,10 +1097,33 @@ with tab5:
             # Preview
             st.dataframe(df.head(5), use_container_width=True, hide_index=True)
 
+            # Check for duplicates - block import if found
+            session = get_session()
+            duplicate_found = False
+            try:
+                if col_map.get('serial_number'):
+                    file_serials = df[col_map['serial_number']].astype(str).str.strip().unique().tolist()
+                    from sqlalchemy import text
+                    existing_serials = set()
+                    batch_size = 1000
+                    for i in range(0, len(file_serials), batch_size):
+                        batch = file_serials[i:i+batch_size]
+                        result = session.execute(
+                            text("SELECT serial_number FROM card_delivery_records WHERE serial_number IN :serials"),
+                            {"serials": tuple(batch) if len(batch) > 1 else (batch[0], batch[0])}
+                        )
+                        existing_serials.update(row[0] for row in result)
+
+                    if existing_serials:
+                        st.error(f"❌ พบ Serial Number ซ้ำในฐานข้อมูล {len(existing_serials):,} รายการ - ไม่สามารถนำเข้าได้")
+                        duplicate_found = True
+            finally:
+                session.close()
+
             # Import button
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
-                if st.button("📥 นำเข้า Card Delivery", type="primary", use_container_width=True, key="import_card_delivery"):
+                if st.button("📥 นำเข้า Card Delivery", type="primary", use_container_width=True, key="import_card_delivery", disabled=duplicate_found):
                     progress = st.progress(0)
                     status_text = st.empty()
                     session = get_session()

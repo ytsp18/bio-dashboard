@@ -639,10 +639,10 @@ if stats['has_data']:
                 usage_text = f"{usage_pct:.0f}%" if usage_pct else "N/A"
 
                 treemap_data.append({
-                    "name": c['branch_name'],  # Full name - no truncation
+                    "name": c['branch_code'],  # Show branch_code in box
                     "value": round(display_value, 1),
                     "itemStyle": {"color": color},
-                    "branch_code": c['branch_code'],
+                    "branch_name": c['branch_name'],  # Full name for tooltip
                     "value_label": value_label,
                     "capacity_label": capacity_label,
                     "usage_pct": usage_text,
@@ -650,6 +650,16 @@ if stats['has_data']:
                 })
 
             if treemap_data:
+                # Build tooltip data with full names
+                # Since ECharts tooltip formatter can't use JS, we use name field creatively
+                # Format: "CODE\n\nFull Name" - shows code in label, full details on hover
+                for item in treemap_data:
+                    # Store original code for label
+                    item["label_text"] = item["name"]
+                    # Create rich tooltip content
+                    status_emoji = "🟢" if item["status"] == "normal" else ("🟡" if item["status"] == "warning" else ("🔴" if item["status"] == "over" else "⚫"))
+                    item["tooltip_info"] = f"{item['branch_name']}\n{status_emoji} {item['usage_pct']}"
+
                 treemap_options = {
                     "animation": True,
                     "backgroundColor": "transparent",
@@ -657,7 +667,8 @@ if stats['has_data']:
                         "trigger": "item",
                         "backgroundColor": "rgba(30, 41, 59, 0.95)",
                         "borderColor": "#475569",
-                        "textStyle": {"color": "#F1F5F9"},
+                        "textStyle": {"color": "#F1F5F9", "fontSize": 12},
+                        "extraCssText": "max-width: 300px; white-space: normal;",
                     },
                     "series": [
                         {
@@ -670,12 +681,10 @@ if stats['has_data']:
                             "breadcrumb": {"show": False},
                             "label": {
                                 "show": True,
-                                "formatter": "{b}",
+                                "formatter": "{b}",  # Shows branch_code
                                 "color": "#FFFFFF",
-                                "fontSize": 10,
+                                "fontSize": 9,
                                 "fontWeight": "bold",
-                                "overflow": "break",
-                                "lineOverflow": "truncate",
                             },
                             "upperLabel": {"show": False},
                             "itemStyle": {
@@ -696,7 +705,7 @@ if stats['has_data']:
                     ]
                 }
 
-                st_echarts(options=treemap_options, height="350px", key=f"forecast_treemap_{treemap_mode}_{center_type_filter}")
+                st_echarts(options=treemap_options, height="400px", key=f"forecast_treemap_{treemap_mode}_{center_type_filter}")
 
                 # Show mode description and stats
                 type_desc = ""
