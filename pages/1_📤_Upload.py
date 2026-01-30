@@ -408,28 +408,50 @@ with tab2:
                         import_df = import_df.replace({'nan': None, 'None': None, '': None})
                         progress.progress(30)
 
-                        # Use SQLAlchemy bulk insert (compatible with PostgreSQL)
+                        # Use optimized bulk insert for PostgreSQL (COPY-like performance)
                         status_text.text("กำลังนำเข้าข้อมูล...")
-                        from sqlalchemy import insert
+                        from sqlalchemy import text
+                        from database.connection import is_sqlite
 
-                        # Process in chunks for memory efficiency (large files 30MB+)
-                        # 8 columns * 5000 = 40000 params (under 65535 limit)
-                        batch_size = 5000
                         total_records = len(import_df)
-                        total_batches = (total_records + batch_size - 1) // batch_size
 
-                        for batch_num in range(total_batches):
-                            start_idx = batch_num * batch_size
-                            end_idx = min(start_idx + batch_size, total_records)
-                            batch_df = import_df.iloc[start_idx:end_idx]
-                            batch = batch_df.to_dict('records')
-                            session.execute(insert(Appointment), batch)
-                            progress.progress(30 + int((batch_num + 1) / total_batches * 65))
-                            status_text.text(f"กำลังนำเข้า {end_idx:,}/{total_records:,}...")
+                        if is_sqlite:
+                            # SQLite: use pandas to_sql (fast enough for local)
+                            import_df.to_sql('appointments', session.bind, if_exists='append', index=False, method='multi', chunksize=5000)
+                            progress.progress(95)
+                        else:
+                            # PostgreSQL: use execute_values for maximum speed
+                            # This is 10-50x faster than individual inserts
+                            conn = session.connection().connection
+                            cursor = conn.cursor()
 
-                            # Free memory periodically
-                            if batch_num % 10 == 0:
-                                gc.collect()
+                            # Prepare data as tuples (much faster than dicts)
+                            columns = ['upload_id', 'appointment_id', 'appt_date', 'branch_code', 'appt_status', 'form_id', 'form_type', 'work_permit_no']
+
+                            # Convert DataFrame to list of tuples
+                            data_tuples = [tuple(x) for x in import_df[columns].values]
+
+                            # Use execute_values for bulk insert (psycopg2 optimization)
+                            from psycopg2.extras import execute_values
+
+                            insert_sql = """
+                                INSERT INTO appointments (upload_id, appointment_id, appt_date, branch_code, appt_status, form_id, form_type, work_permit_no)
+                                VALUES %s
+                            """
+
+                            # Process in large batches (10000 rows per batch for speed)
+                            batch_size = 10000
+                            total_batches = (total_records + batch_size - 1) // batch_size
+
+                            for batch_num in range(total_batches):
+                                start_idx = batch_num * batch_size
+                                end_idx = min(start_idx + batch_size, total_records)
+                                batch_data = data_tuples[start_idx:end_idx]
+
+                                execute_values(cursor, insert_sql, batch_data, page_size=1000)
+
+                                progress.progress(30 + int((batch_num + 1) / total_batches * 65))
+                                status_text.text(f"กำลังนำเข้า {end_idx:,}/{total_records:,}...")
 
                         session.commit()
 
@@ -608,28 +630,47 @@ with tab3:
                         import_df = import_df.replace({'nan': None, 'None': None, '': None})
                         progress.progress(30)
 
-                        # Use SQLAlchemy bulk insert (compatible with PostgreSQL)
+                        # Use optimized bulk insert for PostgreSQL
                         status_text.text("กำลังนำเข้าข้อมูล...")
-                        from sqlalchemy import insert
+                        from database.connection import is_sqlite
 
-                        # Process in chunks for memory efficiency (large files 30MB+)
-                        # 14 columns * 4000 = 56000 params (under 65535 limit)
-                        batch_size = 4000
                         total_records = len(import_df)
-                        total_batches = (total_records + batch_size - 1) // batch_size
 
-                        for batch_num in range(total_batches):
-                            start_idx = batch_num * batch_size
-                            end_idx = min(start_idx + batch_size, total_records)
-                            batch_df = import_df.iloc[start_idx:end_idx]
-                            batch = batch_df.to_dict('records')
-                            session.execute(insert(QLog), batch)
-                            progress.progress(30 + int((batch_num + 1) / total_batches * 65))
-                            status_text.text(f"กำลังนำเข้า {end_idx:,}/{total_records:,}...")
+                        if is_sqlite:
+                            import_df.to_sql('qlogs', session.bind, if_exists='append', index=False, method='multi', chunksize=5000)
+                            progress.progress(95)
+                        else:
+                            # PostgreSQL: use execute_values for maximum speed
+                            conn = session.connection().connection
+                            cursor = conn.cursor()
 
-                            # Free memory periodically
-                            if batch_num % 10 == 0:
-                                gc.collect()
+                            columns = ['upload_id', 'qlog_id', 'branch_code', 'qlog_type', 'qlog_num', 'qlog_user',
+                                       'qlog_date', 'qlog_time_in', 'qlog_time_call', 'qlog_time_end',
+                                       'wait_time_seconds', 'appointment_code', 'qlog_status', 'sla_status']
+
+                            data_tuples = [tuple(x) for x in import_df[columns].values]
+
+                            from psycopg2.extras import execute_values
+
+                            insert_sql = """
+                                INSERT INTO qlogs (upload_id, qlog_id, branch_code, qlog_type, qlog_num, qlog_user,
+                                    qlog_date, qlog_time_in, qlog_time_call, qlog_time_end,
+                                    wait_time_seconds, appointment_code, qlog_status, sla_status)
+                                VALUES %s
+                            """
+
+                            batch_size = 10000
+                            total_batches = (total_records + batch_size - 1) // batch_size
+
+                            for batch_num in range(total_batches):
+                                start_idx = batch_num * batch_size
+                                end_idx = min(start_idx + batch_size, total_records)
+                                batch_data = data_tuples[start_idx:end_idx]
+
+                                execute_values(cursor, insert_sql, batch_data, page_size=1000)
+
+                                progress.progress(30 + int((batch_num + 1) / total_batches * 65))
+                                status_text.text(f"กำลังนำเข้า {end_idx:,}/{total_records:,}...")
 
                         session.commit()
 
@@ -824,28 +865,47 @@ with tab4:
                         import_df = import_df.replace({'nan': None, 'None': None, '': None})
                         progress.progress(30)
 
-                        # Use SQLAlchemy bulk insert (compatible with PostgreSQL)
+                        # Use optimized bulk insert for PostgreSQL
                         status_text.text("กำลังนำเข้าข้อมูล...")
-                        from sqlalchemy import insert
+                        from database.connection import is_sqlite
 
-                        # Process in chunks for memory efficiency (large files 30MB+)
-                        # 17 columns * 3000 = 51000 params (under 65535 limit)
-                        batch_size = 3000
                         total_records = len(import_df)
-                        total_batches = (total_records + batch_size - 1) // batch_size
 
-                        for batch_num in range(total_batches):
-                            start_idx = batch_num * batch_size
-                            end_idx = min(start_idx + batch_size, total_records)
-                            batch_df = import_df.iloc[start_idx:end_idx]
-                            batch = batch_df.to_dict('records')
-                            session.execute(insert(BioRecord), batch)
-                            progress.progress(30 + int((batch_num + 1) / total_batches * 65))
-                            status_text.text(f"กำลังนำเข้า {end_idx:,}/{total_records:,}...")
+                        if is_sqlite:
+                            import_df.to_sql('bio_records', session.bind, if_exists='append', index=False, method='multi', chunksize=5000)
+                            progress.progress(95)
+                        else:
+                            # PostgreSQL: use execute_values for maximum speed
+                            conn = session.connection().connection
+                            cursor = conn.cursor()
 
-                            # Free memory periodically
-                            if batch_num % 10 == 0:
-                                gc.collect()
+                            columns = ['upload_id', 'appointment_id', 'form_id', 'form_type', 'branch_code',
+                                       'card_id', 'work_permit_no', 'serial_number', 'print_status', 'reject_type',
+                                       'operator', 'print_date', 'sla_start', 'sla_stop', 'sla_duration', 'emergency', 'sla_minutes']
+
+                            data_tuples = [tuple(x) for x in import_df[columns].values]
+
+                            from psycopg2.extras import execute_values
+
+                            insert_sql = """
+                                INSERT INTO bio_records (upload_id, appointment_id, form_id, form_type, branch_code,
+                                    card_id, work_permit_no, serial_number, print_status, reject_type,
+                                    operator, print_date, sla_start, sla_stop, sla_duration, emergency, sla_minutes)
+                                VALUES %s
+                            """
+
+                            batch_size = 10000
+                            total_batches = (total_records + batch_size - 1) // batch_size
+
+                            for batch_num in range(total_batches):
+                                start_idx = batch_num * batch_size
+                                end_idx = min(start_idx + batch_size, total_records)
+                                batch_data = data_tuples[start_idx:end_idx]
+
+                                execute_values(cursor, insert_sql, batch_data, page_size=1000)
+
+                                progress.progress(30 + int((batch_num + 1) / total_batches * 65))
+                                status_text.text(f"กำลังนำเข้า {end_idx:,}/{total_records:,}...")
 
                         session.commit()
 
