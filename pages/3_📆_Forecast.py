@@ -342,14 +342,49 @@ if stats['has_data']:
         st.markdown("### 📊 ปริมาณนัดหมายรายวัน")
         st.caption(f"📌 แสดงข้อมูล {days_ahead} วันข้างหน้า (นับจากวันนี้)")
 
-        if stats['daily_data']:
+        if stats['daily_data'] and stats['by_center_daily']:
             upcoming_df = pd.DataFrame(stats['daily_data'])
-            upcoming_dates = [d.strftime('%d/%m') if hasattr(d, 'strftime') else str(d) for d in upcoming_df['date']]
             today_dt = date.today()
 
+            # Calculate daily data by center type from by_center_daily
+            daily_by_type = {}
+            for item in stats['by_center_daily']:
+                d = item['date']
+                branch_code = str(item['branch_code']).upper()
+                count = item['count']
+
+                if d not in daily_by_type:
+                    daily_by_type[d] = {'ob': 0, 'sc': 0, 'other': 0}
+
+                if '-OB-' in branch_code:
+                    daily_by_type[d]['ob'] += count
+                elif '-SC-' in branch_code:
+                    daily_by_type[d]['sc'] += count
+                else:
+                    daily_by_type[d]['other'] += count
+
+            # Sort dates and prepare data
+            sorted_dates = sorted(daily_by_type.keys())
+            upcoming_dates = [d.strftime('%d/%m') if hasattr(d, 'strftime') else str(d) for d in sorted_dates]
+            ob_data = [daily_by_type[d]['ob'] for d in sorted_dates]
+            sc_data = [daily_by_type[d]['sc'] for d in sorted_dates]
+            other_data = [daily_by_type[d]['other'] for d in sorted_dates]
+            total_data = [daily_by_type[d]['ob'] + daily_by_type[d]['sc'] + daily_by_type[d]['other'] for d in sorted_dates]
+
             # Calculate average line and get total capacity
-            avg_count = upcoming_df['count'].mean()
+            avg_count = sum(total_data) / len(total_data) if total_data else 0
             total_capacity = stats.get('total_capacity', 0)
+
+            # Calculate capacity by type
+            ob_capacity = 0
+            sc_capacity = 0
+            for c in stats['by_center']:
+                branch_code = str(c['branch_code']).upper()
+                cap = c['capacity'] or 0
+                if '-OB-' in branch_code:
+                    ob_capacity += cap
+                elif '-SC-' in branch_code:
+                    sc_capacity += cap
 
             daily_chart_options = {
                 "animation": True,
@@ -363,7 +398,7 @@ if stats['has_data']:
                     "textStyle": {"color": "#F1F5F9"},
                 },
                 "legend": {
-                    "data": ["นัดหมาย", "Capacity รวม", "ค่าเฉลี่ย"],
+                    "data": ["แรกรับ (OB)", "บริการ (SC)", "อื่นๆ", "Capacity รวม", "ค่าเฉลี่ย"],
                     "bottom": 0,
                     "textStyle": {"color": "#9CA3AF"},
                 },
@@ -382,24 +417,33 @@ if stats['has_data']:
                 },
                 "series": [
                     {
-                        "name": "นัดหมาย",
+                        "name": "แรกรับ (OB)",
                         "type": "bar",
-                        "data": [
-                            {
-                                "value": row['count'],
-                                "itemStyle": {
-                                    "color": "#F59E0B" if row['date'] == today_dt else (
-                                        "#3B82F6" if row['date'] == today_dt + timedelta(days=1) else "#6366F1"
-                                    )
-                                }
-                            } for _, row in upcoming_df.iterrows()
-                        ],
+                        "stack": "total",
+                        "data": ob_data,
+                        "itemStyle": {"color": "#8B5CF6"},
+                        "barMaxWidth": 50,
+                    },
+                    {
+                        "name": "บริการ (SC)",
+                        "type": "bar",
+                        "stack": "total",
+                        "data": sc_data,
+                        "itemStyle": {"color": "#3B82F6"},
+                        "barMaxWidth": 50,
+                    },
+                    {
+                        "name": "อื่นๆ",
+                        "type": "bar",
+                        "stack": "total",
+                        "data": other_data,
+                        "itemStyle": {"color": "#6B7280"},
                         "barMaxWidth": 50,
                         "label": {
                             "show": len(upcoming_dates) <= 14,
                             "position": "top",
                             "color": "#9CA3AF",
-                            "fontSize": 10
+                            "fontSize": 10,
                         }
                     },
                     {
@@ -420,14 +464,34 @@ if stats['has_data']:
                     }
                 ]
             }
-            st.markdown(f"**สีส้ม** = วันนี้ | **สีฟ้า** = พรุ่งนี้ | **เส้นเขียว** = Capacity รวม ({total_capacity:,}) | **เส้นประแดง** = ค่าเฉลี่ย")
+            st.markdown(f"**🟣 แรกรับ (OB)** | **🔵 บริการ (SC)** | **⬛ อื่นๆ** | **เส้นเขียว** = Capacity รวม ({total_capacity:,}) | **เส้นประแดง** = ค่าเฉลี่ย")
             st_echarts(options=daily_chart_options, height="400px", key="forecast_daily_chart")
+
+            # Summary by type
+            total_ob = sum(ob_data)
+            total_sc = sum(sc_data)
+            total_other = sum(other_data)
+
+            col_sum1, col_sum2, col_sum3 = st.columns(3)
+            with col_sum1:
+                st.metric("🟣 แรกรับ (OB)", f"{total_ob:,}", help=f"Capacity รวม: {ob_capacity:,}/วัน")
+            with col_sum2:
+                st.metric("🔵 บริการ (SC)", f"{total_sc:,}", help=f"Capacity รวม: {sc_capacity:,}/วัน")
+            with col_sum3:
+                st.metric("⬛ อื่นๆ (MB)", f"{total_other:,}", help="รวมหน่วยเคลื่อนที่และอื่นๆ")
 
             # Daily stats table
             with st.expander("📋 ดูข้อมูลรายวัน"):
-                display_df = upcoming_df.copy()
-                display_df['date'] = display_df['date'].apply(lambda x: x.strftime('%d/%m/%Y') if hasattr(x, 'strftime') else str(x))
-                display_df.columns = ['วันที่', 'จำนวนนัดหมาย']
+                table_data = []
+                for d in sorted_dates:
+                    table_data.append({
+                        'วันที่': d.strftime('%d/%m/%Y') if hasattr(d, 'strftime') else str(d),
+                        'แรกรับ (OB)': daily_by_type[d]['ob'],
+                        'บริการ (SC)': daily_by_type[d]['sc'],
+                        'อื่นๆ': daily_by_type[d]['other'],
+                        'รวม': daily_by_type[d]['ob'] + daily_by_type[d]['sc'] + daily_by_type[d]['other']
+                    })
+                display_df = pd.DataFrame(table_data)
                 st.dataframe(display_df, hide_index=True, use_container_width=True)
         else:
             st.info("ไม่มีข้อมูลนัดหมายในช่วงเวลาที่เลือก")
@@ -441,13 +505,20 @@ if stats['has_data']:
             st.markdown("#### 🗺️ Treemap: ปริมาณนัดหมาย vs Capacity")
 
             # Treemap view mode selector
-            treemap_col1, treemap_col2 = st.columns([3, 1])
+            treemap_col1, treemap_col2, treemap_col3 = st.columns([2, 1, 1])
             with treemap_col2:
                 treemap_mode = st.radio(
                     "มุมมอง",
                     options=["รายวัน", "รายเดือน"],
                     horizontal=True,
                     key="treemap_mode"
+                )
+            with treemap_col3:
+                center_type_filter = st.radio(
+                    "ประเภทศูนย์",
+                    options=["ทั้งหมด", "แรกรับ (OB)", "บริการ (SC)"],
+                    horizontal=True,
+                    key="center_type_filter"
                 )
 
             st.markdown("**ขนาดกล่อง** = ปริมาณนัดหมาย | **สี** = 🟢 ปกติ (<80%) | 🟡 ใกล้เต็ม (80-99%) | 🔴 เกิน (≥100%) | ⚫ ไม่มี Capacity")
@@ -460,9 +531,16 @@ if stats['has_data']:
             else:
                 days_in_range = days_ahead
 
+            # Filter centers by type
+            filtered_centers = stats['by_center']
+            if center_type_filter == "แรกรับ (OB)":
+                filtered_centers = [c for c in stats['by_center'] if '-OB-' in str(c['branch_code']).upper()]
+            elif center_type_filter == "บริการ (SC)":
+                filtered_centers = [c for c in stats['by_center'] if '-SC-' in str(c['branch_code']).upper()]
+
             # Prepare treemap data based on mode
             treemap_data = []
-            for c in stats['by_center']:
+            for c in filtered_centers:
                 capacity = c['capacity']
 
                 if treemap_mode == "รายวัน":
@@ -512,76 +590,91 @@ if stats['has_data']:
                     "status": status
                 })
 
-            treemap_options = {
-                "animation": True,
-                "backgroundColor": "transparent",
-                "tooltip": {
-                    "trigger": "item",
-                    "backgroundColor": "rgba(30, 41, 59, 0.95)",
-                    "borderColor": "#475569",
-                    "textStyle": {"color": "#F1F5F9"},
-                },
-                "series": [
-                    {
-                        "type": "treemap",
-                        "data": treemap_data,
-                        "roam": False,
-                        "nodeClick": False,
-                        "width": "100%",
-                        "height": "100%",
-                        "breadcrumb": {"show": False},
-                        "label": {
-                            "show": True,
-                            "formatter": "{b}",
-                            "color": "#FFFFFF",
-                            "fontSize": 11,
-                            "fontWeight": "bold",
-                        },
-                        "upperLabel": {"show": False},
-                        "itemStyle": {
-                            "borderColor": "#1F2937",
-                            "borderWidth": 2,
-                            "gapWidth": 2
-                        },
-                        "levels": [
-                            {
-                                "itemStyle": {
-                                    "borderColor": "#374151",
-                                    "borderWidth": 2,
-                                    "gapWidth": 2
+            if treemap_data:
+                treemap_options = {
+                    "animation": True,
+                    "backgroundColor": "transparent",
+                    "tooltip": {
+                        "trigger": "item",
+                        "backgroundColor": "rgba(30, 41, 59, 0.95)",
+                        "borderColor": "#475569",
+                        "textStyle": {"color": "#F1F5F9"},
+                    },
+                    "series": [
+                        {
+                            "type": "treemap",
+                            "data": treemap_data,
+                            "roam": False,
+                            "nodeClick": False,
+                            "width": "100%",
+                            "height": "100%",
+                            "breadcrumb": {"show": False},
+                            "label": {
+                                "show": True,
+                                "formatter": "{b}",
+                                "color": "#FFFFFF",
+                                "fontSize": 11,
+                                "fontWeight": "bold",
+                            },
+                            "upperLabel": {"show": False},
+                            "itemStyle": {
+                                "borderColor": "#1F2937",
+                                "borderWidth": 2,
+                                "gapWidth": 2
+                            },
+                            "levels": [
+                                {
+                                    "itemStyle": {
+                                        "borderColor": "#374151",
+                                        "borderWidth": 2,
+                                        "gapWidth": 2
+                                    }
                                 }
-                            }
-                        ]
-                    }
-                ]
-            }
+                            ]
+                        }
+                    ]
+                }
 
-            st_echarts(options=treemap_options, height="350px", key=f"forecast_treemap_{treemap_mode}")
+                st_echarts(options=treemap_options, height="350px", key=f"forecast_treemap_{treemap_mode}_{center_type_filter}")
 
-            # Show mode description
-            if treemap_mode == "รายวัน":
-                st.caption("📌 แสดงค่าเฉลี่ยนัดหมายต่อวัน เทียบกับ Capacity ต่อวัน")
+                # Show mode description and stats
+                type_desc = ""
+                if center_type_filter == "แรกรับ (OB)":
+                    type_desc = " (เฉพาะศูนย์แรกรับ)"
+                elif center_type_filter == "บริการ (SC)":
+                    type_desc = " (เฉพาะศูนย์บริการ)"
+
+                if treemap_mode == "รายวัน":
+                    st.caption(f"📌 แสดงค่าเฉลี่ยนัดหมายต่อวัน เทียบกับ Capacity ต่อวัน{type_desc} | จำนวน {len(filtered_centers)} ศูนย์")
+                else:
+                    st.caption(f"📌 แสดงนัดหมายรวม {days_in_range} วัน เทียบกับ Capacity รวม{type_desc} | จำนวน {len(filtered_centers)} ศูนย์")
             else:
-                st.caption(f"📌 แสดงนัดหมายรวม {days_in_range} วัน เทียบกับ Capacity รวม ({days_in_range} วัน)")
+                st.info(f"ไม่พบข้อมูลศูนย์ประเภท {center_type_filter}")
 
             st.markdown("---")
 
             col1, col2 = st.columns([3, 2])
 
             with col1:
-                # Horizontal bar chart - top 20
-                top_centers = stats['by_center'][:20]
-                center_names = [c['branch_name'][:30] + '...' if len(c['branch_name']) > 30 else c['branch_name'] for c in reversed(top_centers)]
-                center_avg = [c['avg_daily'] for c in reversed(top_centers)]
-                center_capacity = [c['capacity'] if c['capacity'] else 0 for c in reversed(top_centers)]
+                # Horizontal bar chart - top 20 (filtered by center type)
+                bar_centers = filtered_centers[:20] if filtered_centers else stats['by_center'][:20]
+                center_names = [c['branch_name'][:30] + '...' if len(c['branch_name']) > 30 else c['branch_name'] for c in reversed(bar_centers)]
+                center_avg = [c['avg_daily'] for c in reversed(bar_centers)]
+                center_capacity = [c['capacity'] if c['capacity'] else 0 for c in reversed(bar_centers)]
                 center_colors = []
-                for c in reversed(top_centers):
+                for c in reversed(bar_centers):
                     if c['status'] == 'over':
                         center_colors.append('#EF4444')
                     elif c['status'] == 'warning':
                         center_colors.append('#F59E0B')
                     else:
                         center_colors.append('#10B981')
+
+                bar_title = "Top 20 ศูนย์"
+                if center_type_filter == "แรกรับ (OB)":
+                    bar_title = "ศูนย์แรกรับ (OB)"
+                elif center_type_filter == "บริการ (SC)":
+                    bar_title = "ศูนย์บริการ (SC)"
 
                 center_bar_options = {
                     "animation": True,
@@ -635,8 +728,8 @@ if stats['has_data']:
                         }
                     ]
                 }
-                st.markdown("**🔴 เกิน Capacity | 🟡 ≥80% | 🟢 ปกติ | ◆ = Capacity**")
-                st_echarts(options=center_bar_options, height="600px", key="forecast_center_bar")
+                st.markdown(f"**{bar_title}** | 🔴 เกิน Capacity | 🟡 ≥80% | 🟢 ปกติ | ◆ = Capacity")
+                st_echarts(options=center_bar_options, height="600px", key=f"forecast_center_bar_{center_type_filter}")
 
             with col2:
                 st.markdown("**📋 สรุป Capacity รายศูนย์**")
@@ -648,16 +741,17 @@ if stats['has_data']:
                     index=0
                 )
 
-                filtered_centers = stats['by_center']
+                # Use filtered_centers from Treemap filter (already filtered by center type)
+                table_centers = filtered_centers if filtered_centers else stats['by_center']
                 if status_filter == "🔴 เกิน Capacity":
-                    filtered_centers = [c for c in stats['by_center'] if c['status'] == 'over']
+                    table_centers = [c for c in table_centers if c['status'] == 'over']
                 elif status_filter == "🟡 ใกล้เต็ม":
-                    filtered_centers = [c for c in stats['by_center'] if c['status'] == 'warning']
+                    table_centers = [c for c in table_centers if c['status'] == 'warning']
                 elif status_filter == "🟢 ปกติ":
-                    filtered_centers = [c for c in stats['by_center'] if c['status'] == 'normal']
+                    table_centers = [c for c in table_centers if c['status'] == 'normal']
 
                 table_data = []
-                for c in filtered_centers[:30]:
+                for c in table_centers[:30]:
                     status_icon = "🔴" if c['status'] == 'over' else ("🟡" if c['status'] == 'warning' else "🟢")
                     capacity_str = f"{c['capacity']:,}" if c['capacity'] else "-"
                     usage_str = f"{c['usage_pct']:.0f}%" if c['usage_pct'] else "-"
