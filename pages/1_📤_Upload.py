@@ -412,7 +412,7 @@ with tab2:
                         records = import_df.to_dict('records')
 
                         # Insert in smaller batches (100 records) to avoid PostgreSQL parameter limit
-                        batch_size = 100
+                        batch_size = 500
                         total_batches = (len(records) + batch_size - 1) // batch_size
                         for i in range(0, len(records), batch_size):
                             batch = records[i:i+batch_size]
@@ -601,7 +601,7 @@ with tab3:
                         records = import_df.to_dict('records')
 
                         # Insert in smaller batches (100 records) to avoid PostgreSQL parameter limit
-                        batch_size = 100
+                        batch_size = 500
                         total_batches = (len(records) + batch_size - 1) // batch_size
                         for i in range(0, len(records), batch_size):
                             batch = records[i:i+batch_size]
@@ -806,7 +806,7 @@ with tab4:
                         records = import_df.to_dict('records')
 
                         # Insert in smaller batches (100 records) to avoid PostgreSQL parameter limit
-                        batch_size = 100
+                        batch_size = 500
                         total_batches = (len(records) + batch_size - 1) // batch_size
                         for i in range(0, len(records), batch_size):
                             batch = records[i:i+batch_size]
