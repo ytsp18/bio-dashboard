@@ -658,69 +658,15 @@ else:
             ]
         }
         st_echarts(options=mixed_options, height="400px", key="daily_mixed_chart")
-
-        # ==================== APPOINTMENT CHART (SEPARATE) ====================
-        st.markdown("### 📅 สรุปประเภทการเข้ารับบริการรายวัน")
-        st.caption("📌 มีนัดหมาย = มี Appointment ID | Walk-in = ไม่มี Appointment ID (มาโดยไม่ได้นัด)")
-
-        appt_options = {
-            "animation": True,
-            "animationDuration": 800,
-            "backgroundColor": "transparent",
-            "tooltip": {
-                "trigger": "axis",
-                "axisPointer": {"type": "cross"},
-                "backgroundColor": "rgba(30, 41, 59, 0.95)",
-                "borderColor": "#475569",
-                "textStyle": {"color": "#F1F5F9"},
-            },
-            "legend": {
-                "data": ["มีนัดหมาย (Scheduled)", "Walk-in"],
-                "bottom": 0,
-                "textStyle": {"color": "#9CA3AF"},
-            },
-            "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "10%", "containLabel": True},
-            "xAxis": {
-                "type": "category",
-                "data": dates,
-                "axisLine": {"lineStyle": {"color": "#374151"}},
-                "axisLabel": {"color": "#9CA3AF", "rotate": 45 if len(dates) > 15 else 0},
-            },
-            "yAxis": {
-                "type": "value",
-                "axisLine": {"lineStyle": {"color": "#374151"}},
-                "axisLabel": {"color": "#9CA3AF"},
-                "splitLine": {"lineStyle": {"color": "#1F2937"}},
-            },
-            "series": [
-                {
-                    "name": "มีนัดหมาย (Scheduled)",
-                    "type": "bar",
-                    "stack": "service",
-                    "data": daily_data['มีนัดหมาย'].tolist(),
-                    "itemStyle": {"color": "#3B82F6"},
-                    "barMaxWidth": 50,
-                },
-                {
-                    "name": "Walk-in",
-                    "type": "bar",
-                    "stack": "service",
-                    "data": daily_data['Walk-in'].tolist(),
-                    "itemStyle": {"color": "#F59E0B"},
-                    "barMaxWidth": 50,
-                },
-            ]
-        }
-        st_echarts(options=appt_options, height="350px", key="daily_appt_chart")
     else:
         st.info("ไม่มีข้อมูลในช่วงเวลาที่เลือก")
 
-    # ==================== NO-SHOW ANALYSIS (FROM RAW DATA) ====================
+    # ==================== APPOINTMENT & SERVICE ANALYSIS ====================
     noshow_stats = get_noshow_stats(start_date, end_date, selected_branches)
 
     if noshow_stats['has_data']:
         st.markdown("---")
-        st.markdown("### 📅 การวิเคราะห์ No-Show (จากข้อมูล Raw)")
+        st.markdown("### 📅 ข้อมูลการนัดหมายและเข้าใช้บริการ")
         st.caption("📌 ข้อมูลจากตาราง Appointment และ QLog | No-Show = นัดหมายแล้วไม่มา Check-in")
 
         # Metrics row
@@ -867,8 +813,8 @@ else:
                 """, unsafe_allow_html=True)
     else:
         st.markdown("---")
-        st.markdown("### 📅 การวิเคราะห์ No-Show")
-        st.info("⚠️ ยังไม่มีข้อมูล Appointment/QLog - กรุณาอัพโหลดไฟล์ Appointment และ QLog ในหน้า Upload เพื่อดูการวิเคราะห์ No-Show")
+        st.markdown("### 📅 ข้อมูลการนัดหมายและเข้าใช้บริการ")
+        st.info("⚠️ ยังไม่มีข้อมูล Appointment/QLog - กรุณาอัพโหลดไฟล์ Appointment และ QLog ในหน้า Upload เพื่อดูข้อมูลการนัดหมาย")
 
     st.markdown("---")
 
