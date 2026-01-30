@@ -412,8 +412,8 @@ with tab2:
                         records = import_df.to_dict('records')
 
                         # Insert in batches - larger batch = faster, but limited by PostgreSQL params
-                        # 7 columns * 1000 = 7000 params (well under 65535 limit)
-                        batch_size = 1000
+                        # 7 columns * 5000 = 35000 params (well under 65535 limit)
+                        batch_size = 5000
                         total_batches = (len(records) + batch_size - 1) // batch_size
                         for i in range(0, len(records), batch_size):
                             batch = records[i:i+batch_size]
@@ -601,8 +601,8 @@ with tab3:
                         records = import_df.to_dict('records')
 
                         # Insert in batches - larger batch = faster
-                        # 13 columns * 500 = 6500 params (well under 65535 limit)
-                        batch_size = 500
+                        # 13 columns * 4000 = 52000 params (under 65535 limit)
+                        batch_size = 4000
                         total_batches = (len(records) + batch_size - 1) // batch_size
                         for i in range(0, len(records), batch_size):
                             batch = records[i:i+batch_size]
@@ -806,8 +806,8 @@ with tab4:
                         records = import_df.to_dict('records')
 
                         # Insert in batches - larger batch = faster
-                        # 16 columns * 400 = 6400 params (well under 65535 limit)
-                        batch_size = 400
+                        # 16 columns * 3000 = 48000 params (under 65535 limit)
+                        batch_size = 3000
                         total_batches = (len(records) + batch_size - 1) // batch_size
                         for i in range(0, len(records), batch_size):
                             batch = records[i:i+batch_size]
