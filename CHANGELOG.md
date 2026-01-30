@@ -8,11 +8,13 @@ All notable changes to Bio Dashboard project are documented in this file.
 - **Optimized Bulk Insert for Large Files (30MB+)**
   - Problem: Uploading 6.4MB file (24K records) took extremely long, stuck at 30% progress
   - Root cause: SQLAlchemy `insert()` with batch is slow due to parameter binding overhead
-  - Solution: Use `psycopg2.extras.execute_values()` for PostgreSQL - 10-50x faster
+  - Solution v1: Use `psycopg2.extras.execute_values()` - 10-50x faster
+  - Solution v2: Upgrade to PostgreSQL `COPY` protocol - additional 2-5x faster
+  - Test results:
+    - 6.4MB (24K records): ✅ Fast
+    - 31MB (130K records): ✅ Fast (appointment-january.csv)
   - Changes:
-    - Appointment upload: Use `execute_values` with batch_size 10,000
-    - QLog upload: Use `execute_values` with batch_size 10,000
-    - Bio Raw upload: Use `execute_values` with batch_size 10,000
+    - All uploads now use `COPY FROM STDIN WITH CSV`
     - SQLite fallback: Use `pandas.to_sql()` with `method='multi'`
   - Files: `pages/1_📤_Upload.py`
 
