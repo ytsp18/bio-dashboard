@@ -25,57 +25,61 @@ require_login()
 # Apply theme
 apply_theme()
 
-# Additional CSS for Anomaly page
+# Additional CSS for Anomaly page - Light Theme
 st.markdown("""
 <style>
     .section-header {
-        background: linear-gradient(90deg, #c0392b 0%, #e74c3c 100%);
-        color: white;
-        padding: 12px 20px;
-        border-radius: 10px;
+        background: linear-gradient(90deg, #F8FAFC 0%, #FFFFFF 100%);
+        color: #DC2626;
+        padding: 16px 24px;
+        border-radius: 12px;
         margin: 20px 0 15px 0;
-        font-size: 1.2em;
+        font-size: 1.1em;
         font-weight: 600;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border: 1px solid #FECACA;
+        border-left: 4px solid #EF4444;
     }
 
     .section-header-blue {
-        background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%);
-        color: white;
-        padding: 12px 20px;
-        border-radius: 10px;
+        background: linear-gradient(90deg, #F8FAFC 0%, #FFFFFF 100%);
+        color: #1E293B;
+        padding: 16px 24px;
+        border-radius: 12px;
         margin: 20px 0 15px 0;
-        font-size: 1.2em;
+        font-size: 1.1em;
         font-weight: 600;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border: 1px solid #E2E8F0;
+        border-left: 4px solid #3B82F6;
     }
 
     .section-header-green {
-        background: linear-gradient(90deg, #1e8449 0%, #27ae60 100%);
-        color: white;
-        padding: 12px 20px;
-        border-radius: 10px;
+        background: linear-gradient(90deg, #F8FAFC 0%, #FFFFFF 100%);
+        color: #059669;
+        padding: 16px 24px;
+        border-radius: 12px;
         margin: 20px 0 15px 0;
-        font-size: 1.2em;
+        font-size: 1.1em;
         font-weight: 600;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border: 1px solid #A7F3D0;
+        border-left: 4px solid #10B981;
     }
 
     .anomaly-card {
-        background: white;
+        background: #FFFFFF;
         padding: 20px;
         border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        border-left: 4px solid #e74c3c;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        border: 1px solid #E2E8F0;
+        border-left: 4px solid #EF4444;
         margin: 10px 0;
     }
 
     .anomaly-card-warning {
-        border-left-color: #f39c12;
+        border-left-color: #F59E0B;
     }
 
     .anomaly-card-info {
-        border-left-color: #3498db;
+        border-left-color: #3B82F6;
     }
 
     .stat-badge {
@@ -87,23 +91,23 @@ st.markdown("""
     }
 
     .badge-danger {
-        background: #fadbd8;
-        color: #c0392b;
+        background: #FEE2E2;
+        color: #DC2626;
     }
 
     .badge-warning {
-        background: #fdebd0;
-        color: #d68910;
+        background: #FEF3C7;
+        color: #D97706;
     }
 
     .badge-success {
-        background: #d5f5e3;
-        color: #1e8449;
+        background: #D1FAE5;
+        color: #059669;
     }
 
     /* Fix multiselect text color for better contrast */
     .stMultiSelect [data-baseweb="tag"] {
-        background-color: #1e3c72 !important;
+        background-color: #3B82F6 !important;
         color: white !important;
     }
     .stMultiSelect [data-baseweb="tag"] span {
@@ -113,46 +117,49 @@ st.markdown("""
         fill: white !important;
     }
 
-    /* Summary table styling */
+    /* Summary table styling - Light Theme */
     .summary-table {
-        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        background: #FFFFFF;
         border-radius: 12px;
         padding: 20px;
         margin: 15px 0;
-        color: white;
+        color: #1E293B;
+        border: 1px solid #E2E8F0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .summary-table-header {
         font-size: 1.1em;
         font-weight: 600;
         margin-bottom: 15px;
         padding-bottom: 10px;
-        border-bottom: 1px solid rgba(255,255,255,0.3);
+        border-bottom: 1px solid #E2E8F0;
+        color: #1E293B;
     }
     .summary-row {
         display: flex;
         justify-content: space-between;
         padding: 8px 0;
-        border-bottom: 1px solid rgba(255,255,255,0.1);
+        border-bottom: 1px solid #F1F5F9;
     }
     .summary-row:last-child {
         border-bottom: none;
     }
     .summary-label {
-        color: rgba(255,255,255,0.9);
+        color: #64748B;
     }
     .summary-value {
         font-weight: 700;
-        color: #ffd700;
+        color: #2563EB;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # Title
 st.markdown("""
-<h1 style='text-align: center; color: #c0392b; margin-bottom: 5px;'>
+<h1 style='text-align: center; color: #DC2626; margin-bottom: 5px;'>
     ⚠️ รายงานข้อมูลผิดปกติ
 </h1>
-<p style='text-align: center; color: #666; margin-bottom: 25px;'>
+<p style='text-align: center; color: #64748B; margin-bottom: 25px;'>
     ตรวจสอบและวิเคราะห์ข้อมูลผิดปกติทุกประเภท พร้อมฟังก์ชันค้นหาและเปรียบเทียบ
 </p>
 """, unsafe_allow_html=True)
@@ -636,9 +643,9 @@ try:
 
     else:
         st.markdown("""
-        <div style='text-align: center; padding: 50px; background: #f8f9fa; border-radius: 15px;'>
-            <h2>💡 ยังไม่มีข้อมูล</h2>
-            <p>กรุณาอัพโหลดไฟล์รายงานก่อนที่หน้า Upload</p>
+        <div style='text-align: center; padding: 50px; background: #F8FAFC; border-radius: 15px; border: 1px solid #E2E8F0;'>
+            <h2 style='color: #1E293B;'>💡 ยังไม่มีข้อมูล</h2>
+            <p style='color: #64748B;'>กรุณาอัพโหลดไฟล์รายงานก่อนที่หน้า Upload</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -648,7 +655,7 @@ finally:
 # Footer
 st.markdown("---")
 st.markdown("""
-<div style='text-align: center; color: #888; padding: 10px;'>
+<div style='text-align: center; color: #64748B; padding: 10px;'>
     <p>⚠️ Bio Unified Report - Anomaly Dashboard with Search & Comparison</p>
 </div>
 """, unsafe_allow_html=True)

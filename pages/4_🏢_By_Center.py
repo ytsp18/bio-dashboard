@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from streamlit_echarts import st_echarts
 from io import BytesIO
 import sys
 import os
@@ -27,82 +28,135 @@ require_login()
 # Apply theme
 apply_theme()
 
-# Additional CSS
+# Additional CSS for Light Theme
 st.markdown("""
 <style>
+    .page-header-center {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 2px solid #E2E8F0;
+    }
+
+    .page-header-icon {
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, #8B5CF6, #7C3AED);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+    }
+
     .section-header-green {
-        background: linear-gradient(90deg, #1e8449 0%, #27ae60 100%);
-        color: white;
-        padding: 12px 20px;
-        border-radius: 10px;
-        margin: 20px 0 15px 0;
-        font-size: 1.2em;
+        background: #FFFFFF;
+        color: #1E293B;
+        padding: 16px 24px;
+        border-radius: 12px 12px 0 0;
+        font-size: 1rem;
         font-weight: 600;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-bottom: 1px solid #E2E8F0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
     }
 
     .section-header-purple {
-        background: linear-gradient(90deg, #6c3483 0%, #9b59b6 100%);
-        color: white;
-        padding: 12px 20px;
-        border-radius: 10px;
-        margin: 20px 0 15px 0;
-        font-size: 1.2em;
+        background: #FFFFFF;
+        color: #1E293B;
+        padding: 16px 24px;
+        border-radius: 12px 12px 0 0;
+        font-size: 1rem;
         font-weight: 600;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-bottom: 1px solid #E2E8F0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
     }
 
     .center-card {
-        background: white;
+        background: #FFFFFF;
         padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border-radius: 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.1);
         margin: 10px 0;
-        border-left: 4px solid #3498db;
+        border: 1px solid #E2E8F0;
+        border-left: 4px solid #3B82F6;
     }
 
     .region-card {
-        background: white;
+        background: #FFFFFF;
         padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border-radius: 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.1);
         margin: 10px 0;
-        border-left: 4px solid #9b59b6;
+        border: 1px solid #E2E8F0;
+        border-left: 4px solid #8B5CF6;
     }
 
     .rank-badge {
         display: inline-block;
-        padding: 5px 15px;
+        padding: 6px 16px;
         border-radius: 20px;
-        font-weight: bold;
+        font-weight: 600;
         margin-right: 10px;
+        font-size: 0.85rem;
     }
 
     .rank-gold {
-        background: linear-gradient(135deg, #f5af19, #f12711);
-        color: white;
+        background: linear-gradient(135deg, #FEF3C7, #FDE68A);
+        color: #92400E;
+        border: 1px solid #F59E0B;
     }
 
     .rank-silver {
-        background: linear-gradient(135deg, #c0c0c0, #808080);
-        color: white;
+        background: linear-gradient(135deg, #F1F5F9, #E2E8F0);
+        color: #475569;
+        border: 1px solid #94A3B8;
     }
 
     .rank-bronze {
-        background: linear-gradient(135deg, #cd7f32, #8b4513);
-        color: white;
+        background: linear-gradient(135deg, #FED7AA, #FDBA74);
+        color: #9A3412;
+        border: 1px solid #F97316;
+    }
+
+    .stat-box {
+        background: #F8FAFC;
+        padding: 16px;
+        border-radius: 12px;
+        border: 1px solid #E2E8F0;
+        text-align: center;
+    }
+
+    .stat-box-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: #1E293B;
+    }
+
+    .stat-box-label {
+        font-size: 0.8rem;
+        color: #64748B;
+        margin-top: 4px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Title
+# Title - Modern Light Theme
 st.markdown("""
-<h1 style='text-align: center; color: #1e3c72; margin-bottom: 5px;'>
-    🏢 สถิติตามศูนย์และภูมิภาค
-</h1>
-<p style='text-align: center; color: #666; margin-bottom: 25px;'>
-    วิเคราะห์ประสิทธิภาพการทำงานตามศูนย์บริการและภูมิภาค (Sheet 4 & 5)
-</p>
+<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #E2E8F0;">
+    <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #8B5CF6, #7C3AED); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+        <span style="font-size: 24px;">🏢</span>
+    </div>
+    <div>
+        <h1 style="font-size: 1.75rem; font-weight: 700; color: #1E293B; margin: 0;">สถิติตามศูนย์และภูมิภาค</h1>
+        <p style="font-size: 0.9rem; color: #64748B; margin: 0;">วิเคราะห์ประสิทธิภาพการทำงานตามศูนย์บริการและภูมิภาค (Sheet 4 & 5)</p>
+    </div>
+</div>
 """, unsafe_allow_html=True)
 
 
@@ -385,33 +439,115 @@ try:
                         else:
                             top_n = st.slider("แสดงกี่ศูนย์", min_value=5, max_value=min(50, df_len), value=min(20, df_len), key="center_topn")
 
-                    # Top N chart
+                    # Top N chart with ECharts
                     top_df = df.nlargest(top_n, chart_metric)
 
-                    color_scale = 'Greens' if chart_metric in ['บัตรดี', 'อัตราบัตรดี (%)'] else 'Blues'
-                    if chart_metric == 'SLA เฉลี่ย':
-                        color_scale = 'RdYlGn_r'
-
-                    fig1 = px.bar(
-                        top_df,
-                        x='รหัสศูนย์',
-                        y=chart_metric,
-                        title=f'Top {top_n} ศูนย์ - {metric_options[chart_metric]}' + filter_text,
-                        color=chart_metric,
-                        color_continuous_scale=color_scale,
-                        text=chart_metric,
-                        hover_data=['ชื่อศูนย์', 'จังหวัด']
-                    )
-                    if chart_metric == 'อัตราบัตรดี (%)':
-                        fig1.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
+                    # Determine color based on metric
+                    if chart_metric in ['บัตรดี', 'อัตราบัตรดี (%)']:
+                        bar_color = "#10b981"
+                        gradient_colors = ["#10b981", "#34d399"]
                     elif chart_metric == 'SLA เฉลี่ย':
-                        fig1.update_traces(texttemplate='%{text:.1f}', textposition='outside')
-                        fig1.add_hline(y=12, line_dash="dash", line_color="red", annotation_text="SLA Limit (12 min)")
+                        bar_color = "#f59e0b"
+                        gradient_colors = ["#f59e0b", "#fbbf24"]
                     else:
-                        fig1.update_traces(texttemplate='%{text:,.0f}', textposition='outside')
+                        bar_color = "#3b82f6"
+                        gradient_colors = ["#3b82f6", "#60a5fa"]
 
-                    fig1.update_layout(xaxis_tickangle=-45, showlegend=False)
-                    st.plotly_chart(fig1, use_container_width=True)
+                    # Format values for display
+                    if chart_metric == 'อัตราบัตรดี (%)':
+                        formatted_values = [f"{v:.1f}%" for v in top_df[chart_metric].tolist()]
+                    elif chart_metric == 'SLA เฉลี่ย':
+                        formatted_values = [f"{v:.1f}" for v in top_df[chart_metric].tolist()]
+                    else:
+                        formatted_values = [f"{int(v):,}" for v in top_df[chart_metric].tolist()]
+
+                    # ECharts Bar Chart - Light Theme
+                    bar_options = {
+                        "animation": True,
+                        "animationDuration": 1000,
+                        "animationEasing": "elasticOut",
+                        "backgroundColor": "transparent",
+                        "title": {
+                            "text": f"Top {top_n} ศูนย์ - {metric_options[chart_metric]}" + filter_text,
+                            "left": "center",
+                            "textStyle": {"color": "#1E293B", "fontSize": 16, "fontWeight": "600"}
+                        },
+                        "tooltip": {
+                            "trigger": "axis",
+                            "backgroundColor": "rgba(255, 255, 255, 0.95)",
+                            "borderColor": "#E2E8F0",
+                            "textStyle": {"color": "#1E293B"},
+                            "axisPointer": {"type": "shadow"}
+                        },
+                        "grid": {
+                            "left": "3%",
+                            "right": "4%",
+                            "bottom": "15%",
+                            "top": "15%",
+                            "containLabel": True
+                        },
+                        "xAxis": {
+                            "type": "category",
+                            "data": top_df['รหัสศูนย์'].tolist(),
+                            "axisLabel": {
+                                "color": "#64748B",
+                                "rotate": 45,
+                                "fontSize": 10
+                            },
+                            "axisLine": {"lineStyle": {"color": "#E2E8F0"}}
+                        },
+                        "yAxis": {
+                            "type": "value",
+                            "axisLabel": {"color": "#64748B"},
+                            "axisLine": {"lineStyle": {"color": "#E2E8F0"}},
+                            "splitLine": {"lineStyle": {"color": "#F1F5F9"}}
+                        },
+                        "series": [
+                            {
+                                "type": "bar",
+                                "data": top_df[chart_metric].tolist(),
+                                "barWidth": "60%",
+                                "itemStyle": {
+                                    "color": {
+                                        "type": "linear",
+                                        "x": 0, "y": 0, "x2": 0, "y2": 1,
+                                        "colorStops": [
+                                            {"offset": 0, "color": gradient_colors[0]},
+                                            {"offset": 1, "color": gradient_colors[1]}
+                                        ]
+                                    },
+                                    "borderRadius": [4, 4, 0, 0]
+                                },
+                                "emphasis": {
+                                    "itemStyle": {
+                                        "shadowBlur": 10,
+                                        "shadowColor": "rgba(0, 0, 0, 0.3)"
+                                    }
+                                },
+                                "label": {
+                                    "show": True,
+                                    "position": "top",
+                                    "color": "#1E293B",
+                                    "fontSize": 10,
+                                    "formatter": "{c}"
+                                }
+                            }
+                        ]
+                    }
+
+                    # Add SLA limit line if metric is SLA
+                    if chart_metric == 'SLA เฉลี่ย':
+                        bar_options["series"].append({
+                            "type": "line",
+                            "markLine": {
+                                "silent": True,
+                                "symbol": "none",
+                                "lineStyle": {"color": "#ef4444", "type": "dashed", "width": 2},
+                                "data": [{"yAxis": 12, "label": {"formatter": "SLA Limit (12 min)", "color": "#ef4444"}}]
+                            }
+                        })
+
+                    st_echarts(options=bar_options, height="450px", key=f"center_bar_chart_{chart_metric}")
 
                     # Scatter plot: Volume vs SLA
                     if len(df) > 1:

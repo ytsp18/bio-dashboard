@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import init_db
 from utils.auth_check import require_login
+from utils.theme import apply_theme
 from auth import (
     is_admin,
     get_all_users,
@@ -26,6 +27,9 @@ init_db()
 
 st.set_page_config(page_title="Admin - Bio Dashboard", page_icon="👤", layout="wide")
 
+# Apply light theme
+apply_theme()
+
 # Check authentication
 require_login()
 
@@ -35,40 +39,48 @@ if not is_admin(current_user):
     st.error("⛔ คุณไม่มีสิทธิ์เข้าถึงหน้านี้ (ต้องเป็น Admin เท่านั้น)")
     st.stop()
 
-# Dark theme CSS
+# Light theme CSS
 st.markdown("""
 <style>
     .admin-header {
-        background: linear-gradient(90deg, #6c3483 0%, #9b59b6 100%);
-        color: white;
+        background: linear-gradient(90deg, #F8FAFC 0%, #FFFFFF 100%);
+        color: #7C3AED;
         padding: 15px 25px;
-        border-radius: 10px;
+        border-radius: 12px;
         margin-bottom: 20px;
         text-align: center;
+        border: 1px solid #E2E8F0;
+        border-left: 4px solid #8B5CF6;
+    }
+
+    .admin-header h2 {
+        color: #7C3AED !important;
     }
 
     .section-header {
-        background: linear-gradient(90deg, #21262d 0%, #161b22 100%);
-        color: #c9d1d9;
-        padding: 12px 20px;
-        border-radius: 8px;
+        background: linear-gradient(90deg, #F8FAFC 0%, #FFFFFF 100%);
+        color: #1E293B;
+        padding: 16px 24px;
+        border-radius: 12px;
         margin: 20px 0 15px 0;
         font-size: 1em;
         font-weight: 600;
-        border-left: 4px solid #58a6ff;
+        border: 1px solid #E2E8F0;
+        border-left: 4px solid #3B82F6;
     }
 
     .user-card {
-        background: #161b22;
+        background: #FFFFFF;
         padding: 15px;
         border-radius: 10px;
-        border: 1px solid #30363d;
+        border: 1px solid #E2E8F0;
         margin: 10px 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
 
     .pending-badge {
-        background: #f59e0b;
-        color: black;
+        background: #FEF3C7;
+        color: #D97706;
         padding: 3px 10px;
         border-radius: 15px;
         font-size: 0.8em;
@@ -76,16 +88,16 @@ st.markdown("""
     }
 
     .admin-badge {
-        background: #9333ea;
-        color: white;
+        background: #EDE9FE;
+        color: #7C3AED;
         padding: 3px 10px;
         border-radius: 15px;
         font-size: 0.8em;
     }
 
     .user-badge {
-        background: #3b82f6;
-        color: white;
+        background: #DBEAFE;
+        color: #2563EB;
         padding: 3px 10px;
         border-radius: 15px;
         font-size: 0.8em;
@@ -444,7 +456,7 @@ with tab5:
 # Footer
 st.markdown("---")
 st.markdown(
-    '<div style="text-align: center; color: #6e7681; padding: 10px;">'
+    '<div style="text-align: center; color: #64748B; padding: 10px;">'
     'Bio Dashboard - Admin Panel'
     '</div>',
     unsafe_allow_html=True

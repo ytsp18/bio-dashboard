@@ -82,30 +82,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1f77b4;
-        margin-bottom: 1rem;
-    }
-    .metric-card {
-        background-color: #f0f2f6;
-        border-radius: 10px;
-        padding: 1rem;
-        text-align: center;
-    }
-    .stMetric {
-        background-color: #ffffff;
-        border-radius: 10px;
-        padding: 1rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-</style>
-""", unsafe_allow_html=True)
-
 # Check authentication
 if not check_authentication():
     st.stop()
@@ -114,7 +90,7 @@ if not check_authentication():
 logout_button()
 
 # Main content
-st.markdown('<p class="main-header">📊 Bio Unified Report Dashboard</p>', unsafe_allow_html=True)
+st.markdown("## 📊 Bio Unified Report Dashboard")
 
 st.markdown("""
 ยินดีต้อนรับสู่ระบบ Dashboard สำหรับดูและวิเคราะห์ข้อมูล Bio Unified Report

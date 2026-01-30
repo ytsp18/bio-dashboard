@@ -24,9 +24,9 @@ require_login()
 # Apply theme
 apply_theme()
 
-# Title - Clean
-st.markdown("<h2 style='margin-bottom: 5px;'>Raw Data</h2>", unsafe_allow_html=True)
-st.markdown("<p style='color: #888; margin-bottom: 20px;'>ดูและส่งออกข้อมูลบัตรทั้งหมด</p>", unsafe_allow_html=True)
+# Title - Light Theme
+st.markdown("<h2 style='margin-bottom: 5px; color: #1E293B;'>📋 Raw Data</h2>", unsafe_allow_html=True)
+st.markdown("<p style='color: #64748B; margin-bottom: 20px;'>ดูและส่งออกข้อมูลบัตรทั้งหมด</p>", unsafe_allow_html=True)
 
 session = get_session()
 

@@ -8,12 +8,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import init_db
 from auth import submit_registration, get_settings
+from utils.theme import apply_theme
 
 init_db()
 
 st.set_page_config(page_title="Register - Bio Dashboard", page_icon="📝", layout="centered")
 
-# Custom CSS
+# Apply light theme
+apply_theme()
+
+# Custom CSS for Register page
 st.markdown("""
 <style>
     .register-header {
@@ -23,39 +27,40 @@ st.markdown("""
     }
 
     .register-header h1 {
-        color: #58a6ff;
+        color: #2563EB;
         margin-bottom: 10px;
     }
 
     .register-header p {
-        color: #8b949e;
+        color: #64748B;
     }
 
     .form-container {
-        background: #161b22;
+        background: #FFFFFF;
         padding: 30px;
         border-radius: 15px;
-        border: 1px solid #30363d;
+        border: 1px solid #E2E8F0;
         max-width: 500px;
         margin: 0 auto;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
 
     .info-box {
-        background: #1f2d3d;
-        border-left: 4px solid #58a6ff;
+        background: #EFF6FF;
+        border-left: 4px solid #3B82F6;
         padding: 15px;
         border-radius: 5px;
         margin: 20px 0;
-        color: #c9d1d9;
+        color: #1E40AF;
     }
 
     .success-box {
-        background: #1f3d2d;
-        border-left: 4px solid #3fb950;
+        background: #ECFDF5;
+        border-left: 4px solid #10B981;
         padding: 20px;
         border-radius: 5px;
         text-align: center;
-        color: #c9d1d9;
+        color: #065F46;
     }
 </style>
 """, unsafe_allow_html=True)

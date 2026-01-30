@@ -1,214 +1,126 @@
-"""Theme configuration for Bio Dashboard - Dark Mode Only."""
+"""Theme configuration for Bio Dashboard - Dark Theme."""
 import streamlit as st
+
+# Color Palette - Dark Theme
+COLORS = {
+    "primary": "#00D4AA",
+    "primary_light": "#00E5BB",
+    "success": "#10B981",
+    "warning": "#F59E0B",
+    "danger": "#EF4444",
+    "bg_main": "#0E1117",
+    "bg_card": "#1A1F2E",
+    "bg_sidebar": "#1A1F2E",
+    "text_primary": "#FAFAFA",
+    "text_secondary": "#94A3B8",
+    "text_muted": "#64748B",
+    "border": "#2D3748",
+}
 
 DARK_THEME = """
 <style>
-    /* Main background */
-    [data-testid="stAppViewContainer"] {
-        background-color: #0e1117 !important;
-    }
-
-    [data-testid="stHeader"] {
-        background-color: #0e1117 !important;
-    }
-
-    [data-testid="stSidebar"] {
-        background-color: #161b22 !important;
-    }
-
-    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
-        color: #c9d1d9 !important;
-    }
-
-    [data-testid="stSidebar"] label {
-        color: #c9d1d9 !important;
-    }
-
-    .main .block-container {
-        padding-top: 1rem;
-        padding-bottom: 2rem;
-    }
-
-    /* Section headers */
-    .section-header {
-        background: linear-gradient(90deg, #21262d 0%, #161b22 100%);
-        color: #c9d1d9;
-        padding: 12px 20px;
-        border-radius: 8px;
-        margin: 20px 0 15px 0;
-        font-size: 1em;
-        font-weight: 600;
-        border-left: 4px solid #58a6ff;
-    }
-
-    .section-title {
-        font-size: 1.1em;
-        font-weight: 600;
-        color: #8b949e !important;
-        margin: 25px 0 15px 0;
-        padding-bottom: 8px;
-        border-bottom: 1px solid #30363d;
-    }
-
-    /* Stat cards */
-    .stat-card {
-        background: #161b22;
+    /* Metric Cards */
+    .metric-card {
+        background: #1A1F2E;
+        border-radius: 12px;
         padding: 20px;
-        border-radius: 10px;
-        text-align: center;
-        border: 1px solid #30363d;
+        border: 1px solid #2D3748;
     }
 
-    .stat-number {
-        font-size: 2.5em;
-        font-weight: bold;
-        color: #58a6ff;
+    .metric-value {
+        font-size: 2rem;
+        font-weight: 700;
+        line-height: 1.2;
+        margin-bottom: 4px;
     }
 
-    .stat-label {
-        font-size: 0.9em;
-        color: #8b949e;
-        margin-top: 5px;
+    .metric-value-blue { color: #00D4AA; }
+    .metric-value-green { color: #10B981; }
+    .metric-value-orange { color: #F59E0B; }
+    .metric-value-red { color: #EF4444; }
+
+    .metric-label {
+        font-size: 0.875rem;
+        color: #94A3B8;
+        font-weight: 500;
     }
 
-    /* Alert boxes */
-    .alert-box {
-        background: #2d1f1f;
-        border-left: 4px solid #f85149;
-        padding: 15px;
-        border-radius: 5px;
-        margin: 10px 0;
-        color: #f85149;
-    }
-
-    .success-box {
-        background: #1f2d1f;
-        border-left: 4px solid #3fb950;
-        padding: 15px;
-        border-radius: 5px;
-        margin: 10px 0;
-        color: #3fb950;
-    }
-
-    .info-box {
-        background: #1f2d3d;
-        border-left: 4px solid #58a6ff;
-        padding: 15px;
-        border-radius: 5px;
-        margin: 10px 0;
-        color: #58a6ff;
-    }
-
-    .card-detail {
-        background: #161b22;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #30363d;
-        margin: 10px 0;
-        color: #c9d1d9;
-    }
-
-    .filter-section {
-        background: #161b22;
-        padding: 20px;
-        border-radius: 10px;
+    /* Section Card */
+    .section-card {
+        background: #1A1F2E;
+        border-radius: 12px;
+        border: 1px solid #2D3748;
         margin-bottom: 20px;
+        overflow: hidden;
     }
 
-    /* Text colors */
-    h1, h2, h3, h4, h5, h6 {
-        color: #c9d1d9 !important;
+    .section-header {
+        background: #252B3B;
+        padding: 12px 20px;
+        border-bottom: 1px solid #2D3748;
+        font-weight: 600;
+        color: #FAFAFA;
     }
 
-    p, span, label {
-        color: #8b949e;
+    .section-body {
+        padding: 20px;
     }
 
-    .stSelectbox label, .stMultiSelect label, .stTextInput label, .stDateInput label {
-        color: #c9d1d9 !important;
-    }
-
-    /* Metrics */
-    [data-testid="stMetricValue"] {
-        color: #58a6ff !important;
-    }
-
-    [data-testid="stMetricLabel"] {
-        color: #8b949e !important;
-    }
-
-    [data-testid="stMetricDelta"] {
-        color: #3fb950 !important;
-    }
-
-    /* DataFrame styling */
-    [data-testid="stDataFrame"] {
-        background-color: #161b22 !important;
-    }
-
-    /* Tabs styling */
-    .stTabs [data-baseweb="tab-list"] {
-        background-color: #161b22 !important;
-    }
-
-    .stTabs [data-baseweb="tab"] {
-        color: #c9d1d9 !important;
-    }
-
-    /* Button styling */
+    /* Buttons */
     .stButton > button {
-        background-color: #21262d !important;
-        color: #c9d1d9 !important;
-        border-color: #30363d !important;
+        background: linear-gradient(135deg, #00D4AA 0%, #00B894 100%) !important;
+        color: #0E1117 !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 0.5rem 1rem !important;
+        font-weight: 600 !important;
     }
 
     .stButton > button:hover {
-        background-color: #30363d !important;
+        background: linear-gradient(135deg, #00E5BB 0%, #00D4AA 100%) !important;
     }
 
-    /* Download button */
+    /* Download Button */
     .stDownloadButton > button {
-        background-color: #238636 !important;
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%) !important;
         color: white !important;
-        border-color: #238636 !important;
     }
 
-    .stDownloadButton > button:hover {
-        background-color: #2ea043 !important;
+    /* Alert Boxes */
+    .alert-success {
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        border-left: 4px solid #10B981;
+        padding: 16px 20px;
+        border-radius: 8px;
+        color: #10B981;
     }
 
-    /* Info/Warning/Error boxes */
-    [data-testid="stAlert"] {
-        background-color: #161b22 !important;
-        color: #c9d1d9 !important;
+    .alert-warning {
+        background: rgba(245, 158, 11, 0.1);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+        border-left: 4px solid #F59E0B;
+        padding: 16px 20px;
+        border-radius: 8px;
+        color: #F59E0B;
     }
 
-    /* Input fields */
-    .stTextInput input {
-        background-color: #0d1117 !important;
-        color: #c9d1d9 !important;
-        border-color: #30363d !important;
+    .alert-danger {
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-left: 4px solid #EF4444;
+        padding: 16px 20px;
+        border-radius: 8px;
+        color: #EF4444;
     }
 
-    .stDateInput input {
-        background-color: #0d1117 !important;
-        color: #c9d1d9 !important;
-    }
-
-    /* Expander */
-    .streamlit-expanderHeader {
-        background-color: #161b22 !important;
-        color: #c9d1d9 !important;
-    }
-
-    /* Radio buttons */
-    .stRadio label {
-        color: #c9d1d9 !important;
-    }
-
-    /* Checkbox */
-    .stCheckbox label {
-        color: #c9d1d9 !important;
+    .alert-info {
+        background: rgba(0, 212, 170, 0.1);
+        border: 1px solid rgba(0, 212, 170, 0.3);
+        border-left: 4px solid #00D4AA;
+        padding: 16px 20px;
+        border-radius: 8px;
+        color: #00D4AA;
     }
 </style>
 """
@@ -217,7 +129,11 @@ def apply_theme():
     """Apply dark theme CSS."""
     st.markdown(DARK_THEME, unsafe_allow_html=True)
 
+
+def get_color(name: str) -> str:
+    """Get color by name from palette."""
+    return COLORS.get(name, "#FAFAFA")
+
 def render_theme_toggle():
-    """Placeholder for theme toggle - now always dark mode."""
-    # No longer needed since we only use dark mode
+    """Placeholder for theme toggle."""
     pass

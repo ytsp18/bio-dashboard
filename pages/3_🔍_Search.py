@@ -128,15 +128,15 @@ st.set_page_config(page_title="Search - Bio Dashboard", page_icon="🔍", layout
 # Check authentication
 require_login()
 
-# Apply dark theme
+# Apply light theme
 apply_theme()
 
-# Dark mode CSS
+# Light Theme CSS
 st.markdown("""
 <style>
     .page-title {
         text-align: center;
-        color: #58a6ff;
+        color: #1E293B;
         font-size: 1.5em;
         font-weight: 600;
         margin-bottom: 5px;
@@ -144,35 +144,37 @@ st.markdown("""
 
     .page-subtitle {
         text-align: center;
-        color: #8b949e;
+        color: #64748B;
         margin-bottom: 25px;
     }
 
     .section-header {
-        background: linear-gradient(90deg, #21262d 0%, #161b22 100%);
-        color: #c9d1d9;
-        padding: 12px 20px;
-        border-radius: 8px;
+        background: linear-gradient(90deg, #F8FAFC 0%, #FFFFFF 100%);
+        color: #1E293B;
+        padding: 16px 24px;
+        border-radius: 12px;
         margin: 20px 0 15px 0;
         font-size: 1em;
         font-weight: 600;
-        border-left: 4px solid #58a6ff;
+        border: 1px solid #E2E8F0;
+        border-left: 4px solid #3B82F6;
     }
 
     .detail-card {
-        background: #161b22;
+        background: #FFFFFF;
         padding: 20px;
         border-radius: 12px;
-        border: 1px solid #30363d;
+        border: 1px solid #E2E8F0;
         margin: 10px 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
 
     .detail-header {
-        color: #58a6ff;
+        color: #2563EB;
         font-weight: bold;
         margin-bottom: 10px;
         padding-bottom: 5px;
-        border-bottom: 2px solid #30363d;
+        border-bottom: 2px solid #E2E8F0;
     }
 
     .flag-badge {
@@ -184,68 +186,69 @@ st.markdown("""
     }
 
     .flag-warning {
-        background: #3d2d1f;
-        color: #f59e0b;
+        background: #FEF3C7;
+        color: #D97706;
     }
 
     .flag-danger {
-        background: #2d1f1f;
-        color: #f85149;
+        background: #FEE2E2;
+        color: #DC2626;
     }
 
     .flag-success {
-        background: #1f2d1f;
-        color: #3fb950;
+        background: #D1FAE5;
+        color: #059669;
     }
 
     .search-box {
-        background: #161b22;
+        background: #FFFFFF;
         padding: 20px;
         border-radius: 15px;
         margin-bottom: 20px;
-        border: 1px solid #30363d;
+        border: 1px solid #E2E8F0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
 
     .anomaly-box {
-        background: #2d2418;
-        border: 1px solid #f59e0b;
+        background: #FFFBEB;
+        border: 1px solid #F59E0B;
         border-radius: 10px;
         padding: 15px;
         margin: 10px 0;
     }
 
     .anomaly-title {
-        color: #f59e0b;
+        color: #D97706;
         font-weight: bold;
         margin-bottom: 10px;
     }
 
     .info-tip {
-        background: #1f2d3d;
-        border-left: 4px solid #58a6ff;
+        background: #EFF6FF;
+        border-left: 4px solid #3B82F6;
         padding: 15px;
         border-radius: 5px;
         margin: 10px 0;
-        color: #c9d1d9;
+        color: #1E40AF;
     }
 
     .stat-box {
-        background: #161b22;
+        background: #FFFFFF;
         padding: 15px;
         border-radius: 8px;
         text-align: center;
-        border: 1px solid #30363d;
+        border: 1px solid #E2E8F0;
     }
 
     .stat-number {
         font-size: 1.8em;
         font-weight: bold;
-        color: #58a6ff;
+        color: #2563EB;
     }
 
     .stat-label {
         font-size: 0.85em;
-        color: #8b949e;
+        color: #64748B;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -671,4 +674,4 @@ finally:
     session.close()
 
 # Footer
-st.markdown('<div style="text-align: center; color: #6e7681; padding: 20px;">Bio Unified Report - Search</div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align: center; color: #64748B; padding: 20px;">Bio Unified Report - Search</div>', unsafe_allow_html=True)

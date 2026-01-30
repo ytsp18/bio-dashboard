@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import init_db
 from utils.auth_check import require_login
+from utils.theme import apply_theme
 from auth import (
     get_user,
     change_password,
@@ -19,6 +20,9 @@ init_db()
 
 st.set_page_config(page_title="Profile - Bio Dashboard", page_icon="🔐", layout="wide")
 
+# Apply light theme
+apply_theme()
+
 # Check authentication
 require_login()
 
@@ -28,16 +32,18 @@ current_name = st.session_state.get('name', '')
 user_data = get_user(current_username)
 user_role = get_user_role(current_username)
 
-# Dark theme CSS
+# Light theme CSS
 st.markdown("""
 <style>
     .profile-header {
-        background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%);
-        color: white;
+        background: linear-gradient(90deg, #F8FAFC 0%, #FFFFFF 100%);
+        color: #1E293B;
         padding: 30px;
         border-radius: 15px;
         margin-bottom: 30px;
         text-align: center;
+        border: 1px solid #E2E8F0;
+        border-top: 4px solid #3B82F6;
     }
 
     .profile-avatar {
@@ -49,40 +55,43 @@ st.markdown("""
         font-size: 1.8em;
         font-weight: bold;
         margin-bottom: 5px;
+        color: #1E293B;
     }
 
     .profile-username {
-        color: rgba(255,255,255,0.7);
+        color: #64748B;
         font-size: 1em;
     }
 
     .section-header {
-        background: linear-gradient(90deg, #21262d 0%, #161b22 100%);
-        color: #c9d1d9;
-        padding: 12px 20px;
-        border-radius: 8px;
+        background: linear-gradient(90deg, #F8FAFC 0%, #FFFFFF 100%);
+        color: #1E293B;
+        padding: 16px 24px;
+        border-radius: 12px;
         margin: 20px 0 15px 0;
         font-size: 1em;
         font-weight: 600;
-        border-left: 4px solid #58a6ff;
+        border: 1px solid #E2E8F0;
+        border-left: 4px solid #3B82F6;
     }
 
     .info-card {
-        background: #161b22;
+        background: #FFFFFF;
         padding: 20px;
         border-radius: 10px;
-        border: 1px solid #30363d;
+        border: 1px solid #E2E8F0;
         margin: 10px 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
 
     .info-label {
-        color: #8b949e;
+        color: #64748B;
         font-size: 0.9em;
         margin-bottom: 5px;
     }
 
     .info-value {
-        color: #c9d1d9;
+        color: #1E293B;
         font-size: 1.1em;
         font-weight: 500;
     }
@@ -240,7 +249,7 @@ with tab2:
 # Footer
 st.markdown("---")
 st.markdown(
-    '<div style="text-align: center; color: #6e7681; padding: 10px;">'
+    '<div style="text-align: center; color: #64748B; padding: 10px;">'
     'Bio Dashboard - Profile'
     '</div>',
     unsafe_allow_html=True

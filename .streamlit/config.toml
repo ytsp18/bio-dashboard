@@ -8,8 +8,13 @@ maxUploadSize = 200
 [browser]
 gatherUsageStats = false
 
+[ui]
+hideTopBar = false
+
 [theme]
-primaryColor = "#58a6ff"
-backgroundColor = "#0e1117"
-secondaryBackgroundColor = "#161b22"
-textColor = "#c9d1d9"
+# Dark Theme (Original)
+primaryColor = "#00D4AA"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#1A1F2E"
+textColor = "#FAFAFA"
+font = "sans serif"

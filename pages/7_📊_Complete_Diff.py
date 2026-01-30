@@ -13,6 +13,7 @@ from database.connection import init_db, get_session
 from database.models import Card, Report, CompleteDiff
 from sqlalchemy import func, and_, or_
 from utils.auth_check import require_login
+from utils.theme import apply_theme
 
 init_db()
 
@@ -21,20 +22,12 @@ st.set_page_config(page_title="Complete Diff - Bio Dashboard", page_icon="📊",
 # Check authentication
 require_login()
 
-# Dark theme CSS - clean and user-friendly
+# Apply light theme
+apply_theme()
+
+# Light theme CSS for Complete Diff page
 st.markdown("""
 <style>
-    /* Main background */
-    [data-testid="stAppViewContainer"] {
-        background-color: #0e1117 !important;
-    }
-    [data-testid="stHeader"] {
-        background-color: #0e1117 !important;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #161b22 !important;
-    }
-
     .main .block-container {
         padding-top: 1.5rem;
         padding-bottom: 2rem;
@@ -43,7 +36,7 @@ st.markdown("""
     /* Page title */
     .page-title {
         text-align: center;
-        color: #58a6ff;
+        color: #1E293B;
         font-size: 1.8em;
         font-weight: 600;
         margin-bottom: 5px;
@@ -51,172 +44,101 @@ st.markdown("""
 
     .page-subtitle {
         text-align: center;
-        color: #8b949e;
+        color: #64748B;
         margin-bottom: 25px;
         font-size: 0.95em;
     }
 
     /* Section headers */
     .section-header {
-        background: linear-gradient(90deg, #21262d 0%, #161b22 100%);
-        color: #c9d1d9;
-        padding: 12px 20px;
-        border-radius: 8px;
+        background: linear-gradient(90deg, #F8FAFC 0%, #FFFFFF 100%);
+        color: #1E293B;
+        padding: 16px 24px;
+        border-radius: 12px;
         margin: 25px 0 15px 0;
         font-size: 1em;
         font-weight: 600;
-        border-left: 4px solid #58a6ff;
+        border: 1px solid #E2E8F0;
+        border-left: 4px solid #3B82F6;
     }
 
     /* Stat cards */
     .stat-card {
-        background: #161b22;
+        background: #FFFFFF;
         padding: 20px;
-        border-radius: 10px;
+        border-radius: 12px;
         text-align: center;
-        border: 1px solid #30363d;
+        border: 1px solid #E2E8F0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
 
     .stat-number {
         font-size: 2.2em;
         font-weight: 700;
-        color: #58a6ff;
+        color: #2563EB;
     }
 
     .stat-number-warning {
-        color: #f85149 !important;
+        color: #DC2626 !important;
     }
 
     .stat-number-success {
-        color: #3fb950 !important;
+        color: #059669 !important;
     }
 
     .stat-label {
         font-size: 0.85em;
-        color: #8b949e;
+        color: #64748B;
         margin-top: 8px;
     }
 
     /* Alert box */
     .alert-box {
-        background: #2d1f1f;
-        border-left: 4px solid #f85149;
+        background: #FEF2F2;
+        border-left: 4px solid #EF4444;
         padding: 15px 20px;
         border-radius: 6px;
         margin: 15px 0;
-        color: #f8d7da;
+        color: #991B1B;
     }
 
     .alert-box strong {
-        color: #f85149;
+        color: #DC2626;
     }
 
     /* Info box */
     .info-box {
-        background: #1f2d3d;
-        border-left: 4px solid #58a6ff;
+        background: #EFF6FF;
+        border-left: 4px solid #3B82F6;
         padding: 15px 20px;
         border-radius: 6px;
         margin: 15px 0;
-        color: #c9d1d9;
+        color: #1E40AF;
     }
 
     /* Empty state */
     .empty-state {
         text-align: center;
         padding: 60px 40px;
-        background: #161b22;
+        background: #F8FAFC;
         border-radius: 12px;
-        border: 1px solid #30363d;
+        border: 1px solid #E2E8F0;
     }
 
     .empty-state h2 {
-        color: #8b949e;
+        color: #1E293B;
         font-size: 1.3em;
         margin-bottom: 10px;
     }
 
     .empty-state p {
-        color: #6e7681;
-    }
-
-    /* Text colors */
-    h1, h2, h3, h4, h5, h6 {
-        color: #c9d1d9 !important;
-    }
-
-    p, span, label {
-        color: #8b949e;
-    }
-
-    /* Sidebar */
-    [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
-        color: #c9d1d9 !important;
-    }
-
-    [data-testid="stSidebar"] label {
-        color: #c9d1d9 !important;
-    }
-
-    /* DataFrame */
-    [data-testid="stDataFrame"] {
-        background-color: #161b22 !important;
-    }
-
-    /* Buttons */
-    .stButton > button {
-        background-color: #21262d !important;
-        color: #c9d1d9 !important;
-        border-color: #30363d !important;
-    }
-
-    .stButton > button:hover {
-        background-color: #30363d !important;
-        border-color: #8b949e !important;
-    }
-
-    /* Download button */
-    .stDownloadButton > button {
-        background-color: #238636 !important;
-        color: white !important;
-        border-color: #238636 !important;
-    }
-
-    .stDownloadButton > button:hover {
-        background-color: #2ea043 !important;
-    }
-
-    /* Metrics */
-    [data-testid="stMetricValue"] {
-        color: #58a6ff !important;
-    }
-
-    [data-testid="stMetricLabel"] {
-        color: #8b949e !important;
-    }
-
-    /* Expander */
-    .streamlit-expanderHeader {
-        background-color: #161b22 !important;
-        color: #c9d1d9 !important;
-    }
-
-    /* Input fields */
-    .stTextInput input {
-        background-color: #0d1117 !important;
-        color: #c9d1d9 !important;
-        border-color: #30363d !important;
-    }
-
-    .stDateInput input {
-        background-color: #0d1117 !important;
-        color: #c9d1d9 !important;
+        color: #64748B;
     }
 
     /* Footer */
     .footer {
         text-align: center;
-        color: #6e7681;
+        color: #64748B;
         padding: 20px;
         font-size: 0.85em;
     }
@@ -395,9 +317,9 @@ try:
                 fig.update_layout(
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#c9d1d9',
-                    title_font_color='#c9d1d9',
-                    legend_font_color='#8b949e'
+                    font_color='#1E293B',
+                    title_font_color='#1E293B',
+                    legend_font_color='#64748B'
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -409,15 +331,15 @@ try:
                     x='วันที่พิมพ์',
                     y='จำนวน',
                     title='จำนวนรายการตามวันที่',
-                    color_discrete_sequence=['#58a6ff']
+                    color_discrete_sequence=['#3B82F6']
                 )
                 fig.update_layout(
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#c9d1d9',
-                    title_font_color='#c9d1d9',
-                    xaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
-                    yaxis=dict(gridcolor='rgba(255,255,255,0.1)')
+                    font_color='#1E293B',
+                    title_font_color='#1E293B',
+                    xaxis=dict(gridcolor='#E2E8F0'),
+                    yaxis=dict(gridcolor='#E2E8F0')
                 )
                 st.plotly_chart(fig, use_container_width=True)
 
