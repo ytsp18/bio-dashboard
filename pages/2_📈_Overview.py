@@ -10,7 +10,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import init_db, get_session
-from database.models import Card, Report, DeliveryCard, Appointment, QLog
+from database.models import Card, Report, DeliveryCard, Appointment, QLog, CardDeliveryRecord, CardDeliveryUpload
 from sqlalchemy import func, and_, or_, case, literal
 from utils.theme import apply_theme
 from utils.auth_check import require_login
@@ -61,12 +61,36 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
 
         report_ids_with_data = session.query(Card.report_id).filter(date_filter).distinct().subquery()
 
-        unique_delivery = session.query(func.count(func.distinct(DeliveryCard.serial_number))).filter(
+        # DeliveryCard (from Bio Unified Report Sheet 7)
+        unique_delivery_bio = session.query(func.count(func.distinct(DeliveryCard.serial_number))).filter(
             DeliveryCard.print_status == 'G',
             DeliveryCard.report_id.in_(session.query(report_ids_with_data))
         ).scalar() or 0
 
+        # CardDeliveryRecord (from Card Delivery tab upload)
+        # Filter by create_date (cast to date for comparison)
+        cdr_filters = [CardDeliveryRecord.print_status == 'G']
+        if start_date and end_date:
+            cdr_filters.append(func.date(CardDeliveryRecord.create_date) >= start_date)
+            cdr_filters.append(func.date(CardDeliveryRecord.create_date) <= end_date)
+        unique_delivery_cdr = session.query(func.count(func.distinct(CardDeliveryRecord.serial_number))).filter(
+            and_(*cdr_filters)
+        ).scalar() or 0
+
+        # Combine unique delivery (union to avoid duplicates)
         from sqlalchemy import union_all
+
+        delivery_bio_serials = session.query(DeliveryCard.serial_number.label('sn')).filter(
+            DeliveryCard.print_status == 'G',
+            DeliveryCard.report_id.in_(session.query(report_ids_with_data)),
+            DeliveryCard.serial_number.isnot(None), DeliveryCard.serial_number != ''
+        )
+        delivery_cdr_serials = session.query(CardDeliveryRecord.serial_number.label('sn')).filter(
+            and_(*cdr_filters),
+            CardDeliveryRecord.serial_number.isnot(None), CardDeliveryRecord.serial_number != ''
+        )
+        combined_delivery = union_all(delivery_bio_serials, delivery_cdr_serials).subquery()
+        unique_delivery = session.query(func.count(func.distinct(combined_delivery.c.sn))).scalar() or 0
 
         card_serials = session.query(Card.serial_number.label('sn')).filter(
             date_filter, Card.print_status == 'G',
@@ -77,15 +101,25 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
             DeliveryCard.report_id.in_(session.query(report_ids_with_data)),
             DeliveryCard.serial_number.isnot(None), DeliveryCard.serial_number != ''
         )
-        combined_serials = union_all(card_serials, delivery_serials).subquery()
+        cdr_serials = session.query(CardDeliveryRecord.serial_number.label('sn')).filter(
+            and_(*cdr_filters),
+            CardDeliveryRecord.serial_number.isnot(None), CardDeliveryRecord.serial_number != ''
+        )
+        combined_serials = union_all(card_serials, delivery_serials, cdr_serials).subquery()
         unique_total = session.query(func.count(func.distinct(combined_serials.c.sn))).scalar() or 0
 
         bad_at_center = session.query(Card).filter(date_filter, Card.print_status == 'B').count()
-        bad_delivery = session.query(DeliveryCard).filter(
+        bad_delivery_bio = session.query(DeliveryCard).filter(
             DeliveryCard.print_status == 'B',
             DeliveryCard.report_id.in_(session.query(report_ids_with_data))
         ).count()
-        bad_cards = bad_at_center + bad_delivery
+        # Bad cards from CardDeliveryRecord
+        cdr_bad_filters = [CardDeliveryRecord.print_status == 'B']
+        if start_date and end_date:
+            cdr_bad_filters.append(func.date(CardDeliveryRecord.create_date) >= start_date)
+            cdr_bad_filters.append(func.date(CardDeliveryRecord.create_date) <= end_date)
+        bad_delivery_cdr = session.query(CardDeliveryRecord).filter(and_(*cdr_bad_filters)).count()
+        bad_cards = bad_at_center + bad_delivery_bio + bad_delivery_cdr
 
         appt_one_g = session.query(Card.appointment_id).filter(
             date_filter, Card.print_status == 'G',
