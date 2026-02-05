@@ -1,11 +1,13 @@
 """Forecast page - Upcoming Appointments Workload Forecast."""
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from streamlit_echarts import st_echarts
 from datetime import date, timedelta
 import time
 import sys
 import os
+import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -671,79 +673,68 @@ if stats['has_data']:
                 })
 
             if treemap_data:
-                # Build enhanced tooltip by encoding info in name field
-                # ECharts treemap tooltip shows {b} = name, {c} = value
-                # We'll create a rich name that includes all info for tooltip
-                for item in treemap_data:
-                    status_emoji = "🟢" if item["status"] == "normal" else ("🟡" if item["status"] == "warning" else ("🔴" if item["status"] == "over" else "⚫"))
-                    # Keep branch_code for label display
-                    item["display_code"] = item["name"]
-                    # Create rich tooltip name with full details
-                    tooltip_lines = [
-                        f"📍 {item['branch_name']}",
-                        f"🔢 รหัส: {item['name']}",
-                        f"📊 นัดหมาย: {item['value_label']}",
-                        f"📈 Capacity: {item['capacity_label']}",
-                        f"{status_emoji} ใช้งาน: {item['usage_pct']}"
-                    ]
-                    item["tooltip_name"] = "\n".join(tooltip_lines)
+                # Render treemap using components.html with ECharts CDN
+                # Note: st_echarts doesn't support treemap type, so we use raw HTML
+                treemap_chart_data = [
+                    {
+                        "name": item["name"],  # branch_code
+                        "value": item["value"],
+                        "itemStyle": item["itemStyle"],
+                    }
+                    for item in treemap_data
+                ]
 
-                treemap_options = {
-                    "animation": True,
-                    "backgroundColor": "transparent",
-                    "tooltip": {
-                        "trigger": "item",
-                        "backgroundColor": "rgba(30, 41, 59, 0.95)",
-                        "borderColor": "#475569",
-                        "borderRadius": 8,
-                        "padding": [10, 14],
-                        "textStyle": {"color": "#F1F5F9", "fontSize": 13, "lineHeight": 22},
-                        "extraCssText": "max-width: 350px; white-space: pre-wrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3);",
-                        "formatter": "{b}"
-                    },
-                    "series": [
-                        {
-                            "type": "treemap",
-                            "data": [
-                                {
-                                    "name": item["tooltip_name"],
-                                    "value": item["value"],
-                                    "itemStyle": item["itemStyle"],
-                                    "label": {"formatter": item["display_code"]}
-                                }
-                                for item in treemap_data
-                            ],
-                            "roam": False,
-                            "nodeClick": False,
-                            "width": "100%",
-                            "height": "100%",
-                            "breadcrumb": {"show": False},
-                            "label": {
-                                "show": True,
-                                "color": "#FFFFFF",
-                                "fontSize": 9,
-                                "fontWeight": "bold",
-                            },
-                            "upperLabel": {"show": False},
-                            "itemStyle": {
-                                "borderColor": "#1F2937",
-                                "borderWidth": 2,
-                                "gapWidth": 2
-                            },
-                            "levels": [
-                                {
-                                    "itemStyle": {
-                                        "borderColor": "#374151",
-                                        "borderWidth": 2,
-                                        "gapWidth": 2
-                                    }
-                                }
-                            ]
-                        }
-                    ]
-                }
-
-                st_echarts(options=treemap_options, height="400px", key=f"forecast_treemap_{treemap_mode}_{center_type_filter}")
+                treemap_html = f'''
+                <div id="treemap" style="width: 100%; height: 400px;"></div>
+                <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+                <script>
+                    var chart = echarts.init(document.getElementById('treemap'), 'dark');
+                    var option = {{
+                        backgroundColor: 'transparent',
+                        tooltip: {{
+                            trigger: 'item',
+                            backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                            borderColor: '#475569',
+                            borderRadius: 8,
+                            padding: [10, 14],
+                            textStyle: {{color: '#F1F5F9', fontSize: 13}},
+                        }},
+                        series: [{{
+                            type: 'treemap',
+                            data: {json.dumps(treemap_chart_data, ensure_ascii=False)},
+                            roam: false,
+                            nodeClick: false,
+                            width: '100%',
+                            height: '100%',
+                            breadcrumb: {{show: false}},
+                            label: {{
+                                show: true,
+                                color: '#FFFFFF',
+                                fontSize: 9,
+                                fontWeight: 'bold',
+                            }},
+                            upperLabel: {{show: false}},
+                            itemStyle: {{
+                                borderColor: '#1F2937',
+                                borderWidth: 2,
+                                gapWidth: 2
+                            }},
+                            levels: [{{
+                                itemStyle: {{
+                                    borderColor: '#374151',
+                                    borderWidth: 2,
+                                    gapWidth: 2
+                                }}
+                            }}]
+                        }}]
+                    }};
+                    chart.setOption(option);
+                    window.addEventListener('resize', function() {{
+                        chart.resize();
+                    }});
+                </script>
+                '''
+                components.html(treemap_html, height=420)
 
                 # Show mode description and stats
                 type_desc = ""
