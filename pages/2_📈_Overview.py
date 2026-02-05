@@ -115,14 +115,15 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
         incomplete = card_stats.incomplete or 0
 
         # ==================== SLA ออกบัตร from BioRecord (more complete data) ====================
-        bio_filters = [BioRecord.print_date >= start_date, BioRecord.print_date <= end_date]
+        from database.models import BioRecord as BioRec
+        bio_filters = [BioRec.print_date >= start_date, BioRec.print_date <= end_date]
         if selected_branches and len(selected_branches) > 0:
-            bio_filters.append(BioRecord.branch_code.in_(selected_branches))
+            bio_filters.append(BioRec.branch_code.in_(selected_branches))
 
         bio_sla_stats = session.query(
-            func.sum(case((and_(BioRecord.print_status == 'G', BioRecord.sla_minutes.isnot(None)), 1), else_=0)).label('sla_total'),
-            func.sum(case((and_(BioRecord.print_status == 'G', BioRecord.sla_minutes.isnot(None), BioRecord.sla_minutes <= 12), 1), else_=0)).label('sla_pass'),
-            func.avg(case((and_(BioRecord.print_status == 'G', BioRecord.sla_minutes.isnot(None)), BioRecord.sla_minutes))).label('avg_sla'),
+            func.sum(case((and_(BioRec.print_status == 'G', BioRec.sla_minutes.isnot(None)), 1), else_=0)).label('sla_total'),
+            func.sum(case((and_(BioRec.print_status == 'G', BioRec.sla_minutes.isnot(None), BioRec.sla_minutes <= 12), 1), else_=0)).label('sla_pass'),
+            func.avg(case((and_(BioRec.print_status == 'G', BioRec.sla_minutes.isnot(None)), BioRec.sla_minutes))).label('avg_sla'),
         ).filter(and_(*bio_filters)).first()
 
         sla_total = bio_sla_stats.sla_total or 0
