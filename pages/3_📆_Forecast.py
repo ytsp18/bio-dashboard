@@ -164,29 +164,52 @@ def get_upcoming_appointments_full(selected_branches=None, days_ahead=30):
             func.count(func.distinct(Appointment.appointment_id)).desc()
         ).all()
 
+        # First get max daily per branch for accurate status
+        max_daily_query = session.query(
+            Appointment.branch_code,
+            func.max(func.count(func.distinct(Appointment.appointment_id))).label('max_daily')
+        ).filter(
+            and_(*base_filters),
+            Appointment.appt_date <= chart_end_date
+        ).group_by(Appointment.branch_code, Appointment.appt_date).subquery()
+
+        max_daily_per_branch = session.query(
+            max_daily_query.c.branch_code,
+            func.max(max_daily_query.c.max_daily).label('max_daily')
+        ).group_by(max_daily_query.c.branch_code).all()
+
+        max_daily_map = {r.branch_code: r.max_daily for r in max_daily_per_branch}
+
         by_center = []
         for c in by_center_query:
             capacity = capacity_map.get(c.branch_code)
+            max_daily = max_daily_map.get(c.branch_code, 0)
             # Calculate average daily based on days_ahead
             days_in_range = (chart_end_date - today).days + 1
             avg_daily = c.total / days_in_range if days_in_range > 0 else c.total
+
+            # Use max_daily for status calculation (more accurate for detecting over-capacity days)
             status = 'normal'
-            if capacity:
-                usage_pct = (avg_daily / capacity) * 100
-                if usage_pct >= 100:
+            max_usage_pct = None
+            if capacity and max_daily:
+                max_usage_pct = (max_daily / capacity) * 100
+                if max_usage_pct >= 100:
                     status = 'over'
-                elif usage_pct >= 80:
+                elif max_usage_pct >= 80:
                     status = 'warning'
-            else:
-                usage_pct = None
+
+            # Also calculate avg usage for reference
+            avg_usage_pct = (avg_daily / capacity) * 100 if capacity else None
 
             by_center.append({
                 'branch_code': c.branch_code,
                 'branch_name': branch_map.get(c.branch_code, c.branch_code),
                 'count': c.total,
                 'avg_daily': round(avg_daily, 1),
+                'max_daily': max_daily,
                 'capacity': capacity,
-                'usage_pct': round(usage_pct, 1) if usage_pct else None,
+                'usage_pct': round(avg_usage_pct, 1) if avg_usage_pct else None,
+                'max_usage_pct': round(max_usage_pct, 1) if max_usage_pct else None,
                 'status': status
             })
 
@@ -602,7 +625,7 @@ if stats['has_data']:
                     key="center_type_filter"
                 )
 
-            st.markdown("**ขนาดกล่อง** = ปริมาณนัดหมาย | **สี** = 🟢 ปกติ (<80%) | 🟡 ใกล้เต็ม (80-89%) | 🔴 เกิน (≥90%) | ⚫ ไม่มี Capacity")
+            st.markdown("**ขนาดกล่อง** = ปริมาณนัดหมาย | **สี** (จากวันที่มากสุด) = 🟢 ปกติ (<80%) | 🟡 ใกล้เต็ม (80-99%) | 🔴 เต็ม/เกิน (≥100%) | ⚫ ไม่มี Capacity")
 
             # Calculate days in range for monthly calculation
             today = date.today()
@@ -623,43 +646,41 @@ if stats['has_data']:
             treemap_data = []
             for c in filtered_centers:
                 capacity = c['capacity']
+                max_daily = c.get('max_daily', 0)
 
                 if treemap_mode == "รายวัน":
-                    # Daily view: use avg_daily vs daily capacity
+                    # Daily view: use max_daily for color, avg_daily for display
                     display_value = c['avg_daily']
-                    if capacity:
-                        usage_pct = (c['avg_daily'] / capacity) * 100
-                    else:
-                        usage_pct = None
-                    value_label = f"{c['avg_daily']:.0f}/วัน"
+                    value_label = f"เฉลี่ย {c['avg_daily']:.0f}, สูงสุด {max_daily}/วัน"
                     capacity_label = f"{capacity:,}/วัน" if capacity else "N/A"
                 else:
                     # Monthly view: use total count vs monthly capacity (capacity * days)
                     display_value = c['count']
                     monthly_capacity = capacity * days_in_range if capacity else None
-                    if monthly_capacity:
-                        usage_pct = (c['count'] / monthly_capacity) * 100
-                    else:
-                        usage_pct = None
                     value_label = f"{c['count']:,} ({days_in_range} วัน)"
                     capacity_label = f"{monthly_capacity:,} ({days_in_range} วัน)" if monthly_capacity else "N/A"
 
-                # Determine color based on usage
-                # 🟢 Green = <80%, 🟡 Yellow = 80-89%, 🔴 Red = ≥90%
+                # Use max_usage_pct for color (from pre-calculated status)
+                # This reflects the worst-case day, not average
+                max_usage_pct = c.get('max_usage_pct')
+                status = c.get('status', 'normal')
+
+                # Determine color based on max_usage_pct (worst day)
+                # 🟢 Green = <80%, 🟡 Yellow = 80-99%, 🔴 Red = ≥100%
                 if capacity is None:
                     color = '#6B7280'  # Gray - no capacity data
                     status = 'unknown'
-                elif usage_pct and usage_pct >= 90:
-                    color = '#EF4444'  # Red - ≥90%
+                elif max_usage_pct and max_usage_pct >= 100:
+                    color = '#EF4444'  # Red - ≥100%
                     status = 'over'
-                elif usage_pct and usage_pct >= 80:
-                    color = '#F59E0B'  # Yellow - 80-89%
+                elif max_usage_pct and max_usage_pct >= 80:
+                    color = '#F59E0B'  # Yellow - 80-99%
                     status = 'warning'
                 else:
                     color = '#10B981'  # Green - <80%
                     status = 'normal'
 
-                usage_text = f"{usage_pct:.0f}%" if usage_pct else "N/A"
+                usage_text = f"สูงสุด {max_usage_pct:.0f}%" if max_usage_pct else "N/A"
 
                 treemap_data.append({
                     "name": c['branch_code'],  # Show branch_code in box
@@ -934,46 +955,78 @@ if stats['has_data']:
                 first_date_col = col_rename[date_cols_sorted[0]]
                 display_df = display_df.sort_values(first_date_col, ascending=False)
 
-            # Apply conditional formatting based on capacity
+            # Build HTML table with conditional formatting
             date_col_names = [col_rename[d] for d in date_cols_sorted]
 
-            def highlight_capacity(row):
-                """Apply color based on usage vs capacity."""
+            def get_cell_style(val, capacity):
+                """Get background color based on usage vs capacity."""
+                if pd.isna(capacity) or capacity <= 0 or pd.isna(val):
+                    return ''
+                usage_pct = (val / capacity) * 100
+                if usage_pct >= 100:
+                    return 'background-color: #DC2626; color: white; font-weight: bold;'
+                elif usage_pct >= 80:
+                    return 'background-color: #D97706; color: white; font-weight: bold;'
+                elif usage_pct >= 50:
+                    return 'background-color: rgba(16, 185, 129, 0.3);'
+                return ''
+
+            # Build HTML table
+            html_parts = ['''
+            <style>
+            .forecast-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+            .forecast-table th { background: #1E293B; color: #9CA3AF; padding: 8px 6px; text-align: center; border: 1px solid #374151; position: sticky; top: 0; }
+            .forecast-table td { padding: 6px; text-align: center; border: 1px solid #374151; }
+            .forecast-table tr:hover { background: rgba(59, 130, 246, 0.1); }
+            .forecast-table .center-name { text-align: left; min-width: 200px; max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            </style>
+            <div style="max-height: 600px; overflow: auto; border: 1px solid #374151; border-radius: 8px;">
+            <table class="forecast-table">
+            <thead><tr>
+            ''']
+
+            # Header row
+            html_parts.append('<th class="center-name">ศูนย์</th>')
+            html_parts.append('<th>Capacity/วัน</th>')
+            for col in date_col_names:
+                html_parts.append(f'<th>{col}</th>')
+            html_parts.append('</tr></thead><tbody>')
+
+            # Data rows
+            for _, row in display_df.iterrows():
+                html_parts.append('<tr>')
+                center_name = str(row['ศูนย์'])[:40]
                 capacity = row['Capacity/วัน']
-                styles = [''] * len(row)
+                cap_str = f"{int(capacity):,}" if pd.notna(capacity) else '-'
 
-                for i, col in enumerate(row.index):
-                    if col in date_col_names:
-                        val = row[col]
-                        if pd.notna(capacity) and capacity > 0:
-                            usage_pct = (val / capacity) * 100
-                            if usage_pct >= 100:
-                                # Red - over capacity
-                                styles[i] = 'background-color: rgba(239, 68, 68, 0.6); color: white; font-weight: bold'
-                            elif usage_pct >= 80:
-                                # Yellow/Orange - warning (80-99%)
-                                styles[i] = 'background-color: rgba(245, 158, 11, 0.5); color: white; font-weight: bold'
-                            elif usage_pct >= 50:
-                                # Light green - moderate (50-79%)
-                                styles[i] = 'background-color: rgba(16, 185, 129, 0.2)'
-                            # else: no style (normal)
-                return styles
+                html_parts.append(f'<td class="center-name" title="{row["ศูนย์"]}">{center_name}</td>')
+                html_parts.append(f'<td>{cap_str}</td>')
 
-            styled_df = display_df.style.apply(highlight_capacity, axis=1)
+                for col in date_col_names:
+                    val = row[col]
+                    style = get_cell_style(val, capacity)
+                    val_str = f"{int(val):,}" if pd.notna(val) and val > 0 else '0'
+                    html_parts.append(f'<td style="{style}">{val_str}</td>')
 
+                html_parts.append('</tr>')
+
+            html_parts.append('</tbody></table></div>')
+
+            # Legend
             st.markdown("""
             <div style="background: linear-gradient(135deg, #1E293B, #0F172A); border-radius: 8px; padding: 10px 16px; border: 1px solid #374151; margin-bottom: 12px;">
                 <span style="color: #9CA3AF; font-size: 0.85rem;">
                     <b>สี:</b>
-                    <span style="background: rgba(239, 68, 68, 0.6); padding: 2px 8px; border-radius: 4px; margin-left: 8px;">🔴 เต็ม/เกิน (≥100%)</span>
-                    <span style="background: rgba(245, 158, 11, 0.5); padding: 2px 8px; border-radius: 4px; margin-left: 8px;">🟡 ใกล้เต็ม (80-99%)</span>
-                    <span style="background: rgba(16, 185, 129, 0.2); padding: 2px 8px; border-radius: 4px; margin-left: 8px;">🟢 ปกติ (50-79%)</span>
+                    <span style="background: #DC2626; color: white; padding: 2px 8px; border-radius: 4px; margin-left: 8px;">🔴 เต็ม/เกิน (≥100%)</span>
+                    <span style="background: #D97706; color: white; padding: 2px 8px; border-radius: 4px; margin-left: 8px;">🟡 ใกล้เต็ม (80-99%)</span>
+                    <span style="background: rgba(16, 185, 129, 0.3); padding: 2px 8px; border-radius: 4px; margin-left: 8px;">🟢 ปกติ (50-79%)</span>
                     <span style="padding: 2px 8px; margin-left: 8px;">⬜ ว่าง (<50%)</span>
                 </span>
             </div>
             """, unsafe_allow_html=True)
 
-            st.dataframe(styled_df, hide_index=True, use_container_width=True, height=600)
+            # Render HTML table
+            st.markdown(''.join(html_parts), unsafe_allow_html=True)
 
             # Download button
             csv = display_df.to_csv(index=False).encode('utf-8-sig')
