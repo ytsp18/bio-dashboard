@@ -12,13 +12,80 @@ import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import init_db, get_session, get_branch_name_map_cached
-from database.models import Appointment, BranchMaster
-from sqlalchemy import func, and_
+from database.models import Appointment, BranchMaster, QLog
+from sqlalchemy import func, and_, or_
 from utils.theme import apply_theme
 from utils.auth_check import require_login
 from utils.logger import log_perf
 
 init_db()
+
+
+@st.cache_data(ttl=300)
+def get_checkin_data(selected_branches=None, start_date=None, end_date=None):
+    """
+    Get check-in data from QLog for comparison with appointments.
+    Returns aggregated check-in counts by branch and date.
+    """
+    session = get_session()
+    try:
+        if start_date is None:
+            start_date = date.today()
+        if end_date is None:
+            end_date = start_date + timedelta(days=29)
+
+        # Check if we have QLog data
+        has_qlog = session.query(QLog).first() is not None
+        if not has_qlog:
+            return {'has_data': False, 'by_branch': [], 'by_branch_date': []}
+
+        # Build filters
+        filters = [
+            QLog.qlog_date >= start_date,
+            QLog.qlog_date <= end_date,
+        ]
+        if selected_branches and len(selected_branches) > 0:
+            filters.append(QLog.branch_code.in_(selected_branches))
+
+        branch_map = get_branch_name_map_cached()
+
+        # Aggregate by branch (total in range)
+        by_branch_query = session.query(
+            QLog.branch_code,
+            func.count(QLog.id).label('checkin_count')
+        ).filter(and_(*filters)).group_by(QLog.branch_code).all()
+
+        by_branch = []
+        for r in by_branch_query:
+            by_branch.append({
+                'branch_code': r.branch_code,
+                'branch_name': branch_map.get(r.branch_code, r.branch_code),
+                'checkin_count': r.checkin_count
+            })
+
+        # Aggregate by branch and date
+        by_branch_date_query = session.query(
+            QLog.branch_code,
+            QLog.qlog_date,
+            func.count(QLog.id).label('checkin_count')
+        ).filter(and_(*filters)).group_by(QLog.branch_code, QLog.qlog_date).all()
+
+        by_branch_date = []
+        for r in by_branch_date_query:
+            by_branch_date.append({
+                'branch_code': r.branch_code,
+                'branch_name': branch_map.get(r.branch_code, r.branch_code),
+                'date': r.qlog_date,
+                'checkin_count': r.checkin_count
+            })
+
+        return {
+            'has_data': True,
+            'by_branch': by_branch,
+            'by_branch_date': by_branch_date
+        }
+    finally:
+        session.close()
 
 
 @st.cache_data(ttl=300)
@@ -122,24 +189,30 @@ def get_upcoming_appointments_full(selected_branches=None, start_date=None, end_
                 'max_date': None
             }
 
-        # Counts
-        today_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
-            and_(*base_filters), Appointment.appt_date == today
+        # Counts - use start_date as base (not today)
+        # For "day 1" and "day 2" labels based on selected range
+        day1_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
+            and_(*base_filters), Appointment.appt_date == start_date
         ).scalar() or 0
 
-        tomorrow = today + timedelta(days=1)
-        tomorrow_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
-            and_(*base_filters), Appointment.appt_date == tomorrow
+        day2 = start_date + timedelta(days=1)
+        day2_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
+            and_(*base_filters), Appointment.appt_date == day2
         ).scalar() or 0
 
-        next_7_days = today + timedelta(days=6)
-        next_7_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
-            and_(*base_filters), Appointment.appt_date <= next_7_days
+        # Calculate 7 days and 30 days from start_date
+        day7_end = start_date + timedelta(days=6)
+        day7_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
+            and_(*base_filters),
+            Appointment.appt_date >= start_date,
+            Appointment.appt_date <= day7_end
         ).scalar() or 0
 
-        next_30_days = today + timedelta(days=29)
-        next_30_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
-            and_(*base_filters), Appointment.appt_date <= next_30_days
+        day30_end = start_date + timedelta(days=29)
+        day30_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
+            and_(*base_filters),
+            Appointment.appt_date >= start_date,
+            Appointment.appt_date <= day30_end
         ).scalar() or 0
 
         # Get capacity map from BranchMaster
@@ -271,10 +344,10 @@ def get_upcoming_appointments_full(selected_branches=None, start_date=None, end_
 
         return {
             'has_data': True,
-            'today': today_count,
-            'tomorrow': tomorrow_count,
-            'next_7_days': next_7_count,
-            'next_30_days': next_30_count,
+            'day1': day1_count,
+            'day2': day2_count,
+            'day7': day7_count,
+            'day30': day30_count,
             'daily_data': daily_data,
             'by_center': by_center,
             'by_center_daily': by_center_daily,
@@ -464,15 +537,26 @@ if stats['has_data']:
     st.markdown("---")
     st.markdown("### 📊 สรุปภาพรวม")
 
+    # Dynamic labels based on view mode
+    if view_mode == "future":
+        day1_label = "📅 วันนี้"
+        day2_label = "📆 พรุ่งนี้"
+    elif view_mode == "history":
+        day1_label = f"📅 {start_date.strftime('%d/%m')}"
+        day2_label = f"📆 {(start_date + timedelta(days=1)).strftime('%d/%m')}"
+    else:
+        day1_label = f"📅 {start_date.strftime('%d/%m')}"
+        day2_label = f"📆 {(start_date + timedelta(days=1)).strftime('%d/%m')}"
+
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     with col1:
-        st.metric("📅 วันนี้", f"{stats['today']:,}")
+        st.metric(day1_label, f"{stats['day1']:,}")
     with col2:
-        st.metric("📆 พรุ่งนี้", f"{stats['tomorrow']:,}")
+        st.metric(day2_label, f"{stats['day2']:,}")
     with col3:
-        st.metric("📊 7 วัน", f"{stats['next_7_days']:,}")
+        st.metric("📊 7 วัน", f"{stats['day7']:,}", help=f"ตั้งแต่ {start_date.strftime('%d/%m')} - {(start_date + timedelta(days=6)).strftime('%d/%m')}")
     with col4:
-        st.metric("📈 30 วัน", f"{stats['next_30_days']:,}")
+        st.metric("📈 30 วัน", f"{stats['day30']:,}", help=f"ตั้งแต่ {start_date.strftime('%d/%m')} - {(start_date + timedelta(days=29)).strftime('%d/%m')}")
     with col5:
         st.metric("🔴 เกิน Capacity", f"{stats['over_capacity_count']:,}", help="จำนวนศูนย์/วัน ที่เกิน capacity")
     with col6:
@@ -1158,6 +1242,246 @@ if stats['has_data']:
                 "text/csv",
                 key="download_forecast_csv"
             )
+
+            # ============== Check-in Progress Bar Section ==============
+            st.markdown("---")
+            st.markdown("### 📊 สถานะ Check-in รายศูนย์")
+            st.caption("แสดงจำนวน Check-in เทียบกับนัดหมาย (ข้อมูลจาก QLog)")
+
+            # Get check-in data
+            checkin_data = get_checkin_data(selected_branches, start_date, end_date)
+
+            if checkin_data['has_data'] and checkin_data['by_branch']:
+                # Build checkin lookup by branch_code
+                checkin_by_branch = {c['branch_code']: c['checkin_count'] for c in checkin_data['by_branch']}
+
+                # Build checkin lookup by branch_code and date
+                checkin_by_branch_date = {}
+                for c in checkin_data['by_branch_date']:
+                    key = (c['branch_code'], c['date'])
+                    checkin_by_branch_date[key] = c['checkin_count']
+
+                # Build progress bar data
+                progress_data = []
+                for c in stats['by_center']:
+                    appt_count = c['count']
+                    checkin_count = checkin_by_branch.get(c['branch_code'], 0)
+                    capacity = c['capacity']
+                    capacity_total = capacity * days_in_range if capacity else None
+
+                    # Calculate check-in rate
+                    if appt_count > 0:
+                        checkin_rate = (checkin_count / appt_count) * 100
+                    else:
+                        checkin_rate = 0
+
+                    progress_data.append({
+                        'branch_code': c['branch_code'],
+                        'branch_name': c['branch_name'],
+                        'appt_count': appt_count,
+                        'checkin_count': checkin_count,
+                        'checkin_rate': checkin_rate,
+                        'capacity_total': capacity_total
+                    })
+
+                # Sort by check-in rate descending
+                progress_data.sort(key=lambda x: x['checkin_rate'], reverse=True)
+
+                # Summary metrics
+                total_appt = sum(p['appt_count'] for p in progress_data)
+                total_checkin = sum(p['checkin_count'] for p in progress_data)
+                overall_rate = (total_checkin / total_appt * 100) if total_appt > 0 else 0
+
+                col_sum1, col_sum2, col_sum3 = st.columns(3)
+                with col_sum1:
+                    st.metric("📅 นัดหมายทั้งหมด", f"{total_appt:,}")
+                with col_sum2:
+                    st.metric("✅ Check-in แล้ว", f"{total_checkin:,}")
+                with col_sum3:
+                    st.metric("📊 อัตรา Check-in", f"{overall_rate:.1f}%")
+
+                st.markdown("")
+
+                # View mode tabs: รวม vs รายวัน
+                checkin_view = st.radio(
+                    "มุมมอง",
+                    options=["📊 รวมตามศูนย์", "📅 รายวัน"],
+                    horizontal=True,
+                    key="checkin_view_mode"
+                )
+
+                if checkin_view == "📊 รวมตามศูนย์":
+                    # ========== AGGREGATE VIEW (Progress Bars) ==========
+                    progress_html = '''
+                    <style>
+                    .checkin-container { max-height: 500px; overflow-y: auto; padding-right: 8px; }
+                    .checkin-row { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #374151; }
+                    .checkin-name { width: 200px; font-size: 13px; color: #E5E7EB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                    .checkin-bar-container { flex: 1; margin: 0 12px; height: 24px; background: #1F2937; border-radius: 12px; overflow: hidden; position: relative; }
+                    .checkin-bar { height: 100%; border-radius: 12px; transition: width 0.3s ease; }
+                    .checkin-bar-text { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #E5E7EB; font-weight: bold; }
+                    .checkin-stats { width: 180px; text-align: right; font-size: 12px; color: #9CA3AF; }
+                    </style>
+                    <div class="checkin-container">
+                    '''
+
+                    # Filter options
+                    show_filter = st.radio(
+                        "แสดง",
+                        options=["ทั้งหมด", "เฉพาะมี Check-in", "เฉพาะต่ำกว่า 80%"],
+                        horizontal=True,
+                        key="checkin_filter"
+                    )
+
+                    filtered_data = progress_data
+                    if show_filter == "เฉพาะมี Check-in":
+                        filtered_data = [p for p in progress_data if p['checkin_count'] > 0]
+                    elif show_filter == "เฉพาะต่ำกว่า 80%":
+                        filtered_data = [p for p in progress_data if p['checkin_rate'] < 80]
+
+                    for p in filtered_data[:50]:
+                        rate = p['checkin_rate']
+                        if rate >= 80:
+                            bar_color = '#10B981'
+                        elif rate >= 50:
+                            bar_color = '#F59E0B'
+                        else:
+                            bar_color = '#EF4444'
+
+                        bar_width = min(rate, 100)
+                        stats_text = f"{p['checkin_count']:,} / {p['appt_count']:,}"
+
+                        progress_html += f'''
+                        <div class="checkin-row">
+                            <div class="checkin-name" title="{p['branch_name']}">{p['branch_code']}</div>
+                            <div class="checkin-bar-container">
+                                <div class="checkin-bar" style="width: {bar_width}%; background: {bar_color};"></div>
+                                <span class="checkin-bar-text">{rate:.0f}%</span>
+                            </div>
+                            <div class="checkin-stats">{stats_text}</div>
+                        </div>
+                        '''
+
+                    progress_html += '</div>'
+
+                    st.markdown("""
+                    <div style="background: #1E293B; border-radius: 8px; padding: 8px 16px; margin-bottom: 12px; border: 1px solid #374151;">
+                        <span style="color: #9CA3AF; font-size: 0.85rem;">
+                            <b>สี Progress Bar:</b>
+                            <span style="color: #10B981; margin-left: 12px;">🟢 ≥80%</span>
+                            <span style="color: #F59E0B; margin-left: 12px;">🟡 50-79%</span>
+                            <span style="color: #EF4444; margin-left: 12px;">🔴 <50%</span>
+                        </span>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    st.markdown(progress_html, unsafe_allow_html=True)
+
+                else:
+                    # ========== DAILY VIEW (Progress Bars per day) ==========
+                    # Get dates from by_center_daily
+                    all_dates = sorted(set(c['date'] for c in stats['by_center_daily']))
+
+                    if len(all_dates) > 14:
+                        # If more than 14 days, let user select date
+                        selected_daily_date = st.select_slider(
+                            "เลือกวันที่",
+                            options=all_dates,
+                            format_func=lambda x: x.strftime('%d/%m/%Y'),
+                            key="daily_date_slider"
+                        )
+                        display_dates = [selected_daily_date]
+                    else:
+                        display_dates = all_dates
+
+                    # Build appt lookup by branch and date
+                    appt_by_branch_date = {}
+                    for c in stats['by_center_daily']:
+                        key = (c['branch_code'], c['date'])
+                        appt_by_branch_date[key] = c['count']
+
+                    # Get unique branches
+                    branches_in_data = list(set(c['branch_code'] for c in stats['by_center_daily']))
+                    branch_name_map = {c['branch_code']: c['branch_name'] for c in stats['by_center']}
+
+                    # For each date, show progress bars
+                    for d in display_dates:
+                        st.markdown(f"#### 📅 {d.strftime('%d/%m/%Y')}")
+
+                        # Calculate daily totals for this date
+                        daily_appt_total = sum(appt_by_branch_date.get((b, d), 0) for b in branches_in_data)
+                        daily_checkin_total = sum(checkin_by_branch_date.get((b, d), 0) for b in branches_in_data)
+                        daily_rate = (daily_checkin_total / daily_appt_total * 100) if daily_appt_total > 0 else 0
+
+                        st.caption(f"นัดหมาย: {daily_appt_total:,} | Check-in: {daily_checkin_total:,} | อัตรา: {daily_rate:.1f}%")
+
+                        daily_html = '''
+                        <style>
+                        .daily-checkin-container { max-height: 400px; overflow-y: auto; padding-right: 8px; }
+                        .daily-checkin-row { display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid #374151; }
+                        .daily-checkin-name { width: 180px; font-size: 12px; color: #E5E7EB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                        .daily-checkin-bar-container { flex: 1; margin: 0 10px; height: 20px; background: #1F2937; border-radius: 10px; overflow: hidden; position: relative; }
+                        .daily-checkin-bar { height: 100%; border-radius: 10px; }
+                        .daily-checkin-bar-text { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #E5E7EB; font-weight: bold; }
+                        .daily-checkin-stats { width: 120px; text-align: right; font-size: 11px; color: #9CA3AF; }
+                        </style>
+                        <div class="daily-checkin-container">
+                        '''
+
+                        # Build data for this date
+                        daily_data = []
+                        for b in branches_in_data:
+                            appt = appt_by_branch_date.get((b, d), 0)
+                            checkin = checkin_by_branch_date.get((b, d), 0)
+                            if appt > 0:
+                                rate = (checkin / appt) * 100
+                            else:
+                                rate = 0
+                            daily_data.append({
+                                'branch_code': b,
+                                'appt': appt,
+                                'checkin': checkin,
+                                'rate': rate
+                            })
+
+                        # Sort by rate descending
+                        daily_data.sort(key=lambda x: x['rate'], reverse=True)
+
+                        # Filter to show only centers with appointments
+                        daily_data = [dd for dd in daily_data if dd['appt'] > 0]
+
+                        for dd in daily_data[:30]:  # Limit to 30 per day
+                            rate = dd['rate']
+                            if rate >= 80:
+                                bar_color = '#10B981'
+                            elif rate >= 50:
+                                bar_color = '#F59E0B'
+                            else:
+                                bar_color = '#EF4444'
+
+                            bar_width = min(rate, 100)
+
+                            daily_html += f'''
+                            <div class="daily-checkin-row">
+                                <div class="daily-checkin-name">{dd['branch_code']}</div>
+                                <div class="daily-checkin-bar-container">
+                                    <div class="daily-checkin-bar" style="width: {bar_width}%; background: {bar_color};"></div>
+                                    <span class="daily-checkin-bar-text">{rate:.0f}%</span>
+                                </div>
+                                <div class="daily-checkin-stats">{dd['checkin']:,} / {dd['appt']:,}</div>
+                            </div>
+                            '''
+
+                        daily_html += '</div>'
+                        st.markdown(daily_html, unsafe_allow_html=True)
+                        st.markdown("")
+
+                # Show info about centers with no check-in
+                no_checkin_count = len([p for p in progress_data if p['checkin_count'] == 0])
+                if no_checkin_count > 0:
+                    st.caption(f"ℹ️ {no_checkin_count} ศูนย์ ยังไม่มีข้อมูล Check-in ในช่วงเวลานี้")
+            else:
+                st.info("📭 ไม่มีข้อมูล Check-in (QLog) ในช่วงเวลาที่เลือก กรุณา upload ข้อมูล QLog ในหน้า Upload")
 
             # Highlight over capacity
             st.markdown("---")
