@@ -10,7 +10,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import init_db, get_session, get_branch_name_map_cached
-from database.models import Card, Report, DeliveryCard, Appointment, QLog, CardDeliveryRecord, CardDeliveryUpload, BranchMaster
+from database.models import Card, Report, DeliveryCard, Appointment, QLog, CardDeliveryRecord, CardDeliveryUpload, BranchMaster, BioRecord
 from sqlalchemy import func, and_, or_, case, literal
 from utils.theme import apply_theme
 from utils.auth_check import require_login
@@ -109,13 +109,25 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
         wrong_date = card_stats.wrong_date or 0
         sla_over_12 = card_stats.sla_over_12 or 0
         wait_over_1hr = card_stats.wait_over_1hr or 0
-        sla_total = card_stats.sla_total or 0
-        sla_pass = card_stats.sla_pass or 0
-        avg_sla = card_stats.avg_sla or 0
         wait_total = card_stats.wait_total or 0
         wait_pass = card_stats.wait_pass or 0
         avg_wait = card_stats.avg_wait or 0
         incomplete = card_stats.incomplete or 0
+
+        # ==================== SLA ออกบัตร from BioRecord (more complete data) ====================
+        bio_filters = [BioRecord.print_date >= start_date, BioRecord.print_date <= end_date]
+        if selected_branches and len(selected_branches) > 0:
+            bio_filters.append(BioRecord.branch_code.in_(selected_branches))
+
+        bio_sla_stats = session.query(
+            func.sum(case((and_(BioRecord.print_status == 'G', BioRecord.sla_minutes.isnot(None)), 1), else_=0)).label('sla_total'),
+            func.sum(case((and_(BioRecord.print_status == 'G', BioRecord.sla_minutes.isnot(None), BioRecord.sla_minutes <= 12), 1), else_=0)).label('sla_pass'),
+            func.avg(case((and_(BioRecord.print_status == 'G', BioRecord.sla_minutes.isnot(None)), BioRecord.sla_minutes))).label('avg_sla'),
+        ).filter(and_(*bio_filters)).first()
+
+        sla_total = bio_sla_stats.sla_total or 0
+        sla_pass = bio_sla_stats.sla_pass or 0
+        avg_sla = bio_sla_stats.avg_sla or 0
 
         # ==================== Delivery queries (still separate due to different tables) ====================
         report_ids_with_data = session.query(Card.report_id).filter(date_filter).distinct().subquery()
