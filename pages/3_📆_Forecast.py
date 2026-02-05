@@ -47,15 +47,17 @@ def get_branch_list_forecast():
 
 
 @st.cache_data(ttl=300)
-def get_upcoming_appointments_full(selected_branches=None, start_date=None, end_date=None):
+def get_upcoming_appointments_full(selected_branches=None, start_date=None, end_date=None, include_all_status=False):
     """
-    Get detailed upcoming appointments for workload forecasting.
+    Get detailed appointments for workload forecasting.
     Includes capacity comparison from BranchMaster.max_capacity.
 
     Args:
         selected_branches: tuple of branch codes to filter (None = all)
         start_date: start date for range (default: today)
         end_date: end date for range (default: 30 days from start)
+        include_all_status: if True, include all appointment statuses (for historical data)
+                           if False, only include SUCCESS and WAITING (for future forecast)
     """
     start_time = time.perf_counter()
     session = get_session()
@@ -86,12 +88,16 @@ def get_upcoming_appointments_full(selected_branches=None, start_date=None, end_
                 'max_date': None
             }
 
-        # Build base filter - confirmed or waiting appointments (exclude CANCEL, EXPIRED)
+        # Build base filter
         base_filters = [
             Appointment.appt_date >= start_date,
             Appointment.appt_date <= end_date,
-            Appointment.appt_status.in_(['SUCCESS', 'WAITING'])  # Include both confirmed and pending
         ]
+
+        # Filter by status based on mode
+        if not include_all_status:
+            # Future forecast: only confirmed or waiting appointments
+            base_filters.append(Appointment.appt_status.in_(['SUCCESS', 'WAITING']))
 
         if selected_branches and len(selected_branches) > 0:
             base_filters.append(Appointment.branch_code.in_(selected_branches))
@@ -319,6 +325,20 @@ branch_options = {code: name if name and name != code else code for code, name i
 # Date range selection
 today = date.today()
 
+# View mode selection (3 options)
+view_mode = st.radio(
+    "📊 โหมดแสดงผล",
+    options=["future", "history", "custom"],
+    format_func=lambda x: {
+        "future": "🔮 นัดหมายล่วงหน้า",
+        "history": "📜 ข้อมูลย้อนหลัง",
+        "custom": "⚙️ กำหนดเอง"
+    }[x],
+    horizontal=True,
+    key="view_mode",
+    help="เลือกโหมดการดูข้อมูล"
+)
+
 col_filter1, col_filter2 = st.columns([3, 4])
 
 with col_filter1:
@@ -333,19 +353,12 @@ with col_filter1:
     else:
         selected_branch_codes = []
 
-with col_filter2:
-    # Date range selection with preset options
-    date_mode = st.radio(
-        "📆 เลือกช่วงเวลา",
-        options=["preset", "custom"],
-        format_func=lambda x: "ช่วงเวลาสำเร็จรูป" if x == "preset" else "กำหนดเอง",
-        horizontal=True,
-        key="date_mode"
-    )
+# Set defaults based on view mode
+include_all_status = False
 
-col_date1, col_date2, col_date3 = st.columns([2, 2, 1])
-
-if date_mode == "preset":
+if view_mode == "future":
+    # Future mode: preset days ahead, only SUCCESS/WAITING
+    col_date1, col_date2, col_date3 = st.columns([2, 2, 1])
     with col_date1:
         days_preset = st.selectbox(
             "ช่วงเวลา",
@@ -356,14 +369,37 @@ if date_mode == "preset":
         )
     start_date = today
     end_date = today + timedelta(days=days_preset - 1)
+    include_all_status = False
     with col_date2:
         st.markdown(f"**ช่วงวันที่:** {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}")
+        st.caption("🔮 แสดงเฉพาะนัดหมายที่ยืนยัน (SUCCESS, WAITING)")
+
+elif view_mode == "history":
+    # History mode: preset days back, all statuses
+    col_date1, col_date2, col_date3 = st.columns([2, 2, 1])
+    with col_date1:
+        days_back = st.selectbox(
+            "ช่วงเวลา",
+            options=[7, 14, 30, 60, 90],
+            index=2,
+            format_func=lambda x: f"{x} วันย้อนหลัง",
+            key="days_back"
+        )
+    end_date = today - timedelta(days=1)  # Yesterday
+    start_date = end_date - timedelta(days=days_back - 1)
+    include_all_status = True
+    with col_date2:
+        st.markdown(f"**ช่วงวันที่:** {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}")
+        st.caption("📜 แสดงข้อมูลทุกสถานะ (รวม CANCEL, EXPIRED)")
+
 else:
+    # Custom mode: user selects dates and status filter
+    col_date1, col_date2, col_date3 = st.columns([2, 2, 1])
     with col_date1:
         start_date = st.date_input(
             "📅 วันที่เริ่มต้น",
-            value=today,
-            min_value=today - timedelta(days=365),
+            value=today - timedelta(days=30),
+            min_value=today - timedelta(days=730),
             max_value=today + timedelta(days=365),
             key="start_date"
         )
@@ -376,21 +412,52 @@ else:
             key="end_date"
         )
 
-with col_date3:
-    if st.button("🔄 Reset", use_container_width=True):
-        for key in ['forecast_branches', 'date_mode', 'days_preset', 'start_date', 'end_date']:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.rerun()
+    # Status filter for custom mode
+    include_all_status = st.checkbox(
+        "📋 รวมทุกสถานะ (CANCEL, EXPIRED, etc.)",
+        value=start_date < today,  # Default to True if looking at past dates
+        key="include_all_status",
+        help="เลือกเพื่อรวมนัดหมายที่ถูกยกเลิกหรือหมดอายุ"
+    )
+
+    if include_all_status:
+        st.caption("📋 แสดงข้อมูลทุกสถานะ")
+    else:
+        st.caption("🔮 แสดงเฉพาะนัดหมายที่ยืนยัน (SUCCESS, WAITING)")
+
+# Reset button
+if view_mode != "custom":
+    with col_date3:
+        if st.button("🔄 Reset", use_container_width=True):
+            for key in ['forecast_branches', 'view_mode', 'days_preset', 'days_back', 'start_date', 'end_date', 'include_all_status']:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
+else:
+    col_reset = st.columns([4, 1])[1]
+    with col_reset:
+        if st.button("🔄 Reset", use_container_width=True, key="reset_custom"):
+            for key in ['forecast_branches', 'view_mode', 'days_preset', 'days_back', 'start_date', 'end_date', 'include_all_status']:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
 
 # Calculate days in range for display
 days_in_range = (end_date - start_date).days + 1
-st.caption(f"📌 แสดงข้อมูล {days_in_range} วัน ({start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')})")
+
+# Mode indicator
+mode_label = {
+    "future": "🔮 นัดหมายล่วงหน้า",
+    "history": "📜 ข้อมูลย้อนหลัง",
+    "custom": "⚙️ กำหนดเอง"
+}[view_mode]
+status_label = "ทุกสถานะ" if include_all_status else "เฉพาะ SUCCESS/WAITING"
+st.caption(f"📌 {mode_label} | {days_in_range} วัน ({start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}) | {status_label}")
 
 selected_branches = tuple(selected_branch_codes) if selected_branch_codes else None
 
 # Get Data
-stats = get_upcoming_appointments_full(selected_branches, start_date, end_date)
+stats = get_upcoming_appointments_full(selected_branches, start_date, end_date, include_all_status)
 
 if stats['has_data']:
     # Summary Metrics
