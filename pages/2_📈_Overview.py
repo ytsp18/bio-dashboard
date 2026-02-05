@@ -200,6 +200,34 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
             date_filter, Card.print_status == 'G'
         ).group_by(Card.serial_number).having(func.count(Card.id) > 1).count()
 
+        # ==================== QLog Wait Time Stats (separate query) ====================
+        # If Card.wait_time_minutes is empty, use QLog.wait_time_seconds instead
+        qlog_filters = [QLog.qlog_date >= start_date, QLog.qlog_date <= end_date]
+        if selected_branches and len(selected_branches) > 0:
+            qlog_filters.append(QLog.branch_code.in_(selected_branches))
+
+        qlog_wait_stats = session.query(
+            func.count(QLog.id).label('qlog_total'),
+            func.sum(case((QLog.wait_time_seconds <= 3600, 1), else_=0)).label('qlog_pass'),  # ≤1 hour
+            func.sum(case((QLog.wait_time_seconds > 3600, 1), else_=0)).label('qlog_over_1hr'),  # >1 hour
+            func.avg(QLog.wait_time_seconds).label('qlog_avg_wait_sec')
+        ).filter(
+            and_(*qlog_filters),
+            QLog.wait_time_seconds.isnot(None)
+        ).first()
+
+        qlog_wait_total = qlog_wait_stats.qlog_total or 0
+        qlog_wait_pass = qlog_wait_stats.qlog_pass or 0
+        qlog_wait_over_1hr = qlog_wait_stats.qlog_over_1hr or 0
+        qlog_avg_wait_sec = qlog_wait_stats.qlog_avg_wait_sec or 0
+        qlog_avg_wait_min = qlog_avg_wait_sec / 60 if qlog_avg_wait_sec else 0
+
+        # Use QLog data if Card wait_time is empty
+        final_wait_total = wait_total if wait_total > 0 else qlog_wait_total
+        final_wait_pass = wait_pass if wait_total > 0 else qlog_wait_pass
+        final_avg_wait = avg_wait if wait_total > 0 else qlog_avg_wait_min
+        final_wait_over_1hr = wait_over_1hr if wait_total > 0 else qlog_wait_over_1hr
+
         return {
             'unique_at_center': unique_at_center,
             'unique_delivery': unique_delivery,
@@ -213,14 +241,14 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
             'wrong_branch': wrong_branch,
             'wrong_date': wrong_date,
             'sla_over_12': sla_over_12,
-            'wait_over_1hr': wait_over_1hr,
             'duplicate_serial': duplicate_serial,
             'sla_total': sla_total,
             'sla_pass': sla_pass,
             'avg_sla': avg_sla,
-            'wait_total': wait_total,
-            'wait_pass': wait_pass,
-            'avg_wait': avg_wait,
+            'wait_total': final_wait_total,
+            'wait_pass': final_wait_pass,
+            'avg_wait': final_avg_wait,
+            'wait_over_1hr': final_wait_over_1hr,
         }
     finally:
         session.close()
