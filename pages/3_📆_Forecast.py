@@ -775,60 +775,73 @@ if stats['has_data']:
                 elif center_type_filter == "บริการ (SC)":
                     bar_title = "ศูนย์บริการ (SC)"
 
-                center_bar_options = {
-                    "animation": True,
-                    "backgroundColor": "transparent",
-                    "tooltip": {
-                        "trigger": "axis",
-                        "axisPointer": {"type": "shadow"},
-                        "backgroundColor": "rgba(30, 41, 59, 0.95)",
-                        "borderColor": "#475569",
-                        "textStyle": {"color": "#F1F5F9"},
-                    },
-                    "legend": {
-                        "data": ["เฉลี่ย/วัน", "Capacity"],
-                        "bottom": 0,
-                        "textStyle": {"color": "#9CA3AF"},
-                    },
-                    "grid": {"left": "3%", "right": "10%", "bottom": "12%", "top": "5%", "containLabel": True},
-                    "xAxis": {
-                        "type": "value",
-                        "axisLine": {"lineStyle": {"color": "#374151"}},
-                        "axisLabel": {"color": "#9CA3AF"},
-                        "splitLine": {"lineStyle": {"color": "#1F2937"}},
-                    },
-                    "yAxis": {
-                        "type": "category",
-                        "data": center_names,
-                        "axisLine": {"lineStyle": {"color": "#374151"}},
-                        "axisLabel": {"color": "#9CA3AF", "fontSize": 10},
-                    },
-                    "series": [
-                        {
-                            "name": "เฉลี่ย/วัน",
-                            "type": "bar",
-                            "data": [{"value": v, "itemStyle": {"color": c}} for v, c in zip(center_avg, center_colors)],
-                            "barMaxWidth": 20,
-                            "label": {
-                                "show": True,
-                                "position": "right",
-                                "color": "#9CA3AF",
-                                "fontSize": 9,
-                                "formatter": "{c}"
-                            }
-                        },
-                        {
-                            "name": "Capacity",
-                            "type": "scatter",
-                            "data": center_capacity,
-                            "symbol": "diamond",
-                            "symbolSize": 12,
-                            "itemStyle": {"color": "#F1F5F9", "borderColor": "#374151", "borderWidth": 1}
-                        }
-                    ]
-                }
+                # Render horizontal bar chart using components.html
+                bar_data = [{"value": v, "itemStyle": {"color": c}} for v, c in zip(center_avg, center_colors)]
+
+                bar_html = f'''
+                <div id="center_bar" style="width: 100%; height: 600px;"></div>
+                <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+                <script>
+                    var chart = echarts.init(document.getElementById('center_bar'), 'dark');
+                    var option = {{
+                        backgroundColor: 'transparent',
+                        tooltip: {{
+                            trigger: 'axis',
+                            axisPointer: {{type: 'shadow'}},
+                            backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                            borderColor: '#475569',
+                            textStyle: {{color: '#F1F5F9'}},
+                        }},
+                        legend: {{
+                            data: ['เฉลี่ย/วัน', 'Capacity'],
+                            bottom: 0,
+                            textStyle: {{color: '#9CA3AF'}},
+                        }},
+                        grid: {{left: '3%', right: '10%', bottom: '12%', top: '5%', containLabel: true}},
+                        xAxis: {{
+                            type: 'value',
+                            axisLine: {{lineStyle: {{color: '#374151'}}}},
+                            axisLabel: {{color: '#9CA3AF'}},
+                            splitLine: {{lineStyle: {{color: '#1F2937'}}}},
+                        }},
+                        yAxis: {{
+                            type: 'category',
+                            data: {json.dumps(center_names, ensure_ascii=False)},
+                            axisLine: {{lineStyle: {{color: '#374151'}}}},
+                            axisLabel: {{color: '#9CA3AF', fontSize: 10}},
+                        }},
+                        series: [
+                            {{
+                                name: 'เฉลี่ย/วัน',
+                                type: 'bar',
+                                data: {json.dumps(bar_data)},
+                                barMaxWidth: 20,
+                                label: {{
+                                    show: true,
+                                    position: 'right',
+                                    color: '#9CA3AF',
+                                    fontSize: 9,
+                                    formatter: '{{c}}'
+                                }}
+                            }},
+                            {{
+                                name: 'Capacity',
+                                type: 'scatter',
+                                data: {json.dumps(center_capacity)},
+                                symbol: 'diamond',
+                                symbolSize: 12,
+                                itemStyle: {{color: '#F1F5F9', borderColor: '#374151', borderWidth: 1}}
+                            }}
+                        ]
+                    }};
+                    chart.setOption(option);
+                    window.addEventListener('resize', function() {{
+                        chart.resize();
+                    }});
+                </script>
+                '''
                 st.markdown(f"**{bar_title}** | 🔴 เกิน Capacity | 🟡 ≥80% | 🟢 ปกติ | ◆ = Capacity")
-                st_echarts(options=center_bar_options, height="600px", key=f"forecast_center_bar_{center_type_filter}")
+                components.html(bar_html, height=620)
 
             with col2:
                 st.markdown("**📋 สรุป Capacity รายศูนย์**")
