@@ -2,6 +2,87 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.4.0] - 2026-02-05
+
+### Added
+- **Modern UI Metric Cards** (`utils/metric_cards.py`)
+  - `render_metric_card()` - Card พร้อม gradient, shadow, trend indicators
+  - `render_operation_summary()` - Panel สรุปสถานะการดำเนินงาน
+  - `render_action_card()` - Card แบบ actionable พร้อมปุ่ม
+  - `render_kpi_gauge()` - Progress bar พร้อม threshold colors
+  - `render_mini_metric()` - Compact metric cards
+  - `render_uniform_card()` - Uniform-sized metric cards
+  - `render_card_grid()` - Grid layout for cards
+  - `inject_metric_cards_css()` - CSS injection for styling
+  - `calculate_trend()` - Calculate percentage change
+
+### Changed
+- **Overview Page UI Overhaul**
+  - Operation Summary Panel แสดงสถานะรวม (ok/warning/critical)
+  - Quick metrics row: บัตรดี, บัตรเสีย, สมบูรณ์, Anomaly, SLA, Work Permit
+  - Alert banners สำหรับรายการที่ต้องตรวจสอบ
+  - Metric cards มี gradient background และ shadow
+  - เพิ่ม trend indicators (เทียบ day/week/month)
+  - รายละเอียดการออกบัตร ใช้ uniform card layout
+  - Anomaly section ใช้ action cards
+
+### Files Added
+- `utils/metric_cards.py` - New UI components module
+
+### Files Modified
+- `pages/2_📈_Overview.py` - Integrated new metric card components
+- `__version__.py` - Bumped to 1.4.0
+
+---
+
+## [1.3.9] - 2026-01-31
+
+### Added
+- **Operation Summary Panel**
+  - Dashboard-wide status indicator (ok/warning/critical)
+  - Quick metrics row: บัตรดี, บัตรเสีย, สมบูรณ์, Anomaly, SLA ผ่าน, Work Permit
+  - Alert banners for items requiring attention
+  - Last updated timestamp
+
+- **Enhanced Metric Cards for Operations**
+  - Status badges: ✓ ปกติ (green), ! เตือน (yellow), !! วิกฤต (red)
+  - Progress bars showing % towards target
+  - Subtitle line for additional context (e.g., "Good Rate: 98.5%")
+  - Alert mode with pulse animation for critical items
+  - Improved trend indicators (day/week/month)
+
+- **Action Cards for Anomaly Section**
+  - Actionable cards with icon, title, description, count
+  - Quick action buttons "➡️ ดูรายละเอียด" linking to relevant pages
+  - Status-colored count badges
+  - Replaces old simple metrics layout
+
+- **Mini Metric Cards**
+  - Compact cards for SLA summary section
+  - Trend indicators with color coding
+
+- **KPI Gauge Component**
+  - Progress bar with color-coded thresholds
+  - Automatic status badge based on value
+
+### Changed
+- **Overview Page Layout**
+  - Operation Summary Panel at top after filters
+  - Metric cards now show status badges and progress bars
+  - Anomaly section redesigned with Action Cards
+  - SLA summary uses mini metric cards
+
+### Files Modified
+- `utils/metric_cards.py` - New components:
+  - `render_operation_summary()`
+  - `render_action_card()`
+  - `render_kpi_gauge()`
+  - Enhanced `render_metric_card()` with new parameters
+  - Enhanced `render_mini_metric()`
+- `pages/2_📈_Overview.py` - Integrated new components
+
+---
+
 ## [1.3.8] - 2026-01-31
 
 ### Added

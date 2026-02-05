@@ -15,6 +15,12 @@ from sqlalchemy import func, and_, or_, case, literal
 from utils.theme import apply_theme
 from utils.auth_check import require_login
 from utils.logger import log_perf, log_info
+from utils.metric_cards import (
+    render_metric_card, inject_metric_cards_css, calculate_trend,
+    render_operation_summary, render_action_card, render_kpi_gauge, render_mini_metric,
+    render_uniform_card, render_card_grid
+)
+from datetime import datetime
 
 init_db()
 
@@ -754,28 +760,171 @@ else:
     wait_fail = wait_total - wait_pass
     wait_pass_pct = (wait_pass / wait_total * 100) if wait_total > 0 else 0
 
-    # ==================== METRIC CARDS ====================
+    # Get trend data (compare with previous periods)
+    # Calculate date ranges for comparison
+    current_days = (end_date - start_date).days + 1
+
+    # Yesterday comparison (1 day back)
+    prev_day_end = start_date - timedelta(days=1)
+    prev_day_start = prev_day_end - timedelta(days=current_days - 1)
+
+    # Last week comparison (7 days back)
+    prev_week_end = start_date - timedelta(days=1)
+    prev_week_start = prev_week_end - timedelta(days=6)
+
+    # Last month comparison (30 days back)
+    prev_month_end = start_date - timedelta(days=1)
+    prev_month_start = prev_month_end - timedelta(days=29)
+
+    # Get previous period stats for trends
+    stats_prev_day = get_overview_stats(prev_day_start, prev_day_end, selected_branches)
+    stats_prev_week = get_overview_stats(prev_week_start, prev_week_end, selected_branches)
+    stats_prev_month = get_overview_stats(prev_month_start, prev_month_end, selected_branches)
+
+    # Calculate trends
+    trend_total_day = calculate_trend(unique_total, stats_prev_day['unique_total'])
+    trend_total_week = calculate_trend(unique_total, stats_prev_week['unique_total'])
+    trend_total_month = calculate_trend(unique_total, stats_prev_month['unique_total'])
+
+    trend_bad_day = calculate_trend(bad_cards, stats_prev_day['bad_cards'])
+    trend_bad_week = calculate_trend(bad_cards, stats_prev_week['bad_cards'])
+    trend_bad_month = calculate_trend(bad_cards, stats_prev_month['bad_cards'])
+
+    trend_complete_day = calculate_trend(complete_cards, stats_prev_day['complete_cards'])
+    trend_complete_week = calculate_trend(complete_cards, stats_prev_week['complete_cards'])
+    trend_complete_month = calculate_trend(complete_cards, stats_prev_month['complete_cards'])
+
+    # ==================== OPERATION SUMMARY PANEL ====================
     st.markdown("---")
+    inject_metric_cards_css()
 
+    # Calculate overall operation status
+    # Thresholds for status determination
+    bad_rate = (bad_cards / (unique_total + bad_cards) * 100) if (unique_total + bad_cards) > 0 else 0
+    anomaly_rate = (total_anomalies / unique_total * 100) if unique_total > 0 else 0
+
+    if bad_rate > 5 or anomaly_rate > 3 or total_anomalies > 50:
+        overall_status = "critical"
+        status_msg = "ต้องตรวจสอบ"
+    elif bad_rate > 2 or anomaly_rate > 1 or total_anomalies > 20:
+        overall_status = "warning"
+        status_msg = "มีรายการต้องติดตาม"
+    else:
+        overall_status = "ok"
+        status_msg = "ปกติ"
+
+    # Build alerts list based on data
+    alerts = []
+    if bad_cards > 0 and bad_rate > 2:
+        alerts.append({"message": f"บัตรเสีย {bad_cards:,} ใบ ({bad_rate:.1f}%)", "type": "warning"})
+    if total_anomalies > 0:
+        alerts.append({"message": f"พบความผิดปกติ {total_anomalies:,} รายการ", "type": "warning" if total_anomalies < 50 else "critical"})
+    if sla_pass_pct < 90:
+        alerts.append({"message": f"SLA ออกบัตร {sla_pass_pct:.1f}% (ต่ำกว่า 90%)", "type": "warning"})
+
+    # Render Operation Summary Panel
+    render_operation_summary(
+        title="สรุปสถานะการดำเนินงาน",
+        overall_status=overall_status,
+        status_message=status_msg,
+        metrics=[
+            {"label": "บัตรดี (G)", "value": unique_total, "icon": "serial"},
+            {"label": "บัตรเสีย (B)", "value": bad_cards, "icon": "error"},
+            {"label": "สมบูรณ์", "value": complete_cards, "icon": "complete"},
+            {"label": "Anomaly", "value": total_anomalies, "icon": "warning"},
+            {"label": "SLA ผ่าน", "value": sla_pass, "icon": "sla"},
+            {"label": "Work Permit", "value": unique_work_permit, "icon": "permit"},
+        ],
+        alerts=alerts if alerts else None,
+        last_updated=datetime.now().strftime("%d/%m/%Y %H:%M"),
+    )
+
+    # ==================== METRIC CARDS ====================
+    st.markdown("### 📊 รายละเอียดการออกบัตร")
+    st.caption("📌 ข้อมูลแยกตามประเภทการรับบัตร และสถานะความสมบูรณ์ของข้อมูล")
+
+    # Row 1: ประเภทการรับบัตร (4 cards เท่ากัน)
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("🏢 Unique SN รับที่ศูนย์", f"{unique_at_center:,}")
+        render_uniform_card(
+            title="รับบัตรที่ศูนย์",
+            value=unique_at_center,
+            subtitle="ผู้รับบริการมารับบัตรด้วยตนเอง ที่ศูนย์บริการ",
+            icon="center",
+            card_type="info",
+            trend_day=calculate_trend(unique_at_center, stats_prev_day['unique_at_center']),
+        )
     with col2:
-        st.metric("🚚 Unique SN จัดส่ง", f"{unique_delivery:,}")
+        render_uniform_card(
+            title="จัดส่งบัตร",
+            value=unique_delivery,
+            subtitle="บัตรที่จัดส่งทางไปรษณีย์ หรือหน่วยเคลื่อนที่",
+            icon="delivery",
+            card_type="info",
+            trend_day=calculate_trend(unique_delivery, stats_prev_day['unique_delivery']),
+        )
     with col3:
-        st.metric("✅ รวม Unique SN (G)", f"{unique_total:,}")
+        render_uniform_card(
+            title="รวมบัตรดี (G)",
+            value=unique_total,
+            subtitle=f"บัตรที่พิมพ์สำเร็จทั้งหมด | Good Rate: {100-bad_rate:.1f}%",
+            icon="serial",
+            card_type="success",
+            trend_day=trend_total_day,
+        )
     with col4:
-        st.metric("❌ บัตรเสีย (B)", f"{bad_cards:,}")
+        render_uniform_card(
+            title="บัตรเสีย (B)",
+            value=bad_cards,
+            subtitle=f"บัตรที่พิมพ์ไม่สำเร็จ / ต้องพิมพ์ใหม่ | {bad_rate:.1f}%",
+            icon="error",
+            card_type="danger" if bad_cards > 0 else "info",
+            trend_day=trend_bad_day,
+            inverse_trend=True,
+        )
 
+    st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
+
+    # Row 2: สถานะข้อมูล (4 cards เท่ากัน)
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("📋 บัตรสมบูรณ์", f"{complete_cards:,}", f"{complete_pct:.1f}%")
+        render_uniform_card(
+            title="ข้อมูลครบถ้วน",
+            value=complete_cards,
+            subtitle=f"มีครบทุกฟิลด์ (Appt, Card ID, SN, WP) | {complete_pct:.1f}%",
+            icon="complete",
+            card_type="success",
+            trend_day=trend_complete_day,
+        )
     with col2:
-        st.metric("⚠️ Appt G>1", f"{appt_multiple_g:,}")
+        render_uniform_card(
+            title="ออกบัตรหลายใบ",
+            value=appt_multiple_g,
+            subtitle=f"1 นัดหมาย ออกบัตรดีมากกว่า 1 ใบ | {appt_multiple_records:,} records",
+            icon="warning",
+            card_type="warning" if appt_multiple_g > 0 else "info",
+            trend_day=calculate_trend(appt_multiple_g, stats_prev_day['appt_multiple_g']),
+            inverse_trend=True,
+        )
     with col3:
-        st.metric("📝 ข้อมูลไม่ครบ", f"{incomplete:,}")
+        render_uniform_card(
+            title="ข้อมูลไม่ครบ",
+            value=incomplete,
+            subtitle="ขาด Appt ID, Card ID, SN หรือ Work Permit",
+            icon="incomplete",
+            card_type="warning" if incomplete > 0 else "info",
+            trend_day=calculate_trend(incomplete, stats_prev_day['incomplete']),
+            inverse_trend=True,
+        )
     with col4:
-        st.metric("🪪 Unique Work Permit", f"{unique_work_permit:,}")
+        render_uniform_card(
+            title="Work Permit",
+            value=unique_work_permit,
+            subtitle="จำนวนใบอนุญาตทำงานที่ไม่ซ้ำกัน",
+            icon="permit",
+            card_type="info",
+            trend_day=calculate_trend(unique_work_permit, stats_prev_day['unique_work_permit']),
+        )
 
     st.markdown("---")
 
@@ -1311,32 +1460,119 @@ else:
         st.markdown(f"**SLA รอคิว** (เฉลี่ย {avg_wait:.1f} นาที)")
         st_echarts(options=wait_gauge, height="280px", key="wait_gauge")
 
-    # SLA Summary metrics
+    # SLA Summary metrics with mini cards
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("ผ่าน SLA ออกบัตร", f"{sla_pass:,}", f"{sla_pass_pct:.1f}%")
+        render_mini_metric(
+            label="ผ่าน SLA ออกบัตร",
+            value=sla_pass,
+            trend=calculate_trend(sla_pass, stats_prev_day['sla_pass']),
+            card_type="success" if sla_pass_pct >= 90 else ("warning" if sla_pass_pct >= 80 else "danger"),
+        )
     with col2:
-        st.metric("ไม่ผ่าน SLA", f"{sla_fail:,}")
+        render_mini_metric(
+            label="ไม่ผ่าน SLA",
+            value=sla_fail,
+            trend=calculate_trend(sla_fail, stats_prev_day['sla_total'] - stats_prev_day['sla_pass']),
+            card_type="danger" if sla_fail > 0 else "info",
+            inverse_trend=True,
+        )
     with col3:
-        st.metric("ผ่าน SLA รอคิว", f"{wait_pass:,}", f"{wait_pass_pct:.1f}%")
+        render_mini_metric(
+            label="ผ่าน SLA รอคิว",
+            value=wait_pass,
+            trend=calculate_trend(wait_pass, stats_prev_day['wait_pass']),
+            card_type="success" if wait_pass_pct >= 90 else ("warning" if wait_pass_pct >= 80 else "danger"),
+        )
     with col4:
-        st.metric("รอเกิน 1 ชม.", f"{wait_fail:,}")
+        render_mini_metric(
+            label="รอเกิน 1 ชม.",
+            value=wait_fail,
+            trend=calculate_trend(wait_fail, stats_prev_day['wait_total'] - stats_prev_day['wait_pass']),
+            card_type="danger" if wait_fail > 0 else "info",
+            inverse_trend=True,
+        )
 
     st.markdown("---")
 
     # ==================== ANOMALY SECTION ====================
+    st.markdown("### 🔍 รายการที่ต้องตรวจสอบ (Anomaly)")
+
     if total_anomalies > 0:
-        st.warning(f"⚠️ พบความผิดปกติ {total_anomalies:,} รายการ - กรุณาตรวจสอบในหน้า Anomaly")
+        st.warning(f"⚠️ พบ {total_anomalies:,} รายการต้องตรวจสอบ")
 
-    st.markdown("### 🔍 การออกบัตรผิดปกติ (Anomaly)")
+    # Use action cards for anomalies - making them actionable for operations
+    col1, col2 = st.columns(2)
 
-    col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("ออกบัตรผิดศูนย์", f"{wrong_branch:,}")
-        st.metric("นัดหมายผิดวัน", f"{wrong_date:,}")
+        render_action_card(
+            title="ออกบัตรผิดศูนย์",
+            description="ออกบัตรที่ศูนย์อื่นไม่ใช่ศูนย์ที่นัดหมาย",
+            icon="center",
+            status="warning" if wrong_branch > 0 else "ok",
+            count=wrong_branch if wrong_branch > 0 else None,
+            action_label="ดูรายละเอียด" if wrong_branch > 0 else None,
+            action_page="pages/6_⚠️_Anomaly.py" if wrong_branch > 0 else None,
+        )
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+
+        render_action_card(
+            title="นัดหมายผิดวัน",
+            description="ออกบัตรวันที่ไม่ตรงกับวันนัดหมาย",
+            icon="appointment",
+            status="warning" if wrong_date > 0 else "ok",
+            count=wrong_date if wrong_date > 0 else None,
+            action_label="ดูรายละเอียด" if wrong_date > 0 else None,
+            action_page="pages/6_⚠️_Anomaly.py" if wrong_date > 0 else None,
+        )
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+
+        render_action_card(
+            title="Serial ซ้ำ",
+            description="Serial Number ถูกใช้ซ้ำกัน",
+            icon="serial",
+            status="critical" if duplicate_serial > 0 else "ok",
+            count=duplicate_serial if duplicate_serial > 0 else None,
+            action_label="ดูรายละเอียด" if duplicate_serial > 0 else None,
+            action_page="pages/6_⚠️_Anomaly.py" if duplicate_serial > 0 else None,
+        )
+
     with col2:
-        st.metric("ออกบัตรหลายใบ (G>1)", f"{appt_multiple_g:,}")
-        st.metric("Serial ซ้ำ", f"{duplicate_serial:,}")
-    with col3:
-        st.metric("SLA เกิน 12 นาที", f"{sla_over_12:,}")
-        st.metric("รอคิวเกิน 1 ชม.", f"{wait_over_1hr:,}")
+        render_action_card(
+            title="ออกบัตรหลายใบ (G>1)",
+            description="1 Appointment ออกบัตรดีมากกว่า 1 ใบ",
+            icon="warning",
+            status="warning" if appt_multiple_g > 0 else "ok",
+            count=appt_multiple_g if appt_multiple_g > 0 else None,
+            action_label="ดูรายละเอียด" if appt_multiple_g > 0 else None,
+            action_page="pages/6_⚠️_Anomaly.py" if appt_multiple_g > 0 else None,
+        )
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+
+        render_action_card(
+            title="SLA เกิน 12 นาที",
+            description="เวลาออกบัตรเกินมาตรฐาน SLA",
+            icon="sla",
+            status="warning" if sla_over_12 > 0 else "ok",
+            count=sla_over_12 if sla_over_12 > 0 else None,
+            action_label="ดูรายละเอียด" if sla_over_12 > 0 else None,
+            action_page="pages/6_⚠️_Anomaly.py" if sla_over_12 > 0 else None,
+        )
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+
+        render_action_card(
+            title="รอคิวเกิน 1 ชม.",
+            description="เวลารอคิวเกินมาตรฐาน",
+            icon="sla",
+            status="warning" if wait_over_1hr > 0 else "ok",
+            count=wait_over_1hr if wait_over_1hr > 0 else None,
+            action_label="ดูรายละเอียด" if wait_over_1hr > 0 else None,
+            action_page="pages/6_⚠️_Anomaly.py" if wait_over_1hr > 0 else None,
+        )
+
+    # Quick action button to Anomaly page
+    if total_anomalies > 0:
+        st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
+        col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+        with col_btn2:
+            st.page_link("pages/6_⚠️_Anomaly.py", label="📋 ไปหน้า Anomaly เพื่อตรวจสอบทั้งหมด", icon="➡️", use_container_width=True)
