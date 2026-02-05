@@ -307,30 +307,47 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
 
 @st.cache_data(ttl=300)
 def get_daily_stats(start_date, end_date, selected_branches=None):
-    """Get cached daily statistics for chart."""
+    """Get cached daily statistics for chart - separated by center type (SC/OB)."""
     start_time = time.perf_counter()
     session = get_session()
     try:
-        # Base date filter for Card (รับที่ศูนย์)
-        filters = [Card.print_date >= start_date, Card.print_date <= end_date]
+        from database.models import BioRecord
+
+        # Base date filter for BioRecord
+        filters = [BioRecord.print_date >= start_date, BioRecord.print_date <= end_date]
 
         # Add branch filter if specified
         if selected_branches and len(selected_branches) > 0:
-            filters.append(Card.branch_code.in_(selected_branches))
+            filters.append(BioRecord.branch_code.in_(selected_branches))
 
         date_filter = and_(*filters)
 
-        # Query Card data (รับที่ศูนย์)
+        # Query BioRecord data - separated by center type (SC vs OB)
+        # SC = ศูนย์บริการ (branch_code contains '-SC-')
+        # OB = ศูนย์แรกรับ (branch_code contains '-OB-')
         daily_stats = session.query(
-            Card.print_date,
-            func.count(func.distinct(Card.serial_number)).filter(Card.print_status == 'G').label('unique_g'),
-            func.sum(case((Card.print_status == 'B', 1), else_=0)).label('bad'),
+            BioRecord.print_date,
+            # SC ศูนย์บริการ
+            func.count(func.distinct(BioRecord.serial_number)).filter(
+                BioRecord.print_status == 'G',
+                BioRecord.branch_code.like('%-SC-%')
+            ).label('sc_good'),
+            func.sum(case((and_(BioRecord.print_status == 'B', BioRecord.branch_code.like('%-SC-%')), 1), else_=0)).label('sc_bad'),
+            # OB ศูนย์แรกรับ
+            func.count(func.distinct(BioRecord.serial_number)).filter(
+                BioRecord.print_status == 'G',
+                BioRecord.branch_code.like('%-OB-%')
+            ).label('ob_good'),
+            func.sum(case((and_(BioRecord.print_status == 'B', BioRecord.branch_code.like('%-OB-%')), 1), else_=0)).label('ob_bad'),
         ).filter(
-            date_filter, Card.print_date.isnot(None)
-        ).group_by(Card.print_date).order_by(Card.print_date).all()
+            date_filter, BioRecord.print_date.isnot(None)
+        ).group_by(BioRecord.print_date).order_by(BioRecord.print_date).all()
 
         # Convert to dict for easy lookup
-        card_data = {d.print_date: {'unique_g': d.unique_g or 0, 'bad': d.bad or 0} for d in daily_stats}
+        bio_data = {d.print_date: {
+            'sc_good': d.sc_good or 0, 'sc_bad': d.sc_bad or 0,
+            'ob_good': d.ob_good or 0, 'ob_bad': d.ob_bad or 0
+        } for d in daily_stats}
 
         # Query CardDeliveryRecord data (บัตรจัดส่ง 68/69)
         cdr_filters = [
@@ -355,18 +372,20 @@ def get_daily_stats(start_date, end_date, selected_branches=None):
         cdr_data = {d.print_date: {'delivery_g': d.delivery_g or 0, 'delivery_bad': d.delivery_bad or 0} for d in cdr_stats}
 
         # Merge all dates
-        all_dates = sorted(set(card_data.keys()) | set(cdr_data.keys()))
+        all_dates = sorted(set(bio_data.keys()) | set(cdr_data.keys()))
 
         result = []
         for dt in all_dates:
-            card = card_data.get(dt, {'unique_g': 0, 'bad': 0})
+            bio = bio_data.get(dt, {'sc_good': 0, 'sc_bad': 0, 'ob_good': 0, 'ob_bad': 0})
             cdr = cdr_data.get(dt, {'delivery_g': 0, 'delivery_bad': 0})
             result.append((
                 dt,
-                card['unique_g'],      # รับที่ศูนย์ (G)
+                bio['sc_good'],        # ศูนย์บริการ SC (G)
+                bio['ob_good'],        # ศูนย์แรกรับ OB (G)
                 cdr['delivery_g'],     # บัตรจัดส่ง (G)
-                card['bad'],           # บัตรเสีย (รับที่ศูนย์)
-                cdr['delivery_bad'],   # บัตรเสีย (จัดส่ง)
+                bio['sc_bad'],         # บัตรเสีย SC
+                bio['ob_bad'],         # บัตรเสีย OB
+                cdr['delivery_bad'],   # บัตรเสีย จัดส่ง
             ))
 
         return result
@@ -1019,15 +1038,17 @@ else:
     if daily_stats:
         daily_data = pd.DataFrame([{
             'วันที่': d[0],
-            'รับที่ศูนย์ (G)': d[1],
-            'บัตรจัดส่ง (G)': d[2],
-            'บัตรเสีย (ศูนย์)': d[3],
-            'บัตรเสีย (จัดส่ง)': d[4],
+            'SC ศูนย์บริการ (G)': d[1],
+            'OB แรกรับ (G)': d[2],
+            'บัตรจัดส่ง (G)': d[3],
+            'บัตรเสีย SC': d[4],
+            'บัตรเสีย OB': d[5],
+            'บัตรเสีย จัดส่ง': d[6],
         } for d in daily_stats])
 
         # Calculate totals
-        daily_data['รวมบัตรดี'] = daily_data['รับที่ศูนย์ (G)'] + daily_data['บัตรจัดส่ง (G)']
-        daily_data['รวมบัตรเสีย'] = daily_data['บัตรเสีย (ศูนย์)'] + daily_data['บัตรเสีย (จัดส่ง)']
+        daily_data['รวมบัตรดี'] = daily_data['SC ศูนย์บริการ (G)'] + daily_data['OB แรกรับ (G)'] + daily_data['บัตรจัดส่ง (G)']
+        daily_data['รวมบัตรเสีย'] = daily_data['บัตรเสีย SC'] + daily_data['บัตรเสีย OB'] + daily_data['บัตรเสีย จัดส่ง']
 
         dates = [d.strftime('%d/%m') if hasattr(d, 'strftime') else str(d) for d in daily_data['วันที่']]
 
@@ -1044,11 +1065,11 @@ else:
                 "textStyle": {"color": "#F1F5F9"},
             },
             "legend": {
-                "data": ["รับที่ศูนย์ (G)", "บัตรจัดส่ง (G)", "บัตรเสีย (ศูนย์)", "บัตรเสีย (จัดส่ง)", "รวมบัตรดี"],
+                "data": ["SC ศูนย์บริการ", "OB แรกรับ", "บัตรจัดส่ง", "บัตรเสีย SC", "บัตรเสีย OB", "บัตรเสีย จัดส่ง", "รวมบัตรดี"],
                 "bottom": 0,
                 "textStyle": {"color": "#9CA3AF"},
             },
-            "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "10%", "containLabel": True},
+            "grid": {"left": "3%", "right": "4%", "bottom": "18%", "top": "10%", "containLabel": True},
             "xAxis": {
                 "type": "category",
                 "data": dates,
@@ -1063,15 +1084,23 @@ else:
             },
             "series": [
                 {
-                    "name": "รับที่ศูนย์ (G)",
+                    "name": "SC ศูนย์บริการ",
                     "type": "bar",
                     "stack": "good",
-                    "data": daily_data['รับที่ศูนย์ (G)'].tolist(),
+                    "data": daily_data['SC ศูนย์บริการ (G)'].tolist(),
                     "itemStyle": {"color": "#10B981"},
                     "barMaxWidth": 50,
                 },
                 {
-                    "name": "บัตรจัดส่ง (G)",
+                    "name": "OB แรกรับ",
+                    "type": "bar",
+                    "stack": "good",
+                    "data": daily_data['OB แรกรับ (G)'].tolist(),
+                    "itemStyle": {"color": "#3B82F6"},
+                    "barMaxWidth": 50,
+                },
+                {
+                    "name": "บัตรจัดส่ง",
                     "type": "bar",
                     "stack": "good",
                     "data": daily_data['บัตรจัดส่ง (G)'].tolist(),
@@ -1079,19 +1108,27 @@ else:
                     "barMaxWidth": 50,
                 },
                 {
-                    "name": "บัตรเสีย (ศูนย์)",
+                    "name": "บัตรเสีย SC",
                     "type": "bar",
                     "stack": "bad",
-                    "data": daily_data['บัตรเสีย (ศูนย์)'].tolist(),
+                    "data": daily_data['บัตรเสีย SC'].tolist(),
                     "itemStyle": {"color": "#EF4444"},
                     "barMaxWidth": 50,
                 },
                 {
-                    "name": "บัตรเสีย (จัดส่ง)",
+                    "name": "บัตรเสีย OB",
                     "type": "bar",
                     "stack": "bad",
-                    "data": daily_data['บัตรเสีย (จัดส่ง)'].tolist(),
+                    "data": daily_data['บัตรเสีย OB'].tolist(),
                     "itemStyle": {"color": "#F97316"},
+                    "barMaxWidth": 50,
+                },
+                {
+                    "name": "บัตรเสีย จัดส่ง",
+                    "type": "bar",
+                    "stack": "bad",
+                    "data": daily_data['บัตรเสีย จัดส่ง'].tolist(),
+                    "itemStyle": {"color": "#DC2626"},
                     "barMaxWidth": 50,
                 },
                 {
