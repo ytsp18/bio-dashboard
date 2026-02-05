@@ -1312,20 +1312,8 @@ if stats['has_data']:
 
                 if checkin_view == "📊 รวมตามศูนย์":
                     # ========== AGGREGATE VIEW (Progress Bars) ==========
-                    progress_html = '''
-                    <style>
-                    .checkin-container { max-height: 500px; overflow-y: auto; padding-right: 8px; }
-                    .checkin-row { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #374151; }
-                    .checkin-name { width: 200px; font-size: 13px; color: #E5E7EB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                    .checkin-bar-container { flex: 1; margin: 0 12px; height: 24px; background: #1F2937; border-radius: 12px; overflow: hidden; position: relative; }
-                    .checkin-bar { height: 100%; border-radius: 12px; transition: width 0.3s ease; }
-                    .checkin-bar-text { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #E5E7EB; font-weight: bold; }
-                    .checkin-stats { width: 180px; text-align: right; font-size: 12px; color: #9CA3AF; }
-                    </style>
-                    <div class="checkin-container">
-                    '''
 
-                    # Filter options
+                    # Filter options - MUST be before building HTML
                     show_filter = st.radio(
                         "แสดง",
                         options=["ทั้งหมด", "เฉพาะมี Check-in", "เฉพาะต่ำกว่า 80%"],
@@ -1339,6 +1327,13 @@ if stats['has_data']:
                     elif show_filter == "เฉพาะต่ำกว่า 80%":
                         filtered_data = [p for p in progress_data if p['checkin_rate'] < 80]
 
+                    # Legend
+                    st.markdown("""
+                    **สี Progress Bar:** 🟢 ≥80% | 🟡 50-79% | 🔴 <50% | 🚀 = มากกว่านัดหมาย (walk-in)
+                    """)
+
+                    # Build rows HTML
+                    rows_html = ""
                     for p in filtered_data[:50]:
                         rate = p['checkin_rate']
                         if rate >= 80:
@@ -1348,16 +1343,11 @@ if stats['has_data']:
                         else:
                             bar_color = '#EF4444'
 
-                        # Round bar_width and cap at 100
                         bar_width = round(min(rate, 100), 1)
                         stats_text = f"{p['checkin_count']:,} / {p['appt_count']:,}"
+                        rate_display = f"🚀 {rate:.0f}%" if rate > 100 else f"{rate:.0f}%"
 
-                        # Add icon for over 100% (walk-in cases)
-                        rate_display = f"{rate:.0f}%"
-                        if rate > 100:
-                            rate_display = f"🚀 {rate:.0f}%"
-
-                        progress_html += f'''
+                        rows_html += f'''
                         <div class="checkin-row">
                             <div class="checkin-name" title="{p['branch_name']}">{p['branch_code']}</div>
                             <div class="checkin-bar-container">
@@ -1368,21 +1358,35 @@ if stats['has_data']:
                         </div>
                         '''
 
-                    progress_html += '</div>'
+                    # Calculate height based on number of items
+                    num_items = len(filtered_data[:50])
+                    iframe_height = min(500, max(100, num_items * 45 + 20))
 
-                    st.markdown("""
-                    <div style="background: #1E293B; border-radius: 8px; padding: 8px 16px; margin-bottom: 12px; border: 1px solid #374151;">
-                        <span style="color: #9CA3AF; font-size: 0.85rem;">
-                            <b>สี Progress Bar:</b>
-                            <span style="color: #10B981; margin-left: 12px;">🟢 ≥80%</span>
-                            <span style="color: #F59E0B; margin-left: 12px;">🟡 50-79%</span>
-                            <span style="color: #EF4444; margin-left: 12px;">🔴 <50%</span>
-                            <span style="margin-left: 12px;">🚀 = มากกว่านัดหมาย (walk-in)</span>
-                        </span>
+                    # Full HTML with styles
+                    progress_html = f'''
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                    <style>
+                    body {{ margin: 0; padding: 0; background: transparent; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }}
+                    .checkin-container {{ max-height: 480px; overflow-y: auto; padding-right: 8px; }}
+                    .checkin-row {{ display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #374151; }}
+                    .checkin-name {{ width: 180px; font-size: 13px; color: #E5E7EB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+                    .checkin-bar-container {{ flex: 1; margin: 0 12px; height: 24px; background: #1F2937; border-radius: 12px; overflow: hidden; position: relative; }}
+                    .checkin-bar {{ height: 100%; border-radius: 12px; }}
+                    .checkin-bar-text {{ position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #E5E7EB; font-weight: bold; }}
+                    .checkin-stats {{ width: 150px; text-align: right; font-size: 12px; color: #9CA3AF; }}
+                    </style>
+                    </head>
+                    <body>
+                    <div class="checkin-container">
+                    {rows_html}
                     </div>
-                    """, unsafe_allow_html=True)
+                    </body>
+                    </html>
+                    '''
 
-                    st.markdown(progress_html, unsafe_allow_html=True)
+                    components.html(progress_html, height=iframe_height, scrolling=True)
 
                 else:
                     # ========== DAILY VIEW (Progress Bars per day) ==========
@@ -1409,7 +1413,6 @@ if stats['has_data']:
 
                     # Get unique branches
                     branches_in_data = list(set(c['branch_code'] for c in stats['by_center_daily']))
-                    branch_name_map = {c['branch_code']: c['branch_name'] for c in stats['by_center']}
 
                     # For each date, show progress bars
                     for d in display_dates:
@@ -1422,42 +1425,26 @@ if stats['has_data']:
 
                         st.caption(f"นัดหมาย: {daily_appt_total:,} | Check-in: {daily_checkin_total:,} | อัตรา: {daily_rate:.1f}%")
 
-                        daily_html = '''
-                        <style>
-                        .daily-checkin-container { max-height: 400px; overflow-y: auto; padding-right: 8px; }
-                        .daily-checkin-row { display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid #374151; }
-                        .daily-checkin-name { width: 180px; font-size: 12px; color: #E5E7EB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                        .daily-checkin-bar-container { flex: 1; margin: 0 10px; height: 20px; background: #1F2937; border-radius: 10px; overflow: hidden; position: relative; }
-                        .daily-checkin-bar { height: 100%; border-radius: 10px; }
-                        .daily-checkin-bar-text { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #E5E7EB; font-weight: bold; }
-                        .daily-checkin-stats { width: 120px; text-align: right; font-size: 11px; color: #9CA3AF; }
-                        </style>
-                        <div class="daily-checkin-container">
-                        '''
-
                         # Build data for this date
-                        daily_data = []
+                        daily_data_list = []
                         for b in branches_in_data:
                             appt = appt_by_branch_date.get((b, d), 0)
                             checkin = checkin_by_branch_date.get((b, d), 0)
                             if appt > 0:
                                 rate = (checkin / appt) * 100
-                            else:
-                                rate = 0
-                            daily_data.append({
-                                'branch_code': b,
-                                'appt': appt,
-                                'checkin': checkin,
-                                'rate': rate
-                            })
+                                daily_data_list.append({
+                                    'branch_code': b,
+                                    'appt': appt,
+                                    'checkin': checkin,
+                                    'rate': rate
+                                })
 
                         # Sort by rate descending
-                        daily_data.sort(key=lambda x: x['rate'], reverse=True)
+                        daily_data_list.sort(key=lambda x: x['rate'], reverse=True)
 
-                        # Filter to show only centers with appointments
-                        daily_data = [dd for dd in daily_data if dd['appt'] > 0]
-
-                        for dd in daily_data[:30]:  # Limit to 30 per day
+                        # Build rows
+                        rows_html = ""
+                        for dd in daily_data_list[:30]:
                             rate = dd['rate']
                             if rate >= 80:
                                 bar_color = '#10B981'
@@ -1466,28 +1453,48 @@ if stats['has_data']:
                             else:
                                 bar_color = '#EF4444'
 
-                            # Round bar_width and cap at 100
                             bar_width = round(min(rate, 100), 1)
+                            rate_display = f"🚀 {rate:.0f}%" if rate > 100 else f"{rate:.0f}%"
 
-                            # Add icon for over 100%
-                            rate_display = f"{rate:.0f}%"
-                            if rate > 100:
-                                rate_display = f"🚀 {rate:.0f}%"
-
-                            daily_html += f'''
-                            <div class="daily-checkin-row">
-                                <div class="daily-checkin-name">{dd['branch_code']}</div>
-                                <div class="daily-checkin-bar-container">
-                                    <div class="daily-checkin-bar" style="width: {bar_width}%; background: {bar_color};"></div>
-                                    <span class="daily-checkin-bar-text">{rate_display}</span>
+                            rows_html += f'''
+                            <div class="daily-row">
+                                <div class="daily-name">{dd['branch_code']}</div>
+                                <div class="daily-bar-container">
+                                    <div class="daily-bar" style="width: {bar_width}%; background: {bar_color};"></div>
+                                    <span class="daily-bar-text">{rate_display}</span>
                                 </div>
-                                <div class="daily-checkin-stats">{dd['checkin']:,} / {dd['appt']:,}</div>
+                                <div class="daily-stats">{dd['checkin']:,} / {dd['appt']:,}</div>
                             </div>
                             '''
 
-                        daily_html += '</div>'
-                        st.markdown(daily_html, unsafe_allow_html=True)
-                        st.markdown("")
+                        # Calculate height
+                        num_items = len(daily_data_list[:30])
+                        iframe_height = min(400, max(80, num_items * 38 + 20))
+
+                        daily_html = f'''
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                        <style>
+                        body {{ margin: 0; padding: 0; background: transparent; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }}
+                        .daily-container {{ max-height: 380px; overflow-y: auto; }}
+                        .daily-row {{ display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid #374151; }}
+                        .daily-name {{ width: 160px; font-size: 12px; color: #E5E7EB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+                        .daily-bar-container {{ flex: 1; margin: 0 10px; height: 20px; background: #1F2937; border-radius: 10px; overflow: hidden; position: relative; }}
+                        .daily-bar {{ height: 100%; border-radius: 10px; }}
+                        .daily-bar-text {{ position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #E5E7EB; font-weight: bold; }}
+                        .daily-stats {{ width: 100px; text-align: right; font-size: 11px; color: #9CA3AF; }}
+                        </style>
+                        </head>
+                        <body>
+                        <div class="daily-container">
+                        {rows_html}
+                        </div>
+                        </body>
+                        </html>
+                        '''
+
+                        components.html(daily_html, height=iframe_height, scrolling=True)
 
                 # Show info about centers with no check-in
                 no_checkin_count = len([p for p in progress_data if p['checkin_count'] == 0])
