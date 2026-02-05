@@ -164,19 +164,22 @@ def get_upcoming_appointments_full(selected_branches=None, days_ahead=30):
             func.count(func.distinct(Appointment.appointment_id)).desc()
         ).all()
 
-        # First get max daily per branch for accurate status
-        max_daily_query = session.query(
+        # First get daily counts per branch, then find max
+        # Step 1: Get count per branch per day
+        daily_counts_subq = session.query(
             Appointment.branch_code,
-            func.max(func.count(func.distinct(Appointment.appointment_id))).label('max_daily')
+            Appointment.appt_date,
+            func.count(func.distinct(Appointment.appointment_id)).label('daily_count')
         ).filter(
             and_(*base_filters),
             Appointment.appt_date <= chart_end_date
         ).group_by(Appointment.branch_code, Appointment.appt_date).subquery()
 
+        # Step 2: Get max daily count per branch
         max_daily_per_branch = session.query(
-            max_daily_query.c.branch_code,
-            func.max(max_daily_query.c.max_daily).label('max_daily')
-        ).group_by(max_daily_query.c.branch_code).all()
+            daily_counts_subq.c.branch_code,
+            func.max(daily_counts_subq.c.daily_count).label('max_daily')
+        ).group_by(daily_counts_subq.c.branch_code).all()
 
         max_daily_map = {r.branch_code: r.max_daily for r in max_daily_per_branch}
 
