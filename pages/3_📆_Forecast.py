@@ -934,7 +934,46 @@ if stats['has_data']:
                 first_date_col = col_rename[date_cols_sorted[0]]
                 display_df = display_df.sort_values(first_date_col, ascending=False)
 
-            st.dataframe(display_df, hide_index=True, use_container_width=True, height=600)
+            # Apply conditional formatting based on capacity
+            date_col_names = [col_rename[d] for d in date_cols_sorted]
+
+            def highlight_capacity(row):
+                """Apply color based on usage vs capacity."""
+                capacity = row['Capacity/วัน']
+                styles = [''] * len(row)
+
+                for i, col in enumerate(row.index):
+                    if col in date_col_names:
+                        val = row[col]
+                        if pd.notna(capacity) and capacity > 0:
+                            usage_pct = (val / capacity) * 100
+                            if usage_pct >= 100:
+                                # Red - over capacity
+                                styles[i] = 'background-color: rgba(239, 68, 68, 0.6); color: white; font-weight: bold'
+                            elif usage_pct >= 80:
+                                # Yellow/Orange - warning (80-99%)
+                                styles[i] = 'background-color: rgba(245, 158, 11, 0.5); color: white; font-weight: bold'
+                            elif usage_pct >= 50:
+                                # Light green - moderate (50-79%)
+                                styles[i] = 'background-color: rgba(16, 185, 129, 0.2)'
+                            # else: no style (normal)
+                return styles
+
+            styled_df = display_df.style.apply(highlight_capacity, axis=1)
+
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #1E293B, #0F172A); border-radius: 8px; padding: 10px 16px; border: 1px solid #374151; margin-bottom: 12px;">
+                <span style="color: #9CA3AF; font-size: 0.85rem;">
+                    <b>สี:</b>
+                    <span style="background: rgba(239, 68, 68, 0.6); padding: 2px 8px; border-radius: 4px; margin-left: 8px;">🔴 เต็ม/เกิน (≥100%)</span>
+                    <span style="background: rgba(245, 158, 11, 0.5); padding: 2px 8px; border-radius: 4px; margin-left: 8px;">🟡 ใกล้เต็ม (80-99%)</span>
+                    <span style="background: rgba(16, 185, 129, 0.2); padding: 2px 8px; border-radius: 4px; margin-left: 8px;">🟢 ปกติ (50-79%)</span>
+                    <span style="padding: 2px 8px; margin-left: 8px;">⬜ ว่าง (<50%)</span>
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.dataframe(styled_df, hide_index=True, use_container_width=True, height=600)
 
             # Download button
             csv = display_df.to_csv(index=False).encode('utf-8-sig')
