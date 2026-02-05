@@ -299,7 +299,7 @@ def get_daily_stats(start_date, end_date, selected_branches=None):
     start_time = time.perf_counter()
     session = get_session()
     try:
-        # Base date filter
+        # Base date filter for Card (รับที่ศูนย์)
         filters = [Card.print_date >= start_date, Card.print_date <= end_date]
 
         # Add branch filter if specified
@@ -308,33 +308,55 @@ def get_daily_stats(start_date, end_date, selected_branches=None):
 
         date_filter = and_(*filters)
 
+        # Query Card data (รับที่ศูนย์)
         daily_stats = session.query(
             Card.print_date,
             func.count(func.distinct(Card.serial_number)).filter(Card.print_status == 'G').label('unique_g'),
-            func.count(func.distinct(Card.serial_number)).filter(
-                Card.print_status == 'G',
-                Card.is_mobile_unit == False,
-                Card.is_ob_center == False
-            ).label('at_center'),
-            func.count(func.distinct(Card.serial_number)).filter(
-                Card.print_status == 'G',
-                or_(Card.is_mobile_unit == True, Card.is_ob_center == True)
-            ).label('delivery'),
             func.sum(case((Card.print_status == 'B', 1), else_=0)).label('bad'),
-            # Appointment counts - Scheduled vs Walk-in
-            func.count(func.distinct(Card.appointment_id)).filter(
-                Card.appointment_id.isnot(None),
-                Card.appointment_id != ''
-            ).label('scheduled_appt'),
-            # Walk-in = records without appointment_id (unique by card_id or serial)
-            func.count(Card.id).filter(
-                or_(Card.appointment_id.is_(None), Card.appointment_id == '')
-            ).label('walkin_count')
         ).filter(
             date_filter, Card.print_date.isnot(None)
         ).group_by(Card.print_date).order_by(Card.print_date).all()
 
-        result = [(d.print_date, d.unique_g or 0, d.at_center or 0, d.delivery or 0, d.bad or 0, d.scheduled_appt or 0, d.walkin_count or 0) for d in daily_stats]
+        # Convert to dict for easy lookup
+        card_data = {d.print_date: {'unique_g': d.unique_g or 0, 'bad': d.bad or 0} for d in daily_stats}
+
+        # Query CardDeliveryRecord data (บัตรจัดส่ง 68/69)
+        cdr_filters = [
+            func.date(CardDeliveryRecord.create_date) >= start_date,
+            func.date(CardDeliveryRecord.create_date) <= end_date
+        ]
+        if selected_branches and len(selected_branches) > 0:
+            cdr_filters.append(CardDeliveryRecord.branch_code.in_(selected_branches))
+
+        cdr_stats = session.query(
+            func.date(CardDeliveryRecord.create_date).label('print_date'),
+            func.count(func.distinct(CardDeliveryRecord.serial_number)).filter(
+                CardDeliveryRecord.print_status == 'G'
+            ).label('delivery_g'),
+            func.sum(case((CardDeliveryRecord.print_status == 'B', 1), else_=0)).label('delivery_bad'),
+        ).filter(
+            and_(*cdr_filters),
+            CardDeliveryRecord.create_date.isnot(None)
+        ).group_by(func.date(CardDeliveryRecord.create_date)).all()
+
+        # Convert to dict
+        cdr_data = {d.print_date: {'delivery_g': d.delivery_g or 0, 'delivery_bad': d.delivery_bad or 0} for d in cdr_stats}
+
+        # Merge all dates
+        all_dates = sorted(set(card_data.keys()) | set(cdr_data.keys()))
+
+        result = []
+        for dt in all_dates:
+            card = card_data.get(dt, {'unique_g': 0, 'bad': 0})
+            cdr = cdr_data.get(dt, {'delivery_g': 0, 'delivery_bad': 0})
+            result.append((
+                dt,
+                card['unique_g'],      # รับที่ศูนย์ (G)
+                cdr['delivery_g'],     # บัตรจัดส่ง (G)
+                card['bad'],           # บัตรเสีย (รับที่ศูนย์)
+                cdr['delivery_bad'],   # บัตรเสีย (จัดส่ง)
+            ))
+
         return result
     finally:
         session.close()
@@ -985,17 +1007,19 @@ else:
     if daily_stats:
         daily_data = pd.DataFrame([{
             'วันที่': d[0],
-            'Unique Serial (G)': d[1],
-            'รับที่ศูนย์': d[2],
-            'จัดส่ง': d[3],
-            'บัตรเสีย': d[4],
-            'มีนัดหมาย': d[5],  # Scheduled appointments
-            'Walk-in': d[6],    # Walk-in without appointment
+            'รับที่ศูนย์ (G)': d[1],
+            'บัตรจัดส่ง (G)': d[2],
+            'บัตรเสีย (ศูนย์)': d[3],
+            'บัตรเสีย (จัดส่ง)': d[4],
         } for d in daily_stats])
+
+        # Calculate totals
+        daily_data['รวมบัตรดี'] = daily_data['รับที่ศูนย์ (G)'] + daily_data['บัตรจัดส่ง (G)']
+        daily_data['รวมบัตรเสีย'] = daily_data['บัตรเสีย (ศูนย์)'] + daily_data['บัตรเสีย (จัดส่ง)']
 
         dates = [d.strftime('%d/%m') if hasattr(d, 'strftime') else str(d) for d in daily_data['วันที่']]
 
-        # Mixed Bar + Line Chart (Bar for breakdown, Line for total and appointments)
+        # Mixed Bar + Line Chart (Bar for breakdown, Line for total)
         mixed_options = {
             "animation": True,
             "animationDuration": 800,
@@ -1008,7 +1032,7 @@ else:
                 "textStyle": {"color": "#F1F5F9"},
             },
             "legend": {
-                "data": ["รับที่ศูนย์", "จัดส่ง", "บัตรเสีย", "รวมบัตรดี (G)"],
+                "data": ["รับที่ศูนย์ (G)", "บัตรจัดส่ง (G)", "บัตรเสีย (ศูนย์)", "บัตรเสีย (จัดส่ง)", "รวมบัตรดี"],
                 "bottom": 0,
                 "textStyle": {"color": "#9CA3AF"},
             },
@@ -1027,32 +1051,41 @@ else:
             },
             "series": [
                 {
-                    "name": "รับที่ศูนย์",
+                    "name": "รับที่ศูนย์ (G)",
                     "type": "bar",
-                    "stack": "cards",
-                    "data": daily_data['รับที่ศูนย์'].tolist(),
+                    "stack": "good",
+                    "data": daily_data['รับที่ศูนย์ (G)'].tolist(),
                     "itemStyle": {"color": "#10B981"},
                     "barMaxWidth": 50,
                 },
                 {
-                    "name": "จัดส่ง",
+                    "name": "บัตรจัดส่ง (G)",
                     "type": "bar",
-                    "stack": "cards",
-                    "data": daily_data['จัดส่ง'].tolist(),
+                    "stack": "good",
+                    "data": daily_data['บัตรจัดส่ง (G)'].tolist(),
                     "itemStyle": {"color": "#8B5CF6"},
                     "barMaxWidth": 50,
                 },
                 {
-                    "name": "บัตรเสีย",
+                    "name": "บัตรเสีย (ศูนย์)",
                     "type": "bar",
-                    "data": daily_data['บัตรเสีย'].tolist(),
+                    "stack": "bad",
+                    "data": daily_data['บัตรเสีย (ศูนย์)'].tolist(),
                     "itemStyle": {"color": "#EF4444"},
                     "barMaxWidth": 50,
                 },
                 {
-                    "name": "รวมบัตรดี (G)",
+                    "name": "บัตรเสีย (จัดส่ง)",
+                    "type": "bar",
+                    "stack": "bad",
+                    "data": daily_data['บัตรเสีย (จัดส่ง)'].tolist(),
+                    "itemStyle": {"color": "#F97316"},
+                    "barMaxWidth": 50,
+                },
+                {
+                    "name": "รวมบัตรดี",
                     "type": "line",
-                    "data": daily_data['Unique Serial (G)'].tolist(),
+                    "data": daily_data['รวมบัตรดี'].tolist(),
                     "itemStyle": {"color": "#00D4AA"},
                     "lineStyle": {"width": 3, "type": "solid"},
                     "symbol": "circle",
