@@ -47,16 +47,26 @@ def get_branch_list_forecast():
 
 
 @st.cache_data(ttl=300)
-def get_upcoming_appointments_full(selected_branches=None, days_ahead=30):
+def get_upcoming_appointments_full(selected_branches=None, start_date=None, end_date=None):
     """
     Get detailed upcoming appointments for workload forecasting.
     Includes capacity comparison from BranchMaster.max_capacity.
+
+    Args:
+        selected_branches: tuple of branch codes to filter (None = all)
+        start_date: start date for range (default: today)
+        end_date: end date for range (default: 30 days from start)
     """
     start_time = time.perf_counter()
     session = get_session()
     try:
         today = date.today()
-        end_date = today + timedelta(days=days_ahead - 1)
+        # Default to today if no start_date provided
+        if start_date is None:
+            start_date = today
+        # Default to 30 days from start if no end_date provided
+        if end_date is None:
+            end_date = start_date + timedelta(days=29)
 
         # Check if we have Appointment data
         has_appt_data = session.query(Appointment).first() is not None
@@ -78,7 +88,8 @@ def get_upcoming_appointments_full(selected_branches=None, days_ahead=30):
 
         # Build base filter - confirmed or waiting appointments (exclude CANCEL, EXPIRED)
         base_filters = [
-            Appointment.appt_date >= today,
+            Appointment.appt_date >= start_date,
+            Appointment.appt_date <= end_date,
             Appointment.appt_status.in_(['SUCCESS', 'WAITING'])  # Include both confirmed and pending
         ]
 
@@ -264,7 +275,9 @@ def get_upcoming_appointments_full(selected_branches=None, days_ahead=30):
             'over_capacity_count': over_capacity_count,
             'warning_count': warning_count,
             'max_date': max_future_date,
-            'total_capacity': total_capacity
+            'total_capacity': total_capacity,
+            'start_date': start_date,
+            'end_date': end_date
         }
     finally:
         session.close()
@@ -303,9 +316,12 @@ st.markdown("### 📅 ตัวกรองข้อมูล")
 branch_list = get_branch_list_forecast()
 branch_options = {code: name if name and name != code else code for code, name in branch_list}
 
-col1, col2, col3 = st.columns([4, 2, 1])
+# Date range selection
+today = date.today()
 
-with col1:
+col_filter1, col_filter2 = st.columns([3, 4])
+
+with col_filter1:
     if branch_list:
         selected_branch_codes = st.multiselect(
             "🏢 เลือกศูนย์ (เว้นว่างเพื่อดูทั้งหมด)",
@@ -317,24 +333,64 @@ with col1:
     else:
         selected_branch_codes = []
 
-with col2:
-    days_ahead = st.selectbox(
-        "📆 ช่วงเวลา",
-        options=[7, 14, 30, 60, 90],
-        index=2,
-        format_func=lambda x: f"{x} วันข้างหน้า"
+with col_filter2:
+    # Date range selection with preset options
+    date_mode = st.radio(
+        "📆 เลือกช่วงเวลา",
+        options=["preset", "custom"],
+        format_func=lambda x: "ช่วงเวลาสำเร็จรูป" if x == "preset" else "กำหนดเอง",
+        horizontal=True,
+        key="date_mode"
     )
 
-with col3:
+col_date1, col_date2, col_date3 = st.columns([2, 2, 1])
+
+if date_mode == "preset":
+    with col_date1:
+        days_preset = st.selectbox(
+            "ช่วงเวลา",
+            options=[7, 14, 30, 60, 90],
+            index=2,
+            format_func=lambda x: f"{x} วันข้างหน้า",
+            key="days_preset"
+        )
+    start_date = today
+    end_date = today + timedelta(days=days_preset - 1)
+    with col_date2:
+        st.markdown(f"**ช่วงวันที่:** {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}")
+else:
+    with col_date1:
+        start_date = st.date_input(
+            "📅 วันที่เริ่มต้น",
+            value=today,
+            min_value=today - timedelta(days=365),
+            max_value=today + timedelta(days=365),
+            key="start_date"
+        )
+    with col_date2:
+        end_date = st.date_input(
+            "📅 วันที่สิ้นสุด",
+            value=today + timedelta(days=29),
+            min_value=start_date,
+            max_value=start_date + timedelta(days=365),
+            key="end_date"
+        )
+
+with col_date3:
     if st.button("🔄 Reset", use_container_width=True):
-        if 'forecast_branches' in st.session_state:
-            del st.session_state.forecast_branches
+        for key in ['forecast_branches', 'date_mode', 'days_preset', 'start_date', 'end_date']:
+            if key in st.session_state:
+                del st.session_state[key]
         st.rerun()
+
+# Calculate days in range for display
+days_in_range = (end_date - start_date).days + 1
+st.caption(f"📌 แสดงข้อมูล {days_in_range} วัน ({start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')})")
 
 selected_branches = tuple(selected_branch_codes) if selected_branch_codes else None
 
 # Get Data
-stats = get_upcoming_appointments_full(selected_branches, days_ahead)
+stats = get_upcoming_appointments_full(selected_branches, start_date, end_date)
 
 if stats['has_data']:
     # Summary Metrics
@@ -368,7 +424,7 @@ if stats['has_data']:
 
     with tab1:
         st.markdown("### 📊 ปริมาณนัดหมายรายวัน")
-        st.caption(f"📌 แสดงข้อมูล {days_ahead} วันข้างหน้า (นับจากวันนี้)")
+        st.caption(f"📌 แสดงข้อมูล {days_in_range} วัน ({start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')})")
 
         if stats['daily_data'] and stats['by_center_daily']:
             upcoming_df = pd.DataFrame(stats['daily_data'])
@@ -605,7 +661,7 @@ if stats['has_data']:
 
     with tab2:
         st.markdown("### 🏢 ปริมาณนัดหมายรายศูนย์")
-        st.caption(f"📌 แสดงข้อมูล {days_ahead} วันข้างหน้า เทียบกับ Capacity ต่อวัน")
+        st.caption(f"📌 แสดงข้อมูล {days_in_range} วัน ({start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}) เทียบกับ Capacity ต่อวัน")
 
         if stats['by_center']:
             # Treemap - Appointments vs Capacity
@@ -616,7 +672,7 @@ if stats['has_data']:
             with treemap_col2:
                 treemap_mode = st.radio(
                     "มุมมอง",
-                    options=["รายวัน", "รายเดือน"],
+                    options=["รายวัน", "รายช่วง"],
                     horizontal=True,
                     key="treemap_mode"
                 )
@@ -630,13 +686,8 @@ if stats['has_data']:
 
             st.markdown("**ขนาดกล่อง** = ปริมาณนัดหมาย | **สี** (จากวันที่มากสุด) = 🟢 ปกติ (<80%) | 🟡 ใกล้เต็ม (80-99%) | 🔴 เต็ม/เกิน (≥100%) | ⚫ ไม่มี Capacity")
 
-            # Calculate days in range for monthly calculation
-            today = date.today()
-            chart_end_date = stats.get('max_date', today + timedelta(days=days_ahead-1))
-            if chart_end_date:
-                days_in_range = (chart_end_date - today).days + 1
-            else:
-                days_in_range = days_ahead
+            # Use days_in_range from filter selection
+            treemap_days = days_in_range
 
             # Filter centers by type
             filtered_centers = stats['by_center']
@@ -657,11 +708,11 @@ if stats['has_data']:
                     value_label = f"เฉลี่ย {c['avg_daily']:.0f}, สูงสุด {max_daily}/วัน"
                     capacity_label = f"{capacity:,}/วัน" if capacity else "N/A"
                 else:
-                    # Monthly view: use total count vs monthly capacity (capacity * days)
+                    # Range view: use total count vs range capacity (capacity * days)
                     display_value = c['count']
-                    monthly_capacity = capacity * days_in_range if capacity else None
-                    value_label = f"{c['count']:,} ({days_in_range} วัน)"
-                    capacity_label = f"{monthly_capacity:,} ({days_in_range} วัน)" if monthly_capacity else "N/A"
+                    range_capacity = capacity * treemap_days if capacity else None
+                    value_label = f"{c['count']:,} ({treemap_days} วัน)"
+                    capacity_label = f"{range_capacity:,} ({treemap_days} วัน)" if range_capacity else "N/A"
 
                 # Use max_usage_pct for color (from pre-calculated status)
                 # This reflects the worst-case day, not average
@@ -770,7 +821,7 @@ if stats['has_data']:
                 if treemap_mode == "รายวัน":
                     st.caption(f"📌 แสดงค่าเฉลี่ยนัดหมายต่อวัน เทียบกับ Capacity ต่อวัน{type_desc} | จำนวน {len(filtered_centers)} ศูนย์")
                 else:
-                    st.caption(f"📌 แสดงนัดหมายรวม {days_in_range} วัน เทียบกับ Capacity รวม{type_desc} | จำนวน {len(filtered_centers)} ศูนย์")
+                    st.caption(f"📌 แสดงนัดหมายรวม {treemap_days} วัน เทียบกับ Capacity รวม{type_desc} | จำนวน {len(filtered_centers)} ศูนย์")
             else:
                 st.info(f"ไม่พบข้อมูลศูนย์ประเภท {center_type_filter}")
 
