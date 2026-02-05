@@ -54,13 +54,15 @@ def get_branch_list():
         session.close()
 
 
-# Cached function for overview stats
+# Cached function for overview stats - OPTIMIZED version
 @st.cache_data(ttl=300)
 def get_overview_stats(start_date, end_date, selected_branches=None):
-    """Get cached overview statistics."""
+    """Get cached overview statistics - optimized with combined queries."""
     start_time = time.perf_counter()
     session = get_session()
     try:
+        from sqlalchemy import union_all
+
         # Base date filter
         filters = [Card.print_date >= start_date, Card.print_date <= end_date]
 
@@ -70,32 +72,61 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
 
         date_filter = and_(*filters)
 
-        # Unique Serial counts
-        unique_at_center = session.query(func.count(func.distinct(Card.serial_number))).filter(
-            date_filter, Card.print_status == 'G'
-        ).scalar() or 0
+        # ==================== OPTIMIZED: Single query for Card table counts ====================
+        # Combine multiple count queries into one query using CASE statements
+        card_stats = session.query(
+            # Basic counts
+            func.count(func.distinct(case((Card.print_status == 'G', Card.serial_number)))).label('unique_at_center'),
+            func.sum(case((Card.print_status == 'B', 1), else_=0)).label('bad_at_center'),
+            # Anomaly counts
+            func.sum(case((Card.wrong_branch == True, 1), else_=0)).label('wrong_branch'),
+            func.sum(case((Card.wrong_date == True, 1), else_=0)).label('wrong_date'),
+            func.sum(case((Card.sla_over_12min == True, 1), else_=0)).label('sla_over_12'),
+            func.sum(case((Card.wait_over_1hour == True, 1), else_=0)).label('wait_over_1hr'),
+            # SLA stats
+            func.sum(case((and_(Card.print_status == 'G', Card.sla_minutes.isnot(None)), 1), else_=0)).label('sla_total'),
+            func.sum(case((and_(Card.print_status == 'G', Card.sla_minutes.isnot(None), Card.sla_minutes <= 12), 1), else_=0)).label('sla_pass'),
+            func.avg(case((and_(Card.print_status == 'G', Card.sla_minutes.isnot(None)), Card.sla_minutes))).label('avg_sla'),
+            # Wait time stats
+            func.sum(case((and_(Card.print_status == 'G', Card.wait_time_minutes.isnot(None)), 1), else_=0)).label('wait_total'),
+            func.sum(case((and_(Card.print_status == 'G', Card.wait_time_minutes.isnot(None), Card.wait_time_minutes <= 60), 1), else_=0)).label('wait_pass'),
+            func.avg(case((and_(Card.print_status == 'G', Card.wait_time_minutes.isnot(None)), Card.wait_time_minutes))).label('avg_wait'),
+            # Incomplete count (Good cards with missing fields)
+            func.sum(case((and_(
+                Card.print_status == 'G',
+                or_(
+                    Card.appointment_id.is_(None), Card.appointment_id == '',
+                    Card.card_id.is_(None), Card.card_id == '',
+                    Card.serial_number.is_(None), Card.serial_number == '',
+                    Card.work_permit_no.is_(None), Card.work_permit_no == ''
+                )
+            ), 1), else_=0)).label('incomplete'),
+        ).filter(date_filter).first()
 
+        unique_at_center = card_stats.unique_at_center or 0
+        bad_at_center = card_stats.bad_at_center or 0
+        wrong_branch = card_stats.wrong_branch or 0
+        wrong_date = card_stats.wrong_date or 0
+        sla_over_12 = card_stats.sla_over_12 or 0
+        wait_over_1hr = card_stats.wait_over_1hr or 0
+        sla_total = card_stats.sla_total or 0
+        sla_pass = card_stats.sla_pass or 0
+        avg_sla = card_stats.avg_sla or 0
+        wait_total = card_stats.wait_total or 0
+        wait_pass = card_stats.wait_pass or 0
+        avg_wait = card_stats.avg_wait or 0
+        incomplete = card_stats.incomplete or 0
+
+        # ==================== Delivery queries (still separate due to different tables) ====================
         report_ids_with_data = session.query(Card.report_id).filter(date_filter).distinct().subquery()
 
-        # DeliveryCard (from Bio Unified Report Sheet 7)
-        unique_delivery_bio = session.query(func.count(func.distinct(DeliveryCard.serial_number))).filter(
-            DeliveryCard.print_status == 'G',
-            DeliveryCard.report_id.in_(session.query(report_ids_with_data))
-        ).scalar() or 0
-
-        # CardDeliveryRecord (from Card Delivery tab upload)
-        # Filter by create_date (cast to date for comparison)
+        # CardDeliveryRecord filters
         cdr_filters = [CardDeliveryRecord.print_status == 'G']
         if start_date and end_date:
             cdr_filters.append(func.date(CardDeliveryRecord.create_date) >= start_date)
             cdr_filters.append(func.date(CardDeliveryRecord.create_date) <= end_date)
-        unique_delivery_cdr = session.query(func.count(func.distinct(CardDeliveryRecord.serial_number))).filter(
-            and_(*cdr_filters)
-        ).scalar() or 0
 
-        # Combine unique delivery (union to avoid duplicates)
-        from sqlalchemy import union_all
-
+        # Combined delivery serials (union)
         delivery_bio_serials = session.query(DeliveryCard.serial_number.label('sn')).filter(
             DeliveryCard.print_status == 'G',
             DeliveryCard.report_id.in_(session.query(report_ids_with_data)),
@@ -108,28 +139,19 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
         combined_delivery = union_all(delivery_bio_serials, delivery_cdr_serials).subquery()
         unique_delivery = session.query(func.count(func.distinct(combined_delivery.c.sn))).scalar() or 0
 
+        # Combined total serials (Card + Delivery)
         card_serials = session.query(Card.serial_number.label('sn')).filter(
             date_filter, Card.print_status == 'G',
             Card.serial_number.isnot(None), Card.serial_number != ''
         )
-        delivery_serials = session.query(DeliveryCard.serial_number.label('sn')).filter(
-            DeliveryCard.print_status == 'G',
-            DeliveryCard.report_id.in_(session.query(report_ids_with_data)),
-            DeliveryCard.serial_number.isnot(None), DeliveryCard.serial_number != ''
-        )
-        cdr_serials = session.query(CardDeliveryRecord.serial_number.label('sn')).filter(
-            and_(*cdr_filters),
-            CardDeliveryRecord.serial_number.isnot(None), CardDeliveryRecord.serial_number != ''
-        )
-        combined_serials = union_all(card_serials, delivery_serials, cdr_serials).subquery()
+        combined_serials = union_all(card_serials, delivery_bio_serials, delivery_cdr_serials).subquery()
         unique_total = session.query(func.count(func.distinct(combined_serials.c.sn))).scalar() or 0
 
-        bad_at_center = session.query(Card).filter(date_filter, Card.print_status == 'B').count()
+        # Bad delivery cards
         bad_delivery_bio = session.query(DeliveryCard).filter(
             DeliveryCard.print_status == 'B',
             DeliveryCard.report_id.in_(session.query(report_ids_with_data))
         ).count()
-        # Bad cards from CardDeliveryRecord
         cdr_bad_filters = [CardDeliveryRecord.print_status == 'B']
         if start_date and end_date:
             cdr_bad_filters.append(func.date(CardDeliveryRecord.create_date) >= start_date)
@@ -137,6 +159,7 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
         bad_delivery_cdr = session.query(CardDeliveryRecord).filter(and_(*cdr_bad_filters)).count()
         bad_cards = bad_at_center + bad_delivery_bio + bad_delivery_cdr
 
+        # ==================== Appointment-related queries ====================
         appt_one_g = session.query(Card.appointment_id).filter(
             date_filter, Card.print_status == 'G',
             Card.appointment_id.isnot(None), Card.appointment_id != ''
@@ -173,43 +196,9 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
             )
         ).scalar() or 0
 
-        incomplete = session.query(Card).filter(
-            date_filter, Card.print_status == 'G',
-            or_(
-                Card.appointment_id.is_(None), Card.appointment_id == '',
-                Card.card_id.is_(None), Card.card_id == '',
-                Card.serial_number.is_(None), Card.serial_number == '',
-                Card.work_permit_no.is_(None), Card.work_permit_no == ''
-            )
-        ).count()
-
-        wrong_branch = session.query(Card).filter(date_filter, Card.wrong_branch == True).count()
-        wrong_date = session.query(Card).filter(date_filter, Card.wrong_date == True).count()
-        sla_over_12 = session.query(Card).filter(date_filter, Card.sla_over_12min == True).count()
-        wait_over_1hr = session.query(Card).filter(date_filter, Card.wait_over_1hour == True).count()
         duplicate_serial = session.query(Card.serial_number).filter(
             date_filter, Card.print_status == 'G'
         ).group_by(Card.serial_number).having(func.count(Card.id) > 1).count()
-
-        sla_total = session.query(Card).filter(
-            date_filter, Card.print_status == 'G', Card.sla_minutes.isnot(None)
-        ).count()
-        sla_pass = session.query(Card).filter(
-            date_filter, Card.print_status == 'G', Card.sla_minutes.isnot(None), Card.sla_minutes <= 12
-        ).count()
-        avg_sla = session.query(func.avg(Card.sla_minutes)).filter(
-            date_filter, Card.print_status == 'G', Card.sla_minutes.isnot(None)
-        ).scalar() or 0
-
-        wait_total = session.query(Card).filter(
-            date_filter, Card.print_status == 'G', Card.wait_time_minutes.isnot(None)
-        ).count()
-        wait_pass = session.query(Card).filter(
-            date_filter, Card.print_status == 'G', Card.wait_time_minutes.isnot(None), Card.wait_time_minutes <= 60
-        ).count()
-        avg_wait = session.query(func.avg(Card.wait_time_minutes)).filter(
-            date_filter, Card.print_status == 'G', Card.wait_time_minutes.isnot(None)
-        ).scalar() or 0
 
         return {
             'unique_at_center': unique_at_center,
@@ -714,17 +703,23 @@ else:
         end_date = st.date_input("วันที่สิ้นสุด", value=st.session_state.filter_end, min_value=min_date, max_value=max_date, key="overview_end")
         st.session_state.filter_end = end_date
 
-    # Row 2: Branch filter
-    if branch_list:
-        selected_branch_codes = st.multiselect(
-            "🏢 เลือกศูนย์ (เว้นว่างเพื่อดูทั้งหมด)",
-            options=list(branch_options.keys()),
-            format_func=lambda x: branch_options.get(x, x),
-            key="overview_branches",
-            placeholder="ทุกศูนย์"
-        )
-    else:
-        selected_branch_codes = []
+    # Row 2: Branch filter and options
+    col_branch, col_options = st.columns([4, 1])
+
+    with col_branch:
+        if branch_list:
+            selected_branch_codes = st.multiselect(
+                "🏢 เลือกศูนย์ (เว้นว่างเพื่อดูทั้งหมด)",
+                options=list(branch_options.keys()),
+                format_func=lambda x: branch_options.get(x, x),
+                key="overview_branches",
+                placeholder="ทุกศูนย์"
+            )
+        else:
+            selected_branch_codes = []
+
+    with col_options:
+        show_trends = st.checkbox("📈 แสดง Trend", value=False, help="เปิดเพื่อแสดงการเปรียบเทียบกับช่วงก่อนหน้า (ช้าขึ้น)")
 
     # Convert to tuple for caching (lists are not hashable)
     selected_branches = tuple(selected_branch_codes) if selected_branch_codes else None
@@ -760,39 +755,28 @@ else:
     wait_fail = wait_total - wait_pass
     wait_pass_pct = (wait_pass / wait_total * 100) if wait_total > 0 else 0
 
-    # Get trend data (compare with previous periods)
-    # Calculate date ranges for comparison
-    current_days = (end_date - start_date).days + 1
+    # Get trend data only if enabled (to improve performance)
+    if show_trends:
+        # Calculate date ranges for comparison
+        current_days = (end_date - start_date).days + 1
 
-    # Yesterday comparison (1 day back)
-    prev_day_end = start_date - timedelta(days=1)
-    prev_day_start = prev_day_end - timedelta(days=current_days - 1)
+        # Previous period (same length as current period, immediately before)
+        prev_day_end = start_date - timedelta(days=1)
+        prev_day_start = prev_day_end - timedelta(days=current_days - 1)
 
-    # Last week comparison (7 days back)
-    prev_week_end = start_date - timedelta(days=1)
-    prev_week_start = prev_week_end - timedelta(days=6)
+        # Get previous period stats for trends (only 1 query instead of 3)
+        stats_prev_day = get_overview_stats(prev_day_start, prev_day_end, selected_branches)
 
-    # Last month comparison (30 days back)
-    prev_month_end = start_date - timedelta(days=1)
-    prev_month_start = prev_month_end - timedelta(days=29)
-
-    # Get previous period stats for trends
-    stats_prev_day = get_overview_stats(prev_day_start, prev_day_end, selected_branches)
-    stats_prev_week = get_overview_stats(prev_week_start, prev_week_end, selected_branches)
-    stats_prev_month = get_overview_stats(prev_month_start, prev_month_end, selected_branches)
-
-    # Calculate trends
-    trend_total_day = calculate_trend(unique_total, stats_prev_day['unique_total'])
-    trend_total_week = calculate_trend(unique_total, stats_prev_week['unique_total'])
-    trend_total_month = calculate_trend(unique_total, stats_prev_month['unique_total'])
-
-    trend_bad_day = calculate_trend(bad_cards, stats_prev_day['bad_cards'])
-    trend_bad_week = calculate_trend(bad_cards, stats_prev_week['bad_cards'])
-    trend_bad_month = calculate_trend(bad_cards, stats_prev_month['bad_cards'])
-
-    trend_complete_day = calculate_trend(complete_cards, stats_prev_day['complete_cards'])
-    trend_complete_week = calculate_trend(complete_cards, stats_prev_week['complete_cards'])
-    trend_complete_month = calculate_trend(complete_cards, stats_prev_month['complete_cards'])
+        # Calculate trends (only compare with previous period)
+        trend_total_day = calculate_trend(unique_total, stats_prev_day['unique_total'])
+        trend_bad_day = calculate_trend(bad_cards, stats_prev_day['bad_cards'])
+        trend_complete_day = calculate_trend(complete_cards, stats_prev_day['complete_cards'])
+    else:
+        # No trends - set all to None for faster loading
+        stats_prev_day = None
+        trend_total_day = None
+        trend_bad_day = None
+        trend_complete_day = None
 
     # ==================== OPERATION SUMMARY PANEL ====================
     st.markdown("---")
@@ -852,7 +836,7 @@ else:
             subtitle="ผู้รับบริการมารับบัตรด้วยตนเอง ที่ศูนย์บริการ",
             icon="center",
             card_type="info",
-            trend_day=calculate_trend(unique_at_center, stats_prev_day['unique_at_center']),
+            trend_day=calculate_trend(unique_at_center, stats_prev_day['unique_at_center']) if show_trends else None,
         )
     with col2:
         render_uniform_card(
@@ -861,7 +845,7 @@ else:
             subtitle="บัตรที่จัดส่งทางไปรษณีย์ หรือหน่วยเคลื่อนที่",
             icon="delivery",
             card_type="info",
-            trend_day=calculate_trend(unique_delivery, stats_prev_day['unique_delivery']),
+            trend_day=calculate_trend(unique_delivery, stats_prev_day['unique_delivery']) if show_trends else None,
         )
     with col3:
         render_uniform_card(
@@ -903,7 +887,7 @@ else:
             subtitle=f"1 นัดหมาย ออกบัตรดีมากกว่า 1 ใบ | {appt_multiple_records:,} records",
             icon="warning",
             card_type="warning" if appt_multiple_g > 0 else "info",
-            trend_day=calculate_trend(appt_multiple_g, stats_prev_day['appt_multiple_g']),
+            trend_day=calculate_trend(appt_multiple_g, stats_prev_day['appt_multiple_g']) if show_trends else None,
             inverse_trend=True,
         )
     with col3:
@@ -913,7 +897,7 @@ else:
             subtitle="ขาด Appt ID, Card ID, SN หรือ Work Permit",
             icon="incomplete",
             card_type="warning" if incomplete > 0 else "info",
-            trend_day=calculate_trend(incomplete, stats_prev_day['incomplete']),
+            trend_day=calculate_trend(incomplete, stats_prev_day['incomplete']) if show_trends else None,
             inverse_trend=True,
         )
     with col4:
@@ -923,7 +907,7 @@ else:
             subtitle="จำนวนใบอนุญาตทำงานที่ไม่ซ้ำกัน",
             icon="permit",
             card_type="info",
-            trend_day=calculate_trend(unique_work_permit, stats_prev_day['unique_work_permit']),
+            trend_day=calculate_trend(unique_work_permit, stats_prev_day['unique_work_permit']) if show_trends else None,
         )
 
     st.markdown("---")
@@ -1466,14 +1450,14 @@ else:
         render_mini_metric(
             label="ผ่าน SLA ออกบัตร",
             value=sla_pass,
-            trend=calculate_trend(sla_pass, stats_prev_day['sla_pass']),
+            trend=calculate_trend(sla_pass, stats_prev_day['sla_pass']) if show_trends else None,
             card_type="success" if sla_pass_pct >= 90 else ("warning" if sla_pass_pct >= 80 else "danger"),
         )
     with col2:
         render_mini_metric(
             label="ไม่ผ่าน SLA",
             value=sla_fail,
-            trend=calculate_trend(sla_fail, stats_prev_day['sla_total'] - stats_prev_day['sla_pass']),
+            trend=calculate_trend(sla_fail, stats_prev_day['sla_total'] - stats_prev_day['sla_pass']) if show_trends else None,
             card_type="danger" if sla_fail > 0 else "info",
             inverse_trend=True,
         )
@@ -1481,14 +1465,14 @@ else:
         render_mini_metric(
             label="ผ่าน SLA รอคิว",
             value=wait_pass,
-            trend=calculate_trend(wait_pass, stats_prev_day['wait_pass']),
+            trend=calculate_trend(wait_pass, stats_prev_day['wait_pass']) if show_trends else None,
             card_type="success" if wait_pass_pct >= 90 else ("warning" if wait_pass_pct >= 80 else "danger"),
         )
     with col4:
         render_mini_metric(
             label="รอเกิน 1 ชม.",
             value=wait_fail,
-            trend=calculate_trend(wait_fail, stats_prev_day['wait_total'] - stats_prev_day['wait_pass']),
+            trend=calculate_trend(wait_fail, stats_prev_day['wait_total'] - stats_prev_day['wait_pass']) if show_trends else None,
             card_type="danger" if wait_fail > 0 else "info",
             inverse_trend=True,
         )
