@@ -1348,15 +1348,21 @@ if stats['has_data']:
                         else:
                             bar_color = '#EF4444'
 
-                        bar_width = min(rate, 100)
+                        # Round bar_width and cap at 100
+                        bar_width = round(min(rate, 100), 1)
                         stats_text = f"{p['checkin_count']:,} / {p['appt_count']:,}"
+
+                        # Add icon for over 100% (walk-in cases)
+                        rate_display = f"{rate:.0f}%"
+                        if rate > 100:
+                            rate_display = f"🚀 {rate:.0f}%"
 
                         progress_html += f'''
                         <div class="checkin-row">
                             <div class="checkin-name" title="{p['branch_name']}">{p['branch_code']}</div>
                             <div class="checkin-bar-container">
                                 <div class="checkin-bar" style="width: {bar_width}%; background: {bar_color};"></div>
-                                <span class="checkin-bar-text">{rate:.0f}%</span>
+                                <span class="checkin-bar-text">{rate_display}</span>
                             </div>
                             <div class="checkin-stats">{stats_text}</div>
                         </div>
@@ -1371,6 +1377,7 @@ if stats['has_data']:
                             <span style="color: #10B981; margin-left: 12px;">🟢 ≥80%</span>
                             <span style="color: #F59E0B; margin-left: 12px;">🟡 50-79%</span>
                             <span style="color: #EF4444; margin-left: 12px;">🔴 <50%</span>
+                            <span style="margin-left: 12px;">🚀 = มากกว่านัดหมาย (walk-in)</span>
                         </span>
                     </div>
                     """, unsafe_allow_html=True)
@@ -1459,14 +1466,20 @@ if stats['has_data']:
                             else:
                                 bar_color = '#EF4444'
 
-                            bar_width = min(rate, 100)
+                            # Round bar_width and cap at 100
+                            bar_width = round(min(rate, 100), 1)
+
+                            # Add icon for over 100%
+                            rate_display = f"{rate:.0f}%"
+                            if rate > 100:
+                                rate_display = f"🚀 {rate:.0f}%"
 
                             daily_html += f'''
                             <div class="daily-checkin-row">
                                 <div class="daily-checkin-name">{dd['branch_code']}</div>
                                 <div class="daily-checkin-bar-container">
                                     <div class="daily-checkin-bar" style="width: {bar_width}%; background: {bar_color};"></div>
-                                    <span class="daily-checkin-bar-text">{rate:.0f}%</span>
+                                    <span class="daily-checkin-bar-text">{rate_display}</span>
                                 </div>
                                 <div class="daily-checkin-stats">{dd['checkin']:,} / {dd['appt']:,}</div>
                             </div>
