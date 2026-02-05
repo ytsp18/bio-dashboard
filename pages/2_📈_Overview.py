@@ -201,25 +201,52 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
         ).group_by(Card.serial_number).having(func.count(Card.id) > 1).count()
 
         # ==================== QLog Wait Time Stats (separate query) ====================
-        # If Card.wait_time_minutes is empty, use QLog.wait_time_seconds instead
+        # Logic SLA รอคิว:
+        # - Type A (OB centers): นำมาคิดทุกรายการ, ตก SLA ถ้ารอ > 60 นาที
+        # - Type B (SC centers): นำมาคิดเฉพาะ EI และ T, ตก SLA ถ้ารอ > 60 นาที
         qlog_filters = [QLog.qlog_date >= start_date, QLog.qlog_date <= end_date]
         if selected_branches and len(selected_branches) > 0:
             qlog_filters.append(QLog.branch_code.in_(selected_branches))
 
-        qlog_wait_stats = session.query(
-            func.count(QLog.id).label('qlog_total'),
-            func.sum(case((QLog.wait_time_seconds <= 3600, 1), else_=0)).label('qlog_pass'),  # ≤1 hour
-            func.sum(case((QLog.wait_time_seconds > 3600, 1), else_=0)).label('qlog_over_1hr'),  # >1 hour
-            func.avg(QLog.wait_time_seconds).label('qlog_avg_wait_sec')
+        # Type A (OB centers) - ALL records
+        type_a_stats = session.query(
+            func.count(QLog.id).label('total'),
+            func.sum(case((QLog.wait_time_seconds <= 3600, 1), else_=0)).label('pass_count'),
+            func.avg(QLog.wait_time_seconds).label('avg_wait')
         ).filter(
             and_(*qlog_filters),
+            QLog.qlog_type == 'A',
             QLog.wait_time_seconds.isnot(None)
         ).first()
 
-        qlog_wait_total = qlog_wait_stats.qlog_total or 0
-        qlog_wait_pass = qlog_wait_stats.qlog_pass or 0
-        qlog_wait_over_1hr = qlog_wait_stats.qlog_over_1hr or 0
-        qlog_avg_wait_sec = qlog_wait_stats.qlog_avg_wait_sec or 0
+        # Type B (SC centers) - Only EI and T
+        type_b_stats = session.query(
+            func.count(QLog.id).label('total'),
+            func.sum(case((QLog.wait_time_seconds <= 3600, 1), else_=0)).label('pass_count'),
+            func.avg(QLog.wait_time_seconds).label('avg_wait')
+        ).filter(
+            and_(*qlog_filters),
+            QLog.qlog_type == 'B',
+            QLog.sla_status.in_(['EI', 'T']),
+            QLog.wait_time_seconds.isnot(None)
+        ).first()
+
+        type_a_total = type_a_stats.total or 0
+        type_a_pass = type_a_stats.pass_count or 0
+        type_b_total = type_b_stats.total or 0
+        type_b_pass = type_b_stats.pass_count or 0
+
+        qlog_wait_total = type_a_total + type_b_total
+        qlog_wait_pass = type_a_pass + type_b_pass
+        qlog_wait_over_1hr = qlog_wait_total - qlog_wait_pass
+
+        # Weighted average (combine Type A and Type B averages)
+        type_a_avg = type_a_stats.avg_wait or 0
+        type_b_avg = type_b_stats.avg_wait or 0
+        if qlog_wait_total > 0:
+            qlog_avg_wait_sec = (type_a_avg * type_a_total + type_b_avg * type_b_total) / qlog_wait_total
+        else:
+            qlog_avg_wait_sec = 0
         qlog_avg_wait_min = qlog_avg_wait_sec / 60 if qlog_avg_wait_sec else 0
 
         # Use QLog data if Card wait_time is empty
