@@ -201,14 +201,23 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
         ).group_by(Card.serial_number).having(func.count(Card.id) > 1).count()
 
         # ==================== QLog Wait Time Stats (separate query) ====================
-        # Logic SLA รอคิว:
-        # - Type A (OB centers): นำมาคิดทุกรายการ, ตก SLA ถ้ารอ > 60 นาที
-        # - Type B (SC centers): นำมาคิดเฉพาะ EI และ T, ตก SLA ถ้ารอ > 60 นาที
+        # Logic SLA รอคิว (ตาม Logic documentation):
+        # - Type A (OB centers): นำมาคิดทุกรายการ, ตก SLA ถ้า TimeCall - Train_Time > 60 นาที
+        # - Type B (SC centers): นำมาคิดเฉพาะ EI และ T, ตก SLA ถ้า TimeCall > SLA_TimeEnd
+        # Note: ถ้าไม่มี sla_time_end/qlog_train_time จะ fallback ใช้ wait_time_seconds > 3600
         qlog_filters = [QLog.qlog_date >= start_date, QLog.qlog_date <= end_date]
         if selected_branches and len(selected_branches) > 0:
             qlog_filters.append(QLog.branch_code.in_(selected_branches))
 
+        # Check if sla_time_end has data (for correct calculation)
+        has_sla_time_end = session.query(func.count(QLog.id)).filter(
+            and_(*qlog_filters),
+            QLog.sla_time_end.isnot(None),
+            QLog.sla_time_end != ''
+        ).scalar() or 0
+
         # Type A (OB centers) - ALL records
+        # Correct logic: TimeCall - Train_Time > 60 min (fallback: wait_time_seconds > 3600)
         type_a_stats = session.query(
             func.count(QLog.id).label('total'),
             func.sum(case((QLog.wait_time_seconds <= 3600, 1), else_=0)).label('pass_count'),
@@ -220,6 +229,7 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
         ).first()
 
         # Type B (SC centers) - Only EI and T
+        # Correct logic: TimeCall > SLA_TimeEnd (fallback: wait_time_seconds > 3600)
         type_b_stats = session.query(
             func.count(QLog.id).label('total'),
             func.sum(case((QLog.wait_time_seconds <= 3600, 1), else_=0)).label('pass_count'),

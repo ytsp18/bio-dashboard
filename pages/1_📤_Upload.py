@@ -527,16 +527,22 @@ with tab3:
         'qlog_id': ['QLOG_ID'],
         'branch_code': ['BRANCH_ID'],
         'qlog_type': ['QLOG_TYPE'],
+        'qlog_typename': ['QLOG_TYPENAME'],
         'qlog_num': ['QLOG_NUM'],
+        'qlog_counter': ['QLOG_COUNTER'],
         'qlog_user': ['QLOG_USER'],
         'qlog_date': ['QLOG_DATE', 'QLOG_DATEIN'],
         'qlog_time_in': ['QLOG_TIMEIN'],
         'qlog_time_call': ['QLOG_TIMECALL'],
         'qlog_time_end': ['QLOG_TIMEEND'],
+        'qlog_train_time': ['QLOG_TRAIN_TIME'],
         'wait_time_seconds': ['QLOG_COUNTWAIT'],
         'appointment_code': ['APPOINTMENT_CODE'],
+        'appointment_time': ['APPOINTMENT_TIME'],
         'qlog_status': ['QLOG_STATUS'],
         'sla_status': ['SLA_STATUS'],
+        'sla_time_start': ['SLA_TIMESTART'],
+        'sla_time_end': ['SLA_TIMEEND'],
     }
 
     uploaded_qlog = st.file_uploader("เลือกไฟล์ QLog", type=['csv'], key="qlog_uploader")
@@ -603,32 +609,12 @@ with tab3:
 
             st.dataframe(df.head(5), use_container_width=True, hide_index=True)
 
-            # Check for duplicates - block import if found
-            session = get_session()
-            duplicate_found = False
-            try:
-                if col_map.get('qlog_id'):
-                    file_qlogs = df[col_map['qlog_id']].astype(str).str.strip().unique().tolist()
-                    from sqlalchemy import text
-                    existing_qlogs = set()
-                    batch_size = 1000
-                    for i in range(0, len(file_qlogs), batch_size):
-                        batch = file_qlogs[i:i+batch_size]
-                        result = session.execute(
-                            text("SELECT qlog_id FROM qlogs WHERE qlog_id IN :ids"),
-                            {"ids": tuple(batch) if len(batch) > 1 else (batch[0], batch[0])}
-                        )
-                        existing_qlogs.update(row[0] for row in result)
-
-                    if existing_qlogs:
-                        st.error(f"❌ พบ QLog ID ซ้ำในฐานข้อมูล {len(existing_qlogs):,} รายการ - ไม่สามารถนำเข้าได้")
-                        duplicate_found = True
-            finally:
-                session.close()
+            # Note: QLog ID can be duplicated (same person can check-in multiple times)
+            # So we don't block import for duplicates
 
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
-                if st.button("📥 นำเข้า QLog", type="primary", use_container_width=True, key="import_qlog", disabled=duplicate_found):
+                if st.button("📥 นำเข้า QLog", type="primary", use_container_width=True, key="import_qlog"):
                     progress = st.progress(0)
                     status_text = st.empty()
                     session = get_session()
@@ -652,16 +638,22 @@ with tab3:
                             'qlog_id': df[col_map['qlog_id']].astype(str).str.strip() if col_map.get('qlog_id') else None,
                             'branch_code': df[col_map['branch_code']].astype(str).str.strip() if col_map.get('branch_code') else None,
                             'qlog_type': df[col_map['qlog_type']].astype(str).str.strip() if col_map.get('qlog_type') else None,
+                            'qlog_typename': df[col_map['qlog_typename']].astype(str).str.strip() if col_map.get('qlog_typename') else None,
                             'qlog_num': pd.to_numeric(df[col_map['qlog_num']], errors='coerce') if col_map.get('qlog_num') else None,
+                            'qlog_counter': pd.to_numeric(df[col_map['qlog_counter']], errors='coerce') if col_map.get('qlog_counter') else None,
                             'qlog_user': df[col_map['qlog_user']].astype(str).str.strip() if col_map.get('qlog_user') else None,
                             'qlog_date': pd.to_datetime(df[col_map['qlog_date']], errors='coerce') if col_map.get('qlog_date') else None,
                             'qlog_time_in': df[col_map['qlog_time_in']].astype(str).str.strip() if col_map.get('qlog_time_in') else None,
                             'qlog_time_call': df[col_map['qlog_time_call']].astype(str).str.strip() if col_map.get('qlog_time_call') else None,
                             'qlog_time_end': df[col_map['qlog_time_end']].astype(str).str.strip() if col_map.get('qlog_time_end') else None,
+                            'qlog_train_time': df[col_map['qlog_train_time']].astype(str).str.strip() if col_map.get('qlog_train_time') else None,
                             'wait_time_seconds': pd.to_numeric(df[col_map['wait_time_seconds']], errors='coerce') if col_map.get('wait_time_seconds') else None,
                             'appointment_code': df[col_map['appointment_code']].astype(str).str.strip() if col_map.get('appointment_code') else None,
+                            'appointment_time': df[col_map['appointment_time']].astype(str).str.strip() if col_map.get('appointment_time') else None,
                             'qlog_status': df[col_map['qlog_status']].astype(str).str.strip() if col_map.get('qlog_status') else None,
                             'sla_status': df[col_map['sla_status']].astype(str).str.strip() if col_map.get('sla_status') else None,
+                            'sla_time_start': df[col_map['sla_time_start']].astype(str).str.strip() if col_map.get('sla_time_start') else None,
+                            'sla_time_end': df[col_map['sla_time_end']].astype(str).str.strip() if col_map.get('sla_time_end') else None,
                         })
                         import_df = import_df.replace({'nan': None, 'None': None, '': None})
                         progress.progress(30)
@@ -681,9 +673,11 @@ with tab3:
                             conn = session.connection().connection
                             cursor = conn.cursor()
 
-                            columns = ['upload_id', 'qlog_id', 'branch_code', 'qlog_type', 'qlog_num', 'qlog_user',
-                                       'qlog_date', 'qlog_time_in', 'qlog_time_call', 'qlog_time_end',
-                                       'wait_time_seconds', 'appointment_code', 'qlog_status', 'sla_status']
+                            columns = ['upload_id', 'qlog_id', 'branch_code', 'qlog_type', 'qlog_typename',
+                                       'qlog_num', 'qlog_counter', 'qlog_user',
+                                       'qlog_date', 'qlog_time_in', 'qlog_time_call', 'qlog_time_end', 'qlog_train_time',
+                                       'wait_time_seconds', 'appointment_code', 'appointment_time',
+                                       'qlog_status', 'sla_status', 'sla_time_start', 'sla_time_end']
 
                             # Convert DataFrame to CSV string buffer
                             status_text.text("กำลังเตรียมข้อมูลสำหรับ COPY...")
@@ -695,9 +689,11 @@ with tab3:
                             # Use COPY command
                             status_text.text(f"กำลังนำเข้า {total_records:,} รายการด้วย COPY...")
                             cursor.copy_expert("""
-                                COPY qlogs (upload_id, qlog_id, branch_code, qlog_type, qlog_num, qlog_user,
-                                    qlog_date, qlog_time_in, qlog_time_call, qlog_time_end,
-                                    wait_time_seconds, appointment_code, qlog_status, sla_status)
+                                COPY qlogs (upload_id, qlog_id, branch_code, qlog_type, qlog_typename,
+                                    qlog_num, qlog_counter, qlog_user,
+                                    qlog_date, qlog_time_in, qlog_time_call, qlog_time_end, qlog_train_time,
+                                    wait_time_seconds, appointment_code, appointment_time,
+                                    qlog_status, sla_status, sla_time_start, sla_time_end)
                                 FROM STDIN WITH (FORMAT CSV, NULL '\\N')
                             """, buffer)
                             progress.progress(95)

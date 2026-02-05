@@ -405,6 +405,7 @@ class QLog(Base):
     qlog_time_in = Column(String(20))  # Check-in time
     qlog_time_call = Column(String(20))  # Called time
     qlog_time_end = Column(String(20))  # End time
+    qlog_train_time = Column(String(20))  # Training complete time (for Type A)
 
     # Wait time (calculated from time_in to time_call)
     wait_time_seconds = Column(Integer)  # QLOG_COUNTWAIT
