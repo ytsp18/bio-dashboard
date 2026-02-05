@@ -2,6 +2,50 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [1.4.1] - 2026-02-05
+
+### Added
+- **QLog Upload - New Columns Support**
+  - `sla_time_start`, `sla_time_end` - For correct SLA Type B calculation
+  - `qlog_train_time` - For correct SLA Type A calculation
+  - `appointment_time` - Appointment time
+  - `qlog_typename`, `qlog_counter` - Additional QLog info
+  - Auto-migration for new columns on app startup
+
+### Changed
+- **SLA รอคิว Calculation - Correct Logic**
+  - Now counts only appointments with printed cards (G)
+  - Type A (OB): All records, fail if TimeCall - Train_Time > 60 min
+  - Type B (SC): Only EI and T status, fail if TimeCall > SLA_TimeEnd
+  - JOIN QLog with BioRecord to filter by printed cards
+
+- **SLA ออกบัตร - Use BioRecord**
+  - Changed from Card table (46% data) to BioRecord (99.9% data)
+  - More accurate SLA statistics
+
+- **Daily Summary Chart - Separate by Center Type**
+  - SC ศูนย์บริการ (G) - Green
+  - OB แรกรับ (G) - Blue
+  - บัตรจัดส่ง (G) - Purple (from CardDeliveryRecord)
+  - Bad cards separated by type (SC/OB/Delivery)
+
+- **QLog Upload - Allow Duplicates**
+  - Removed duplicate check for QLog ID
+  - Same person can check-in multiple times
+
+### Fixed
+- **BioRecord Import Error**
+  - Fixed UnboundLocalError in cached function
+  - Use local import for BioRecord in get_overview_stats()
+
+### Files Modified
+- `pages/2_📈_Overview.py` - SLA queries, daily chart
+- `pages/1_📤_Upload.py` - QLog column mapping
+- `database/models.py` - Added qlog_train_time
+- `database/connection.py` - Auto-migration for QLog columns
+
+---
+
 ## [1.4.0] - 2026-02-05
 
 ### Added
