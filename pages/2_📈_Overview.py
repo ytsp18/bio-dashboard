@@ -1,4 +1,4 @@
-"""Overview page - Modern Dashboard with Bar Charts."""
+"""Overview page - Modern Dashboard with Bar Charts and SLA Analysis."""
 import streamlit as st
 import pandas as pd
 from streamlit_echarts import st_echarts
