@@ -163,6 +163,19 @@ def _run_migrations():
         if 'ix_cards_status_serial' not in existing_indexes:
             migrations.append("CREATE INDEX IF NOT EXISTS ix_cards_status_serial ON cards (print_status, serial_number)")
 
+    # ========== QLog table - add missing columns ==========
+    if 'qlogs' in tables and not is_sqlite:
+        existing_columns = {col['name'] for col in inspector.get_columns('qlogs')}
+        qlog_new_columns = {
+            'qlog_train_time': 'VARCHAR(20)',
+            'qlog_typename': 'VARCHAR(50)',
+            'qlog_counter': 'INTEGER',
+        }
+        for col_name, col_type in qlog_new_columns.items():
+            if col_name not in existing_columns:
+                migrations.append(f"ALTER TABLE qlogs ADD COLUMN {col_name} {col_type}")
+                _log(f"Queued column add: qlogs.{col_name}")
+
     # ========== Fix VARCHAR column sizes for appointments ==========
     # This fixes StringDataRightTruncation errors for Thai text fields
     if 'appointments' in tables and not is_sqlite:
