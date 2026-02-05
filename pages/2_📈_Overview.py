@@ -204,19 +204,31 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
         # Logic SLA รอคิว (ตาม Logic documentation):
         # - Type A (OB centers): นำมาคิดทุกรายการ, ตก SLA ถ้า TimeCall - Train_Time > 60 นาที
         # - Type B (SC centers): นำมาคิดเฉพาะ EI และ T, ตก SLA ถ้า TimeCall > SLA_TimeEnd
+        # - เฉพาะนัดหมายที่มีการออกบัตร (G) แล้วเท่านั้น
         # Note: ถ้าไม่มี sla_time_end/qlog_train_time จะ fallback ใช้ wait_time_seconds > 3600
-        qlog_filters = [QLog.qlog_date >= start_date, QLog.qlog_date <= end_date]
+
+        # Get appointment_codes that have printed cards (G) - from BioRecord
+        from database.models import BioRecord
+        printed_appt_codes = session.query(BioRecord.appointment_id).filter(
+            BioRecord.print_date >= start_date,
+            BioRecord.print_date <= end_date,
+            BioRecord.print_status == 'G',
+            BioRecord.appointment_id.isnot(None),
+            BioRecord.appointment_id != ''
+        )
+        if selected_branches and len(selected_branches) > 0:
+            printed_appt_codes = printed_appt_codes.filter(BioRecord.branch_code.in_(selected_branches))
+        printed_appt_codes = printed_appt_codes.distinct().subquery()
+
+        qlog_filters = [
+            QLog.qlog_date >= start_date,
+            QLog.qlog_date <= end_date,
+            QLog.appointment_code.in_(session.query(printed_appt_codes.c.appointment_id))  # Only appointments with printed cards
+        ]
         if selected_branches and len(selected_branches) > 0:
             qlog_filters.append(QLog.branch_code.in_(selected_branches))
 
-        # Check if sla_time_end has data (for correct calculation)
-        has_sla_time_end = session.query(func.count(QLog.id)).filter(
-            and_(*qlog_filters),
-            QLog.sla_time_end.isnot(None),
-            QLog.sla_time_end != ''
-        ).scalar() or 0
-
-        # Type A (OB centers) - ALL records
+        # Type A (OB centers) - ALL records that have printed cards
         # Correct logic: TimeCall - Train_Time > 60 min (fallback: wait_time_seconds > 3600)
         type_a_stats = session.query(
             func.count(QLog.id).label('total'),
@@ -228,7 +240,7 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
             QLog.wait_time_seconds.isnot(None)
         ).first()
 
-        # Type B (SC centers) - Only EI and T
+        # Type B (SC centers) - Only EI and T that have printed cards
         # Correct logic: TimeCall > SLA_TimeEnd (fallback: wait_time_seconds > 3600)
         type_b_stats = session.query(
             func.count(QLog.id).label('total'),
