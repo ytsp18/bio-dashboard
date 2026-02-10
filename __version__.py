@@ -1,5 +1,5 @@
 """Bio Dashboard Version Information."""
 
-__version__ = "1.4.3"
-__version_info__ = (1, 4, 3)
-__release_date__ = "2026-02-05"
+__version__ = "1.5.0"
+__version_info__ = (1, 5, 0)
+__release_date__ = "2026-02-10"

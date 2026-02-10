@@ -375,42 +375,109 @@ with tab2:
             # Preview
             st.dataframe(df.head(5), use_container_width=True, hide_index=True)
 
-            # Check for duplicates - block import if found
+            # Smart duplicate check - classify into new/changed/skip
             session = get_session()
-            duplicate_found = False
+            new_count = 0
+            changed_count = 0
+            skip_count = 0
+            importable_count = 0
+            has_classification = False
             try:
                 if col_map.get('appointment_id'):
-                    file_appts = df[col_map['appointment_id']].astype(str).str.strip().unique().tolist()
                     from sqlalchemy import text
-                    existing_appts = set()
+
+                    # Extract file data for comparison
+                    file_appt_ids_col = df[col_map['appointment_id']].astype(str).str.strip()
+                    file_appt_ids_unique = file_appt_ids_col.unique().tolist()
+
+                    # Query DB for existing (appointment_id, appt_date, branch_code)
+                    existing_appt_ids = set()
+                    existing_composites = set()
                     batch_size = 1000
-                    for i in range(0, len(file_appts), batch_size):
-                        batch = file_appts[i:i+batch_size]
+                    for i in range(0, len(file_appt_ids_unique), batch_size):
+                        batch = file_appt_ids_unique[i:i+batch_size]
                         result = session.execute(
-                            text("SELECT appointment_id FROM appointments WHERE appointment_id IN :appts"),
+                            text("SELECT appointment_id, appt_date, branch_code FROM appointments WHERE appointment_id IN :appts"),
                             {"appts": tuple(batch) if len(batch) > 1 else (batch[0], batch[0])}
                         )
-                        existing_appts.update(row[0] for row in result)
+                        for row in result:
+                            appt_id = str(row[0]).strip()
+                            existing_appt_ids.add(appt_id)
+                            date_str = str(row[1]) if row[1] else 'None'
+                            bc_str = str(row[2]).strip() if row[2] else 'None'
+                            existing_composites.add(f"{appt_id}|{date_str}|{bc_str}")
 
-                    if existing_appts:
-                        st.error(f"❌ พบ Appointment ID ซ้ำในฐานข้อมูล {len(existing_appts):,} รายการ - ไม่สามารถนำเข้าได้")
-                        duplicate_found = True
+                    # Vectorized classification
+                    can_compare = col_map.get('appt_date') and col_map.get('branch_code')
+
+                    if can_compare:
+                        file_dates = pd.to_datetime(df[col_map['appt_date']], errors='coerce').dt.date.astype(str)
+                        file_branches = df[col_map['branch_code']].astype(str).str.strip().fillna('None').replace({'nan': 'None', '': 'None'})
+                        file_composites = file_appt_ids_col + '|' + file_dates + '|' + file_branches
+
+                        is_new = ~file_appt_ids_col.isin(existing_appt_ids)
+                        is_exact_match = file_composites.isin(existing_composites)
+
+                        df['_class'] = 'changed'
+                        df.loc[is_new, '_class'] = 'new'
+                        df.loc[is_exact_match, '_class'] = 'skip'
+                    else:
+                        # Fallback: no date/branch columns -> skip all duplicates
+                        is_new = ~file_appt_ids_col.isin(existing_appt_ids)
+                        df['_class'] = 'skip'
+                        df.loc[is_new, '_class'] = 'new'
+                        if not can_compare and len(existing_appt_ids) > 0:
+                            st.warning("⚠️ ไม่พบคอลัมน์วันนัด/สาขา ไม่สามารถตรวจสอบการเปลี่ยนแปลงได้ — รายการซ้ำจะถูกข้ามทั้งหมด")
+
+                    new_count = int((df['_class'] == 'new').sum())
+                    changed_count = int((df['_class'] == 'changed').sum())
+                    skip_count = int((df['_class'] == 'skip').sum())
+                    importable_count = new_count + changed_count
+                    has_classification = True
+
+                    # Display summary
+                    st.markdown("##### 📊 สรุปการตรวจสอบข้อมูลซ้ำ")
+                    c1, c2, c3, c4 = st.columns(4)
+                    with c1:
+                        st.metric("🆕 รายการใหม่", f"{new_count:,}")
+                    with c2:
+                        st.metric("🔄 เปลี่ยนวัน/สาขา", f"{changed_count:,}")
+                    with c3:
+                        st.metric("⏭️ ข้ามซ้ำ", f"{skip_count:,}")
+                    with c4:
+                        st.metric("📥 จะนำเข้า", f"{importable_count:,}")
+
+                    if changed_count > 0:
+                        st.info(f"ℹ️ พบ {changed_count:,} รายการที่เปลี่ยนวันนัด/สาขา — จะนำเข้าเป็น record ใหม่เพื่อเก็บประวัติ")
+                    if skip_count > 0 and importable_count > 0:
+                        st.warning(f"⚠️ {skip_count:,} รายการซ้ำ (วันนัด+สาขาเหมือนเดิม) จะถูกข้าม")
+                    if importable_count == 0:
+                        st.error("❌ ทุกรายการมีในฐานข้อมูลแล้ว ไม่มีรายการใหม่ที่จะนำเข้า")
             finally:
                 session.close()
 
             # Import
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
-                if st.button("📥 นำเข้า Appointment", type="primary", use_container_width=True, key="import_appt", disabled=duplicate_found):
+                no_importable = has_classification and importable_count == 0
+                if st.button("📥 นำเข้า Appointment", type="primary", use_container_width=True, key="import_appt", disabled=no_importable):
                     progress = st.progress(0)
                     status_text = st.empty()
                     session = get_session()
                     try:
+                        # Filter out skip rows if classification was done
+                        if has_classification and '_class' in df.columns:
+                            df_to_import = df[df['_class'].isin(['new', 'changed'])].copy()
+                        else:
+                            df_to_import = df
+
+                        actual_total = len(df_to_import)
+
                         status_text.text("กำลังสร้าง upload record...")
                         upload = AppointmentUpload(
                             filename=uploaded_appt.name,
                             date_from=min_date, date_to=max_date,
-                            total_records=total,
+                            total_records=actual_total,
                             uploaded_by=st.session_state.get('username', 'unknown')
                         )
                         session.add(upload)
@@ -418,17 +485,17 @@ with tab2:
                         upload_id = upload.id
                         progress.progress(10)
 
-                        # Prepare data - simple and fast
+                        # Prepare data from filtered rows
                         status_text.text("กำลังเตรียมข้อมูล...")
                         import_df = pd.DataFrame({
                             'upload_id': upload_id,
-                            'appointment_id': df[col_map['appointment_id']].astype(str).str.strip() if col_map.get('appointment_id') else None,
-                            'appt_date': pd.to_datetime(df[col_map['appt_date']], errors='coerce') if col_map.get('appt_date') else None,
-                            'branch_code': df[col_map['branch_code']].astype(str).str.strip() if col_map.get('branch_code') else None,
-                            'appt_status': df[col_map['appt_status']].astype(str).str.strip() if col_map.get('appt_status') else None,
-                            'form_id': df[col_map['form_id']].astype(str).str.strip() if col_map.get('form_id') else None,
-                            'form_type': df[col_map['form_type']].astype(str).str.strip() if col_map.get('form_type') else None,
-                            'work_permit_no': df[col_map['work_permit_no']].astype(str).str.strip() if col_map.get('work_permit_no') else None,
+                            'appointment_id': df_to_import[col_map['appointment_id']].astype(str).str.strip() if col_map.get('appointment_id') else None,
+                            'appt_date': pd.to_datetime(df_to_import[col_map['appt_date']], errors='coerce') if col_map.get('appt_date') else None,
+                            'branch_code': df_to_import[col_map['branch_code']].astype(str).str.strip() if col_map.get('branch_code') else None,
+                            'appt_status': df_to_import[col_map['appt_status']].astype(str).str.strip() if col_map.get('appt_status') else None,
+                            'form_id': df_to_import[col_map['form_id']].astype(str).str.strip() if col_map.get('form_id') else None,
+                            'form_type': df_to_import[col_map['form_type']].astype(str).str.strip() if col_map.get('form_type') else None,
+                            'work_permit_no': df_to_import[col_map['work_permit_no']].astype(str).str.strip() if col_map.get('work_permit_no') else None,
                         })
                         import_df = import_df.replace({'nan': None, 'None': None, '': None})
                         progress.progress(30)
@@ -469,11 +536,21 @@ with tab2:
                         session.commit()
 
                         # Free memory
-                        del import_df, df
+                        del import_df, df_to_import, df
                         gc.collect()
                         progress.progress(100)
                         status_text.empty()
-                        st.success(f"นำเข้าสำเร็จ! {total:,} รายการ")
+
+                        # Summary success message
+                        msg_parts = []
+                        if new_count > 0:
+                            msg_parts.append(f"ใหม่ {new_count:,}")
+                        if changed_count > 0:
+                            msg_parts.append(f"อัปเดต {changed_count:,}")
+                        if skip_count > 0:
+                            msg_parts.append(f"ข้าม {skip_count:,}")
+                        detail = " | ".join(msg_parts) if msg_parts else ""
+                        st.success(f"นำเข้าสำเร็จ! {actual_total:,} รายการ ({detail})")
                         st.balloons()
                     except Exception as e:
                         session.rollback()
