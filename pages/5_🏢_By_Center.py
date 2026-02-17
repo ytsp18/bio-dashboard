@@ -22,6 +22,95 @@ init_db()
 
 st.set_page_config(page_title="Center & Region - Bio Dashboard", page_icon="🏢", layout="wide")
 
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_center_stats_cached(start_date, end_date):
+    """Cached center statistics query."""
+    from types import SimpleNamespace
+    from database.connection import get_session as _get_session
+    from database.models import Card as _Card
+    from sqlalchemy import func as _func, and_ as _and, case as _case
+
+    _session = _get_session()
+    try:
+        result = _session.query(
+            _Card.branch_code,
+            _Card.branch_name,
+            _func.count(_Card.id).label('total'),
+            _func.sum(_case((_Card.print_status == 'G', 1), else_=0)).label('good_count'),
+            _func.sum(_case((_Card.print_status == 'B', 1), else_=0)).label('bad_count'),
+            _func.avg(_Card.sla_minutes).label('avg_sla'),
+            _func.max(_Card.sla_minutes).label('max_sla'),
+            _func.sum(_case((_Card.sla_over_12min == True, 1), else_=0)).label('sla_over_count'),
+            _func.sum(_case((_Card.wrong_branch == True, 1), else_=0)).label('wrong_branch_count'),
+            _func.sum(_case((_Card.wrong_date == True, 1), else_=0)).label('wrong_date_count')
+        ).filter(
+            _and(_Card.print_date >= start_date, _Card.print_date <= end_date),
+            _Card.branch_code.isnot(None)
+        ).group_by(_Card.branch_code, _Card.branch_name).order_by(
+            _func.count(_Card.id).desc()
+        ).all()
+
+        return [SimpleNamespace(
+            branch_code=r.branch_code,
+            branch_name=r.branch_name,
+            total=r.total,
+            good_count=r.good_count or 0,
+            bad_count=r.bad_count or 0,
+            avg_sla=float(r.avg_sla) if r.avg_sla else 0.0,
+            max_sla=float(r.max_sla) if r.max_sla else 0.0,
+            sla_over_count=r.sla_over_count or 0,
+            wrong_branch_count=r.wrong_branch_count or 0,
+            wrong_date_count=r.wrong_date_count or 0,
+        ) for r in result]
+    finally:
+        _session.close()
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_region_stats_cached(start_date, end_date):
+    """Cached region statistics query."""
+    from types import SimpleNamespace
+    from database.connection import get_session as _get_session
+    from database.models import Card as _Card
+    from sqlalchemy import func as _func, and_ as _and, case as _case
+
+    _session = _get_session()
+    try:
+        result = _session.query(
+            _Card.region,
+            _func.count(_Card.id).label('total'),
+            _func.sum(_case((_Card.print_status == 'G', 1), else_=0)).label('good_count'),
+            _func.sum(_case((_Card.print_status == 'B', 1), else_=0)).label('bad_count'),
+            _func.avg(_Card.sla_minutes).label('avg_sla'),
+            _func.max(_Card.sla_minutes).label('max_sla'),
+            _func.sum(_case((_Card.sla_over_12min == True, 1), else_=0)).label('sla_over_count'),
+            _func.sum(_case((_Card.wrong_branch == True, 1), else_=0)).label('wrong_branch_count'),
+            _func.sum(_case((_Card.wrong_date == True, 1), else_=0)).label('wrong_date_count'),
+            _func.count(_func.distinct(_Card.branch_code)).label('center_count')
+        ).filter(
+            _and(_Card.print_date >= start_date, _Card.print_date <= end_date),
+            _Card.region.isnot(None),
+            _Card.region != ''
+        ).group_by(_Card.region).order_by(
+            _func.count(_Card.id).desc()
+        ).all()
+
+        return [SimpleNamespace(
+            region=r.region,
+            total=r.total,
+            good_count=r.good_count or 0,
+            bad_count=r.bad_count or 0,
+            avg_sla=float(r.avg_sla) if r.avg_sla else 0.0,
+            max_sla=float(r.max_sla) if r.max_sla else 0.0,
+            sla_over_count=r.sla_over_count or 0,
+            wrong_branch_count=r.wrong_branch_count or 0,
+            wrong_date_count=r.wrong_date_count or 0,
+            center_count=r.center_count or 0,
+        ) for r in result]
+    finally:
+        _session.close()
+
 # Check authentication
 require_login()
 
@@ -236,24 +325,8 @@ try:
         with main_tab1:
             st.markdown('<div class="section-header">🏢 สถิติตามศูนย์บริการ</div>', unsafe_allow_html=True)
 
-            # Get center statistics
-            center_stats = session.query(
-                Card.branch_code,
-                Card.branch_name,
-                func.count(Card.id).label('total'),
-                func.sum(case((Card.print_status == 'G', 1), else_=0)).label('good_count'),
-                func.sum(case((Card.print_status == 'B', 1), else_=0)).label('bad_count'),
-                func.avg(Card.sla_minutes).label('avg_sla'),
-                func.max(Card.sla_minutes).label('max_sla'),
-                func.sum(case((Card.sla_over_12min == True, 1), else_=0)).label('sla_over_count'),
-                func.sum(case((Card.wrong_branch == True, 1), else_=0)).label('wrong_branch_count'),
-                func.sum(case((Card.wrong_date == True, 1), else_=0)).label('wrong_date_count')
-            ).filter(
-                date_filter,
-                Card.branch_code.isnot(None)
-            ).group_by(Card.branch_code, Card.branch_name).order_by(
-                func.count(Card.id).desc()
-            ).all()
+            # Get center statistics (cached)
+            center_stats = get_center_stats_cached(start_date, end_date)
 
             if center_stats:
                 # Get branch name mapping from BranchMaster
@@ -790,25 +863,8 @@ try:
         with main_tab2:
             st.markdown('<div class="section-header-purple">🗺️ สถิติตามภูมิภาค</div>', unsafe_allow_html=True)
 
-            # Get region statistics
-            region_stats = session.query(
-                Card.region,
-                func.count(Card.id).label('total'),
-                func.sum(case((Card.print_status == 'G', 1), else_=0)).label('good_count'),
-                func.sum(case((Card.print_status == 'B', 1), else_=0)).label('bad_count'),
-                func.avg(Card.sla_minutes).label('avg_sla'),
-                func.max(Card.sla_minutes).label('max_sla'),
-                func.sum(case((Card.sla_over_12min == True, 1), else_=0)).label('sla_over_count'),
-                func.sum(case((Card.wrong_branch == True, 1), else_=0)).label('wrong_branch_count'),
-                func.sum(case((Card.wrong_date == True, 1), else_=0)).label('wrong_date_count'),
-                func.count(func.distinct(Card.branch_code)).label('center_count')
-            ).filter(
-                date_filter,
-                Card.region.isnot(None),
-                Card.region != ''
-            ).group_by(Card.region).order_by(
-                func.count(Card.id).desc()
-            ).all()
+            # Get region statistics (cached)
+            region_stats = get_region_stats_cached(start_date, end_date)
 
             if region_stats:
                 # Summary metrics

@@ -160,39 +160,39 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
         combined_serials = union_all(card_serials, delivery_bio_serials, delivery_cdr_serials).subquery()
         unique_total = session.query(func.count(func.distinct(combined_serials.c.sn))).scalar() or 0
 
-        # Bad delivery cards
-        bad_delivery_bio = session.query(DeliveryCard).filter(
+        # Bad delivery cards (combined into union for single count - saves 1 query)
+        bad_bio_q = session.query(DeliveryCard.id.label('bid')).filter(
             DeliveryCard.print_status == 'B',
             DeliveryCard.report_id.in_(session.query(report_ids_with_data))
-        ).count()
+        )
         cdr_bad_filters = [CardDeliveryRecord.print_status == 'B']
         if start_date and end_date:
             cdr_bad_filters.append(func.date(CardDeliveryRecord.create_date) >= start_date)
             cdr_bad_filters.append(func.date(CardDeliveryRecord.create_date) <= end_date)
-        bad_delivery_cdr = session.query(CardDeliveryRecord).filter(and_(*cdr_bad_filters)).count()
-        bad_cards = bad_at_center + bad_delivery_bio + bad_delivery_cdr
+        bad_cdr_q = session.query(CardDeliveryRecord.id.label('bid')).filter(and_(*cdr_bad_filters))
+        bad_delivery_union = union_all(bad_bio_q, bad_cdr_q).subquery()
+        bad_delivery_total = session.query(func.count()).select_from(bad_delivery_union).scalar() or 0
+        bad_cards = bad_at_center + bad_delivery_total
 
-        # ==================== Appointment-related queries ====================
+        # ==================== Appointment-related queries (optimized) ====================
         appt_one_g = session.query(Card.appointment_id).filter(
             date_filter, Card.print_status == 'G',
             Card.appointment_id.isnot(None), Card.appointment_id != ''
         ).group_by(Card.appointment_id).having(func.count(Card.id) == 1).subquery()
 
-        complete_cards = session.query(func.count(func.distinct(Card.serial_number))).filter(
+        # Combined: complete_cards + unique_work_permit in one query (saves 1 query)
+        complete_stats = session.query(
+            func.count(func.distinct(Card.serial_number)).label('complete_sn'),
+            func.count(func.distinct(Card.work_permit_no)).label('complete_wp'),
+        ).filter(
             date_filter, Card.print_status == 'G',
             Card.appointment_id.in_(session.query(appt_one_g)),
             Card.card_id.isnot(None), Card.card_id != '',
             Card.serial_number.isnot(None), Card.serial_number != '',
             Card.work_permit_no.isnot(None), Card.work_permit_no != ''
-        ).scalar() or 0
-
-        unique_work_permit = session.query(func.count(func.distinct(Card.work_permit_no))).filter(
-            date_filter, Card.print_status == 'G',
-            Card.appointment_id.in_(session.query(appt_one_g)),
-            Card.card_id.isnot(None), Card.card_id != '',
-            Card.serial_number.isnot(None), Card.serial_number != '',
-            Card.work_permit_no.isnot(None), Card.work_permit_no != ''
-        ).scalar() or 0
+        ).first()
+        complete_cards = complete_stats.complete_sn or 0
+        unique_work_permit = complete_stats.complete_wp or 0
 
         appt_multiple_g = session.query(Card.appointment_id).filter(
             date_filter, Card.print_status == 'G',
@@ -241,43 +241,32 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
         if selected_branches and len(selected_branches) > 0:
             qlog_filters.append(QLog.branch_code.in_(selected_branches))
 
-        # Type A (OB centers) - ALL records that have printed cards
-        # Correct logic: TimeCall - Train_Time > 60 min (fallback: wait_time_seconds > 3600)
-        type_a_stats = session.query(
-            func.count(QLog.id).label('total'),
-            func.sum(case((QLog.wait_time_seconds <= 3600, 1), else_=0)).label('pass_count'),
-            func.avg(QLog.wait_time_seconds).label('avg_wait')
-        ).filter(
-            and_(*qlog_filters),
-            QLog.qlog_type == 'A',
-            QLog.wait_time_seconds.isnot(None)
-        ).first()
+        # Combined Type A + Type B in a single query using CASE (saves 1 query)
+        # Type A (OB centers): ALL records with printed cards, fail if wait > 3600s
+        # Type B (SC centers): Only EI and T with printed cards, fail if wait > 3600s
+        qlog_combined = session.query(
+            # Type A counts
+            func.sum(case((and_(QLog.qlog_type == 'A', QLog.wait_time_seconds.isnot(None)), 1), else_=0)).label('a_total'),
+            func.sum(case((and_(QLog.qlog_type == 'A', QLog.wait_time_seconds.isnot(None), QLog.wait_time_seconds <= 3600), 1), else_=0)).label('a_pass'),
+            func.avg(case((and_(QLog.qlog_type == 'A', QLog.wait_time_seconds.isnot(None)), QLog.wait_time_seconds))).label('a_avg'),
+            # Type B counts (only EI and T)
+            func.sum(case((and_(QLog.qlog_type == 'B', QLog.sla_status.in_(['EI', 'T']), QLog.wait_time_seconds.isnot(None)), 1), else_=0)).label('b_total'),
+            func.sum(case((and_(QLog.qlog_type == 'B', QLog.sla_status.in_(['EI', 'T']), QLog.wait_time_seconds.isnot(None), QLog.wait_time_seconds <= 3600), 1), else_=0)).label('b_pass'),
+            func.avg(case((and_(QLog.qlog_type == 'B', QLog.sla_status.in_(['EI', 'T']), QLog.wait_time_seconds.isnot(None)), QLog.wait_time_seconds))).label('b_avg'),
+        ).filter(and_(*qlog_filters)).first()
 
-        # Type B (SC centers) - Only EI and T that have printed cards
-        # Correct logic: TimeCall > SLA_TimeEnd (fallback: wait_time_seconds > 3600)
-        type_b_stats = session.query(
-            func.count(QLog.id).label('total'),
-            func.sum(case((QLog.wait_time_seconds <= 3600, 1), else_=0)).label('pass_count'),
-            func.avg(QLog.wait_time_seconds).label('avg_wait')
-        ).filter(
-            and_(*qlog_filters),
-            QLog.qlog_type == 'B',
-            QLog.sla_status.in_(['EI', 'T']),
-            QLog.wait_time_seconds.isnot(None)
-        ).first()
-
-        type_a_total = type_a_stats.total or 0
-        type_a_pass = type_a_stats.pass_count or 0
-        type_b_total = type_b_stats.total or 0
-        type_b_pass = type_b_stats.pass_count or 0
+        type_a_total = qlog_combined.a_total or 0
+        type_a_pass = qlog_combined.a_pass or 0
+        type_b_total = qlog_combined.b_total or 0
+        type_b_pass = qlog_combined.b_pass or 0
 
         qlog_wait_total = type_a_total + type_b_total
         qlog_wait_pass = type_a_pass + type_b_pass
         qlog_wait_over_1hr = qlog_wait_total - qlog_wait_pass
 
         # Weighted average (combine Type A and Type B averages)
-        type_a_avg = type_a_stats.avg_wait or 0
-        type_b_avg = type_b_stats.avg_wait or 0
+        type_a_avg = qlog_combined.a_avg or 0
+        type_b_avg = qlog_combined.b_avg or 0
         if qlog_wait_total > 0:
             qlog_avg_wait_sec = (type_a_avg * type_a_total + type_b_avg * type_b_total) / qlog_wait_total
         else:
@@ -442,8 +431,9 @@ def get_upcoming_appointments(selected_branches=None):
         from datetime import date as dt_date
         today = dt_date.today()
 
-        # Check if we have Appointment data
-        has_appt_data = session.query(Appointment).first() is not None
+        # Check if we have Appointment data (exists() is faster than first())
+        from sqlalchemy import exists as sa_exists
+        has_appt_data = session.query(sa_exists().where(Appointment.id.isnot(None))).scalar()
 
         if not has_appt_data:
             return {
@@ -488,32 +478,22 @@ def get_upcoming_appointments(selected_branches=None):
                 'max_date': None
             }
 
-        # Today's appointments
-        today_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
-            and_(*base_filters),
-            Appointment.appt_date == today
-        ).scalar() or 0
-
-        # Tomorrow's appointments
+        # Combined: today, tomorrow, 7-day, 30-day counts in one query (saves 3 queries)
         tomorrow = today + timedelta(days=1)
-        tomorrow_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
-            and_(*base_filters),
-            Appointment.appt_date == tomorrow
-        ).scalar() or 0
-
-        # Next 7 days (including today)
         next_7_days = today + timedelta(days=6)
-        next_7_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
-            and_(*base_filters),
-            Appointment.appt_date <= next_7_days
-        ).scalar() or 0
-
-        # Next 30 days (including today)
         next_30_days = today + timedelta(days=29)
-        next_30_count = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
-            and_(*base_filters),
-            Appointment.appt_date <= next_30_days
-        ).scalar() or 0
+
+        period_counts = session.query(
+            func.count(func.distinct(case((Appointment.appt_date == today, Appointment.appointment_id)))).label('today'),
+            func.count(func.distinct(case((Appointment.appt_date == tomorrow, Appointment.appointment_id)))).label('tomorrow'),
+            func.count(func.distinct(case((Appointment.appt_date <= next_7_days, Appointment.appointment_id)))).label('next_7'),
+            func.count(func.distinct(case((Appointment.appt_date <= next_30_days, Appointment.appointment_id)))).label('next_30'),
+        ).filter(and_(*base_filters)).first()
+
+        today_count = period_counts.today or 0
+        tomorrow_count = period_counts.tomorrow or 0
+        next_7_count = period_counts.next_7 or 0
+        next_30_count = period_counts.next_30 or 0
 
         # Daily breakdown for chart (next 30 days or until max date)
         chart_end_date = min(next_30_days, max_future_date)
@@ -642,8 +622,9 @@ def get_noshow_stats(start_date, end_date, selected_branches=None):
     session = get_session()
     try:
         # Check if we have Appointment data
-        has_appt_data = session.query(Appointment).first() is not None
-        has_qlog_data = session.query(QLog).first() is not None
+        from sqlalchemy import exists as sa_exists
+        has_appt_data = session.query(sa_exists().where(Appointment.id.isnot(None))).scalar()
+        has_qlog_data = session.query(sa_exists().where(QLog.id.isnot(None))).scalar()
 
         if not has_appt_data:
             return {

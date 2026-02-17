@@ -19,6 +19,45 @@ init_db()
 
 st.set_page_config(page_title="Anomaly - Bio Dashboard", page_icon="⚠️", layout="wide")
 
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_anomaly_summary_cached(start_date, end_date):
+    """Cached anomaly summary counts."""
+    from database.connection import get_session as _get_session
+    from database.models import Card as _Card
+    from sqlalchemy import func as _func, and_ as _and
+
+    _session = _get_session()
+    try:
+        _date_filter = _and(_Card.print_date >= start_date, _Card.print_date <= end_date)
+
+        appt_g_more_than_1 = _session.query(_Card.appointment_id).filter(
+            _date_filter, _Card.print_status == 'G'
+        ).group_by(_Card.appointment_id).having(_func.count(_Card.id) > 1).count()
+
+        card_id_g_more_than_1 = _session.query(_Card.card_id).filter(
+            _date_filter, _Card.print_status == 'G',
+            _Card.card_id.isnot(None), _Card.card_id != ''
+        ).group_by(_Card.card_id).having(_func.count(_Card.id) > 1).count()
+
+        wrong_date_count = _session.query(_Card).filter(_date_filter, _Card.wrong_date == True).count()
+        wrong_branch_count = _session.query(_Card).filter(_date_filter, _Card.wrong_branch == True).count()
+
+        branches = _session.query(_Card.branch_code).filter(
+            _date_filter, _Card.branch_code.isnot(None)
+        ).distinct().all()
+        branch_list = sorted([b.branch_code for b in branches])
+
+        return {
+            'appt_g_more_than_1': appt_g_more_than_1,
+            'card_id_g_more_than_1': card_id_g_more_than_1,
+            'wrong_date_count': wrong_date_count,
+            'wrong_branch_count': wrong_branch_count,
+            'branch_list': branch_list,
+        }
+    finally:
+        _session.close()
+
 # Check authentication
 require_login()
 
@@ -189,18 +228,10 @@ try:
         # ==================== SUMMARY STATISTICS TABLE ====================
         st.markdown('<div class="section-header">⚠️ รายการ Anomaly ที่ต้องตรวจสอบ</div>', unsafe_allow_html=True)
 
-        # Calculate summary statistics - เฉพาะรายการที่ต้องตรวจสอบ
-
-        # 1. Appt ID G>1 - นับ appointment ที่มีบัตร G มากกว่า 1 (ต้องตรวจสอบ)
-        appt_g_more_than_1 = session.query(Card.appointment_id).filter(
-            date_filter, Card.print_status == 'G'
-        ).group_by(Card.appointment_id).having(func.count(Card.id) > 1).count()
-
-        # 2. Card ID G>1 = Card ID ที่มี G > 1 (ต้องตรวจสอบ)
-        card_id_g_more_than_1 = session.query(Card.card_id).filter(
-            date_filter, Card.print_status == 'G',
-            Card.card_id.isnot(None), Card.card_id != ''
-        ).group_by(Card.card_id).having(func.count(Card.id) > 1).count()
+        # Calculate summary statistics (cached)
+        _anomaly_summary = get_anomaly_summary_cached(start_date, end_date)
+        appt_g_more_than_1 = _anomaly_summary['appt_g_more_than_1']
+        card_id_g_more_than_1 = _anomaly_summary['card_id_g_more_than_1']
 
         # Display summary table
         st.markdown(f"""
@@ -372,15 +403,10 @@ try:
             else:
                 st.info("🔍 ไม่พบข้อมูลที่ตรงกับคำค้นหา")
 
-        # Get branch list for filters
-        branches = session.query(Card.branch_code).filter(
-            date_filter, Card.branch_code.isnot(None)
-        ).distinct().all()
-        branch_list = sorted([b.branch_code for b in branches])
-
-        # Count anomalies
-        wrong_date_count = session.query(Card).filter(date_filter, Card.wrong_date == True).count()
-        wrong_branch_count = session.query(Card).filter(date_filter, Card.wrong_branch == True).count()
+        # Get cached anomaly summary data
+        branch_list = _anomaly_summary['branch_list']
+        wrong_date_count = _anomaly_summary['wrong_date_count']
+        wrong_branch_count = _anomaly_summary['wrong_branch_count']
 
         # Multiple cards per appointment (reuse from summary)
         multi_g_count = appt_g_more_than_1
