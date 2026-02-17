@@ -123,7 +123,13 @@ def init_db():
     start = time.perf_counter()
     from .models import Base
 
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        if "already exists" in str(e):
+            _log(f"Skipping existing objects during init: {e}")
+        else:
+            raise
 
     # Run migrations for existing tables (indexes won't be created by create_all)
     _run_migrations()

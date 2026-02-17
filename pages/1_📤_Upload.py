@@ -37,27 +37,13 @@ if not can_upload():
 # Custom CSS
 st.markdown("""
 <style>
-    .section-header {
-        background: linear-gradient(90deg, #1A1F2E 0%, #252B3B 100%);
-        color: #FAFAFA;
-        padding: 16px 24px;
-        border-radius: 12px;
-        margin: 20px 0 15px 0;
-        font-size: 1.1em;
-        font-weight: 600;
-        border: 1px solid #374151;
-        border-left: 4px solid #3B82F6;
-    }
-    .section-header-orange { border-left-color: #F59E0B; }
-    .section-header-green { border-left-color: #10B981; }
-    .section-header-purple { border-left-color: #8B5CF6; }
     .info-box {
-        background: rgba(59, 130, 246, 0.1);
-        border: 1px solid rgba(59, 130, 246, 0.3);
-        border-left: 4px solid #3B82F6;
+        background: rgba(37, 99, 235, 0.08);
+        border: 1px solid rgba(37, 99, 235, 0.2);
+        border-left: 4px solid #2563eb;
         padding: 12px 16px;
         border-radius: 8px;
-        color: #93C5FD;
+        color: #1d4ed8;
         margin: 10px 0;
         font-size: 0.9em;
     }
@@ -66,13 +52,13 @@ st.markdown("""
 
 # Title
 st.markdown("""
-<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #374151;">
+<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #e5e7eb;">
     <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #3B82F6, #2563EB); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
         <span style="font-size: 24px;">📤</span>
     </div>
     <div>
-        <h1 style="font-size: 1.75rem; font-weight: 700; color: #FAFAFA; margin: 0;">อัพโหลดข้อมูล</h1>
-        <p style="font-size: 0.9rem; color: #9CA3AF; margin: 0;">นำเข้าข้อมูลเข้าสู่ระบบ Bio Dashboard</p>
+        <h1 style="font-size: 1.75rem; font-weight: 700; color: #1f2937; margin: 0;">อัพโหลดข้อมูล</h1>
+        <p style="font-size: 0.9rem; color: #6b7280; margin: 0;">นำเข้าข้อมูลเข้าสู่ระบบ Bio Dashboard</p>
     </div>
 </div>
 """, unsafe_allow_html=True)

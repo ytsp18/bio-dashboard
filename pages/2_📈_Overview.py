@@ -756,13 +756,13 @@ apply_theme()
 
 # Page Header
 st.markdown("""
-<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #374151;">
+<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #e5e7eb;">
     <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #3B82F6, #2563EB); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
         <span style="font-size: 24px;">📊</span>
     </div>
     <div>
-        <h1 style="font-size: 1.75rem; font-weight: 700; color: #FAFAFA; margin: 0;">รายงานผลการออกบัตร</h1>
-        <p style="font-size: 0.9rem; color: #9CA3AF; margin: 0;">Bio Unified Report Dashboard</p>
+        <h1 style="font-size: 1.75rem; font-weight: 700; color: #1f2937; margin: 0;">รายงานผลการออกบัตร</h1>
+        <p style="font-size: 0.9rem; color: #6b7280; margin: 0;">Bio Unified Report Dashboard</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -1073,27 +1073,27 @@ else:
             "tooltip": {
                 "trigger": "axis",
                 "axisPointer": {"type": "cross"},
-                "backgroundColor": "rgba(30, 41, 59, 0.95)",
-                "borderColor": "#475569",
-                "textStyle": {"color": "#F1F5F9"},
+                "backgroundColor": "rgba(255, 255, 255, 0.95)",
+                "borderColor": "#e5e7eb",
+                "textStyle": {"color": "#374151"},
             },
             "legend": {
                 "data": ["SC ศูนย์บริการ", "OB แรกรับ", "บัตรจัดส่ง", "บัตรเสีย SC", "บัตรเสีย OB", "บัตรเสีย จัดส่ง", "รวมบัตรดี"],
                 "bottom": 0,
-                "textStyle": {"color": "#9CA3AF"},
+                "textStyle": {"color": "#6b7280"},
             },
             "grid": {"left": "3%", "right": "4%", "bottom": "18%", "top": "10%", "containLabel": True},
             "xAxis": {
                 "type": "category",
                 "data": dates,
-                "axisLine": {"lineStyle": {"color": "#374151"}},
-                "axisLabel": {"color": "#9CA3AF", "rotate": 45 if len(dates) > 15 else 0},
+                "axisLine": {"lineStyle": {"color": "#d1d5db"}},
+                "axisLabel": {"color": "#6b7280", "rotate": 45 if len(dates) > 15 else 0},
             },
             "yAxis": {
                 "type": "value",
-                "axisLine": {"lineStyle": {"color": "#374151"}},
-                "axisLabel": {"color": "#9CA3AF"},
-                "splitLine": {"lineStyle": {"color": "#1F2937"}},
+                "axisLine": {"lineStyle": {"color": "#d1d5db"}},
+                "axisLabel": {"color": "#6b7280"},
+                "splitLine": {"lineStyle": {"color": "#e5e7eb"}},
             },
             "series": [
                 {
@@ -1200,27 +1200,27 @@ else:
                 "tooltip": {
                     "trigger": "axis",
                     "axisPointer": {"type": "cross"},
-                    "backgroundColor": "rgba(30, 41, 59, 0.95)",
-                    "borderColor": "#475569",
-                    "textStyle": {"color": "#F1F5F9"},
+                    "backgroundColor": "rgba(255, 255, 255, 0.95)",
+                    "borderColor": "#e5e7eb",
+                    "textStyle": {"color": "#374151"},
                 },
                 "legend": {
                     "data": ["นัดหมาย (Appointment)", "มา Check-in", "No-Show"],
                     "bottom": 0,
-                    "textStyle": {"color": "#9CA3AF"},
+                    "textStyle": {"color": "#6b7280"},
                 },
                 "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "10%", "containLabel": True},
                 "xAxis": {
                     "type": "category",
                     "data": noshow_dates,
-                    "axisLine": {"lineStyle": {"color": "#374151"}},
-                    "axisLabel": {"color": "#9CA3AF", "rotate": 45 if len(noshow_dates) > 15 else 0},
+                    "axisLine": {"lineStyle": {"color": "#d1d5db"}},
+                    "axisLabel": {"color": "#6b7280", "rotate": 45 if len(noshow_dates) > 15 else 0},
                 },
                 "yAxis": {
                     "type": "value",
-                    "axisLine": {"lineStyle": {"color": "#374151"}},
-                    "axisLabel": {"color": "#9CA3AF"},
-                    "splitLine": {"lineStyle": {"color": "#1F2937"}},
+                    "axisLine": {"lineStyle": {"color": "#d1d5db"}},
+                    "axisLabel": {"color": "#6b7280"},
+                    "splitLine": {"lineStyle": {"color": "#e5e7eb"}},
                 },
                 "series": [
                     {
@@ -1266,15 +1266,15 @@ else:
                     "backgroundColor": "transparent",
                     "tooltip": {
                         "trigger": "item",
-                        "backgroundColor": "rgba(30, 41, 59, 0.95)",
-                        "borderColor": "#475569",
-                        "textStyle": {"color": "#F1F5F9"},
+                        "backgroundColor": "rgba(255, 255, 255, 0.95)",
+                        "borderColor": "#e5e7eb",
+                        "textStyle": {"color": "#374151"},
                         "formatter": "{b}: {c} ({d}%)"
                     },
                     "legend": {
                         "orient": "horizontal",
                         "bottom": 0,
-                        "textStyle": {"color": "#9CA3AF"},
+                        "textStyle": {"color": "#6b7280"},
                     },
                     "series": [{
                         "name": "สถานะนัดหมาย",
@@ -1284,12 +1284,12 @@ else:
                         "avoidLabelOverlap": True,
                         "itemStyle": {
                             "borderRadius": 8,
-                            "borderColor": "#1A1F2E",
+                            "borderColor": "#ffffff",
                             "borderWidth": 2
                         },
                         "label": {
                             "show": True,
-                            "color": "#F1F5F9",
+                            "color": "#374151",
                             "formatter": "{d}%"
                         },
                         "data": [
@@ -1304,15 +1304,15 @@ else:
             with col2:
                 # Info box
                 st.markdown("""
-                <div style="background: linear-gradient(135deg, #1E293B, #0F172A); border-radius: 12px; padding: 20px; border: 1px solid #374151;">
-                    <h4 style="color: #F1F5F9; margin: 0 0 16px 0;">📊 สรุปข้อมูล No-Show</h4>
-                    <ul style="color: #9CA3AF; margin: 0; padding-left: 20px;">
+                <div style="background: #ffffff; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
+                    <h4 style="color: #1f2937; margin: 0 0 16px 0;">📊 สรุปข้อมูล No-Show</h4>
+                    <ul style="color: #6b7280; margin: 0; padding-left: 20px;">
                         <li><b style="color: #3B82F6;">นัดหมาย (Appointment)</b> - จำนวนคนที่นัดหมายไว้ (STATUS=SUCCESS)</li>
                         <li><b style="color: #10B981;">มา Check-in</b> - จำนวนคนที่มา Check-in จริง (QLOG_STATUS=S)</li>
                         <li><b style="color: #EF4444;">No-Show</b> - นัดหมายแล้วไม่มา = นัดหมาย - Check-in</li>
                     </ul>
-                    <hr style="border-color: #374151; margin: 16px 0;">
-                    <p style="color: #6B7280; font-size: 0.85rem; margin: 0;">
+                    <hr style="border-color: #e5e7eb; margin: 16px 0;">
+                    <p style="color: #6b7280; font-size: 0.85rem; margin: 0;">
                         💡 ข้อมูลมาจากไฟล์ Appointment และ QLog ที่อัพโหลดแยก
                     </p>
                 </div>
@@ -1374,27 +1374,27 @@ else:
                 "tooltip": {
                     "trigger": "axis",
                     "axisPointer": {"type": "shadow"},
-                    "backgroundColor": "rgba(30, 41, 59, 0.95)",
-                    "borderColor": "#475569",
-                    "textStyle": {"color": "#F1F5F9"},
+                    "backgroundColor": "rgba(255, 255, 255, 0.95)",
+                    "borderColor": "#e5e7eb",
+                    "textStyle": {"color": "#374151"},
                 },
                 "legend": {
                     "data": ["นัดหมายล่วงหน้า", "Capacity รวม", "ค่าเฉลี่ย"],
                     "bottom": 0,
-                    "textStyle": {"color": "#9CA3AF"},
+                    "textStyle": {"color": "#6b7280"},
                 },
                 "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "10%", "containLabel": True},
                 "xAxis": {
                     "type": "category",
                     "data": upcoming_dates,
-                    "axisLine": {"lineStyle": {"color": "#374151"}},
-                    "axisLabel": {"color": "#9CA3AF", "rotate": 45 if len(upcoming_dates) > 15 else 0},
+                    "axisLine": {"lineStyle": {"color": "#d1d5db"}},
+                    "axisLabel": {"color": "#6b7280", "rotate": 45 if len(upcoming_dates) > 15 else 0},
                 },
                 "yAxis": {
                     "type": "value",
-                    "axisLine": {"lineStyle": {"color": "#374151"}},
-                    "axisLabel": {"color": "#9CA3AF"},
-                    "splitLine": {"lineStyle": {"color": "#1F2937"}},
+                    "axisLine": {"lineStyle": {"color": "#d1d5db"}},
+                    "axisLabel": {"color": "#6b7280"},
+                    "splitLine": {"lineStyle": {"color": "#e5e7eb"}},
                 },
                 "series": [
                     {
@@ -1414,7 +1414,7 @@ else:
                         "label": {
                             "show": len(upcoming_dates) <= 14,
                             "position": "top",
-                            "color": "#9CA3AF",
+                            "color": "#6b7280",
                             "fontSize": 10
                         }
                     },
@@ -1461,15 +1461,15 @@ else:
             "backgroundColor": "transparent",
             "tooltip": {
                 "trigger": "item",
-                "backgroundColor": "rgba(30, 41, 59, 0.95)",
-                "borderColor": "#475569",
-                "textStyle": {"color": "#F1F5F9"},
+                "backgroundColor": "rgba(255, 255, 255, 0.95)",
+                "borderColor": "#e5e7eb",
+                "textStyle": {"color": "#374151"},
                 "formatter": "{b}: {c} ({d}%)"
             },
             "legend": {
                 "orient": "horizontal",
                 "bottom": 0,
-                "textStyle": {"color": "#9CA3AF"},
+                "textStyle": {"color": "#6b7280"},
             },
             "series": [{
                 "name": "สถานะบัตร",
@@ -1479,12 +1479,12 @@ else:
                 "avoidLabelOverlap": True,
                 "itemStyle": {
                     "borderRadius": 8,
-                    "borderColor": "#1A1F2E",
+                    "borderColor": "#ffffff",
                     "borderWidth": 2
                 },
                 "label": {
                     "show": True,
-                    "color": "#F1F5F9",
+                    "color": "#374151",
                     "formatter": "{d}%"
                 },
                 "data": [
@@ -1525,7 +1525,7 @@ else:
                 "pointer": {"show": False},
                 "axisLine": {
                     "roundCap": True,
-                    "lineStyle": {"width": 12, "color": [[1, "#374151"]]}
+                    "lineStyle": {"width": 12, "color": [[1, "#e5e7eb"]]}
                 },
                 "axisTick": {"show": False},
                 "splitLine": {"show": False},
@@ -1534,7 +1534,7 @@ else:
                     "show": True,
                     "offsetCenter": [0, "70%"],
                     "fontSize": 14,
-                    "color": "#9CA3AF"
+                    "color": "#6b7280"
                 },
                 "detail": {
                     "valueAnimation": True,
@@ -1542,7 +1542,7 @@ else:
                     "fontWeight": "bold",
                     "offsetCenter": [0, "0%"],
                     "formatter": "{value}%",
-                    "color": "#F1F5F9"
+                    "color": "#374151"
                 },
                 "data": [{"value": round(sla_pass_pct, 1), "name": f"ผ่าน ≤12 นาที"}]
             }]
@@ -1579,7 +1579,7 @@ else:
                 "pointer": {"show": False},
                 "axisLine": {
                     "roundCap": True,
-                    "lineStyle": {"width": 12, "color": [[1, "#374151"]]}
+                    "lineStyle": {"width": 12, "color": [[1, "#e5e7eb"]]}
                 },
                 "axisTick": {"show": False},
                 "splitLine": {"show": False},
@@ -1588,7 +1588,7 @@ else:
                     "show": True,
                     "offsetCenter": [0, "70%"],
                     "fontSize": 14,
-                    "color": "#9CA3AF"
+                    "color": "#6b7280"
                 },
                 "detail": {
                     "valueAnimation": True,
@@ -1596,7 +1596,7 @@ else:
                     "fontWeight": "bold",
                     "offsetCenter": [0, "0%"],
                     "formatter": "{value}%",
-                    "color": "#F1F5F9"
+                    "color": "#374151"
                 },
                 "data": [{"value": round(wait_pass_pct, 1), "name": f"ผ่าน ≤1 ชม."}]
             }]

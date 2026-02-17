@@ -2,6 +2,34 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [2.0.0] - 2026-02-17
+
+### Changed
+- **UI/UX Overhaul — BOI-inspired Light Theme**
+  - Switched from dark theme (#0E1117) to clean, airy light theme (#f3f4f6)
+  - New color palette: primary blue (#2563eb), white cards, subtle shadows
+  - Updated `.streamlit/config.toml` with light theme native settings
+  - Rewrote `utils/theme.py` — new COLORS dict + LIGHT_THEME CSS with Sarabun font
+  - Rewrote `utils/metric_cards.py` — all 8 render functions updated to light inline styles
+  - Updated all ECharts charts in Overview + Forecast pages (transparent bg, dark text, light grid)
+  - Cleaned up redundant per-page CSS overrides in Upload page
+  - Consistent design: 8px border-radius, 20px padding, 4px colored left-borders
+
+### Fixed
+- **Database init error** — Added try/except for `create_all()` to handle pre-existing indexes on SQLite
+
+### Files Modified
+- `.streamlit/config.toml` - Light theme native config
+- `utils/theme.py` - Complete rewrite with light palette
+- `utils/metric_cards.py` - Complete rewrite with light inline styles
+- `pages/1_📤_Upload.py` - Removed dark CSS overrides, updated title colors
+- `pages/2_📈_Overview.py` - Updated ~20 ECharts color references + inline HTML
+- `pages/3_📆_Forecast.py` - Updated ~25 ECharts/HTML color references
+- `database/connection.py` - Graceful handling of existing indexes
+- `__version__.py` - Bumped to 2.0.0
+
+---
+
 ## [1.5.0] - 2026-02-10
 
 ### Changed

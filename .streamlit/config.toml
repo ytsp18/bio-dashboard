@@ -12,9 +12,9 @@ gatherUsageStats = false
 hideTopBar = false
 
 [theme]
-# Dark Theme (Original)
-primaryColor = "#00D4AA"
-backgroundColor = "#0E1117"
-secondaryBackgroundColor = "#1A1F2E"
-textColor = "#FAFAFA"
+# Light Theme (BOI-inspired)
+primaryColor = "#2563eb"
+backgroundColor = "#f3f4f6"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#1f2937"
 font = "sans serif"

@@ -371,13 +371,13 @@ apply_theme()
 
 # Page Header
 st.markdown("""
-<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #374151;">
+<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #e5e7eb;">
     <div style="width: 48px; height: 48px; background: linear-gradient(135deg, #8B5CF6, #6366F1); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
         <span style="font-size: 24px;">📆</span>
     </div>
     <div>
-        <h1 style="font-size: 1.75rem; font-weight: 700; color: #FAFAFA; margin: 0;">ปริมาณการนัดหมาย</h1>
-        <p style="font-size: 0.9rem; color: #9CA3AF; margin: 0;">Upcoming Appointments - นัดหมายล่วงหน้า</p>
+        <h1 style="font-size: 1.75rem; font-weight: 700; color: #1f2937; margin: 0;">ปริมาณการนัดหมาย</h1>
+        <p style="font-size: 0.9rem; color: #6b7280; margin: 0;">Upcoming Appointments - นัดหมายล่วงหน้า</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -638,27 +638,27 @@ if stats['has_data']:
                 "tooltip": {
                     "trigger": "axis",
                     "axisPointer": {"type": "cross"},
-                    "backgroundColor": "rgba(30, 41, 59, 0.95)",
-                    "borderColor": "#475569",
-                    "textStyle": {"color": "#F1F5F9"},
+                    "backgroundColor": "rgba(255, 255, 255, 0.95)",
+                    "borderColor": "#d1d5db",
+                    "textStyle": {"color": "#374151"},
                 },
                 "legend": {
                     "data": ["แรกรับ (OB)", "Capacity OB", "80% Warning", "ค่าเฉลี่ย OB"],
                     "bottom": 0,
-                    "textStyle": {"color": "#9CA3AF"},
+                    "textStyle": {"color": "#6b7280"},
                 },
                 "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "10%", "containLabel": True},
                 "xAxis": {
                     "type": "category",
                     "data": upcoming_dates,
-                    "axisLine": {"lineStyle": {"color": "#374151"}},
-                    "axisLabel": {"color": "#9CA3AF", "rotate": 45 if len(upcoming_dates) > 15 else 0},
+                    "axisLine": {"lineStyle": {"color": "#d1d5db"}},
+                    "axisLabel": {"color": "#6b7280", "rotate": 45 if len(upcoming_dates) > 15 else 0},
                 },
                 "yAxis": {
                     "type": "value",
-                    "axisLine": {"lineStyle": {"color": "#374151"}},
-                    "axisLabel": {"color": "#9CA3AF"},
-                    "splitLine": {"lineStyle": {"color": "#1F2937"}},
+                    "axisLine": {"lineStyle": {"color": "#d1d5db"}},
+                    "axisLabel": {"color": "#6b7280"},
+                    "splitLine": {"lineStyle": {"color": "#e5e7eb"}},
                 },
                 "series": [
                     {
@@ -670,7 +670,7 @@ if stats['has_data']:
                         "label": {
                             "show": len(upcoming_dates) <= 14,
                             "position": "top",
-                            "color": "#9CA3AF",
+                            "color": "#6b7280",
                             "fontSize": 10,
                         }
                     },
@@ -712,27 +712,27 @@ if stats['has_data']:
                 "tooltip": {
                     "trigger": "axis",
                     "axisPointer": {"type": "cross"},
-                    "backgroundColor": "rgba(30, 41, 59, 0.95)",
-                    "borderColor": "#475569",
-                    "textStyle": {"color": "#F1F5F9"},
+                    "backgroundColor": "rgba(255, 255, 255, 0.95)",
+                    "borderColor": "#d1d5db",
+                    "textStyle": {"color": "#374151"},
                 },
                 "legend": {
                     "data": ["บริการ (SC)", "Capacity SC", "80% Warning", "ค่าเฉลี่ย SC"],
                     "bottom": 0,
-                    "textStyle": {"color": "#9CA3AF"},
+                    "textStyle": {"color": "#6b7280"},
                 },
                 "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "10%", "containLabel": True},
                 "xAxis": {
                     "type": "category",
                     "data": upcoming_dates,
-                    "axisLine": {"lineStyle": {"color": "#374151"}},
-                    "axisLabel": {"color": "#9CA3AF", "rotate": 45 if len(upcoming_dates) > 15 else 0},
+                    "axisLine": {"lineStyle": {"color": "#d1d5db"}},
+                    "axisLabel": {"color": "#6b7280", "rotate": 45 if len(upcoming_dates) > 15 else 0},
                 },
                 "yAxis": {
                     "type": "value",
-                    "axisLine": {"lineStyle": {"color": "#374151"}},
-                    "axisLabel": {"color": "#9CA3AF"},
-                    "splitLine": {"lineStyle": {"color": "#1F2937"}},
+                    "axisLine": {"lineStyle": {"color": "#d1d5db"}},
+                    "axisLabel": {"color": "#6b7280"},
+                    "splitLine": {"lineStyle": {"color": "#e5e7eb"}},
                 },
                 "series": [
                     {
@@ -744,7 +744,7 @@ if stats['has_data']:
                         "label": {
                             "show": len(upcoming_dates) <= 14,
                             "position": "top",
-                            "color": "#9CA3AF",
+                            "color": "#6b7280",
                             "fontSize": 10,
                         }
                     },
@@ -914,16 +914,16 @@ if stats['has_data']:
                 <div id="treemap" style="width: 100%; height: 400px;"></div>
                 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
                 <script>
-                    var chart = echarts.init(document.getElementById('treemap'), 'dark');
+                    var chart = echarts.init(document.getElementById('treemap'));
                     var option = {{
                         backgroundColor: 'transparent',
                         tooltip: {{
                             trigger: 'item',
-                            backgroundColor: 'rgba(30, 41, 59, 0.95)',
-                            borderColor: '#475569',
+                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                            borderColor: '#d1d5db',
                             borderRadius: 8,
                             padding: [10, 14],
-                            textStyle: {{color: '#F1F5F9', fontSize: 13}},
+                            textStyle: {{color: '#374151', fontSize: 13}},
                         }},
                         series: [{{
                             type: 'treemap',
@@ -941,13 +941,13 @@ if stats['has_data']:
                             }},
                             upperLabel: {{show: false}},
                             itemStyle: {{
-                                borderColor: '#1F2937',
+                                borderColor: '#e5e7eb',
                                 borderWidth: 2,
                                 gapWidth: 2
                             }},
                             levels: [{{
                                 itemStyle: {{
-                                    borderColor: '#374151',
+                                    borderColor: '#e5e7eb',
                                     borderWidth: 2,
                                     gapWidth: 2
                                 }}
@@ -1008,33 +1008,33 @@ if stats['has_data']:
                 <div id="center_bar" style="width: 100%; height: 600px;"></div>
                 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
                 <script>
-                    var chart = echarts.init(document.getElementById('center_bar'), 'dark');
+                    var chart = echarts.init(document.getElementById('center_bar'));
                     var option = {{
                         backgroundColor: 'transparent',
                         tooltip: {{
                             trigger: 'axis',
                             axisPointer: {{type: 'shadow'}},
-                            backgroundColor: 'rgba(30, 41, 59, 0.95)',
-                            borderColor: '#475569',
-                            textStyle: {{color: '#F1F5F9'}},
+                            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                            borderColor: '#d1d5db',
+                            textStyle: {{color: '#374151'}},
                         }},
                         legend: {{
                             data: ['เฉลี่ย/วัน', 'Capacity'],
                             bottom: 0,
-                            textStyle: {{color: '#9CA3AF'}},
+                            textStyle: {{color: '#6b7280'}},
                         }},
                         grid: {{left: '3%', right: '10%', bottom: '12%', top: '5%', containLabel: true}},
                         xAxis: {{
                             type: 'value',
-                            axisLine: {{lineStyle: {{color: '#374151'}}}},
-                            axisLabel: {{color: '#9CA3AF'}},
-                            splitLine: {{lineStyle: {{color: '#1F2937'}}}},
+                            axisLine: {{lineStyle: {{color: '#d1d5db'}}}},
+                            axisLabel: {{color: '#6b7280'}},
+                            splitLine: {{lineStyle: {{color: '#e5e7eb'}}}},
                         }},
                         yAxis: {{
                             type: 'category',
                             data: {json.dumps(center_names, ensure_ascii=False)},
-                            axisLine: {{lineStyle: {{color: '#374151'}}}},
-                            axisLabel: {{color: '#9CA3AF', fontSize: 10}},
+                            axisLine: {{lineStyle: {{color: '#d1d5db'}}}},
+                            axisLabel: {{color: '#6b7280', fontSize: 10}},
                         }},
                         series: [
                             {{
@@ -1045,7 +1045,7 @@ if stats['has_data']:
                                 label: {{
                                     show: true,
                                     position: 'right',
-                                    color: '#9CA3AF',
+                                    color: '#6b7280',
                                     fontSize: 9,
                                     formatter: '{{c}}'
                                 }}
@@ -1056,7 +1056,7 @@ if stats['has_data']:
                                 data: {json.dumps(center_capacity)},
                                 symbol: 'diamond',
                                 symbolSize: 12,
-                                itemStyle: {{color: '#F1F5F9', borderColor: '#374151', borderWidth: 1}}
+                                itemStyle: {{color: '#374151', borderColor: '#e5e7eb', borderWidth: 1}}
                             }}
                         ]
                     }};
@@ -1109,8 +1109,8 @@ if stats['has_data']:
                     st.info("ไม่มีข้อมูลตามเงื่อนไขที่เลือก")
 
                 st.markdown("""
-                <div style="background: linear-gradient(135deg, #1E293B, #0F172A); border-radius: 8px; padding: 12px; border: 1px solid #374151; margin-top: 12px;">
-                    <p style="color: #9CA3AF; font-size: 0.8rem; margin: 0;">
+                <div style="background: #ffffff; border-radius: 8px; padding: 12px; border: 1px solid #e5e7eb; margin-top: 12px;">
+                    <p style="color: #6b7280; font-size: 0.8rem; margin: 0;">
                         <b>คำอธิบาย:</b><br>
                         • <b>รวม</b> = นัดหมายทั้งหมดในช่วงเวลา<br>
                         • <b>เฉลี่ย/วัน</b> = รวม ÷ จำนวนวัน<br>
@@ -1180,12 +1180,12 @@ if stats['has_data']:
             html_parts = ['''
             <style>
             .forecast-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-            .forecast-table th { background: #1E293B; color: #9CA3AF; padding: 8px 6px; text-align: center; border: 1px solid #374151; position: sticky; top: 0; }
-            .forecast-table td { padding: 6px; text-align: center; border: 1px solid #374151; }
+            .forecast-table th { background: #f3f4f6; color: #6b7280; padding: 8px 6px; text-align: center; border: 1px solid #e5e7eb; position: sticky; top: 0; }
+            .forecast-table td { padding: 6px; text-align: center; border: 1px solid #e5e7eb; }
             .forecast-table tr:hover { background: rgba(59, 130, 246, 0.1); }
             .forecast-table .center-name { text-align: left; min-width: 200px; max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             </style>
-            <div style="max-height: 600px; overflow: auto; border: 1px solid #374151; border-radius: 8px;">
+            <div style="max-height: 600px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 8px;">
             <table class="forecast-table">
             <thead><tr>
             ''']
@@ -1219,8 +1219,8 @@ if stats['has_data']:
 
             # Legend
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #1E293B, #0F172A); border-radius: 8px; padding: 10px 16px; border: 1px solid #374151; margin-bottom: 12px;">
-                <span style="color: #9CA3AF; font-size: 0.85rem;">
+            <div style="background: #ffffff; border-radius: 8px; padding: 10px 16px; border: 1px solid #e5e7eb; margin-bottom: 12px;">
+                <span style="color: #6b7280; font-size: 0.85rem;">
                     <b>สี:</b>
                     <span style="background: #DC2626; color: white; padding: 2px 8px; border-radius: 4px; margin-left: 8px;">🔴 เต็ม/เกิน (≥100%)</span>
                     <span style="background: #D97706; color: white; padding: 2px 8px; border-radius: 4px; margin-left: 8px;">🟡 ใกล้เต็ม (80-99%)</span>
@@ -1370,12 +1370,12 @@ if stats['has_data']:
                     <style>
                     body {{ margin: 0; padding: 0; background: transparent; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }}
                     .checkin-container {{ max-height: 480px; overflow-y: auto; padding-right: 8px; }}
-                    .checkin-row {{ display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #374151; }}
-                    .checkin-name {{ width: 180px; font-size: 13px; color: #E5E7EB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-                    .checkin-bar-container {{ flex: 1; margin: 0 12px; height: 24px; background: #1F2937; border-radius: 12px; overflow: hidden; position: relative; }}
+                    .checkin-row {{ display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #e5e7eb; }}
+                    .checkin-name {{ width: 180px; font-size: 13px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+                    .checkin-bar-container {{ flex: 1; margin: 0 12px; height: 24px; background: #f3f4f6; border-radius: 12px; overflow: hidden; position: relative; }}
                     .checkin-bar {{ height: 100%; border-radius: 12px; }}
-                    .checkin-bar-text {{ position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #E5E7EB; font-weight: bold; }}
-                    .checkin-stats {{ width: 150px; text-align: right; font-size: 12px; color: #9CA3AF; }}
+                    .checkin-bar-text {{ position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #374151; font-weight: bold; }}
+                    .checkin-stats {{ width: 150px; text-align: right; font-size: 12px; color: #6b7280; }}
                     </style>
                     </head>
                     <body>
@@ -1478,12 +1478,12 @@ if stats['has_data']:
                         <style>
                         body {{ margin: 0; padding: 0; background: transparent; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }}
                         .daily-container {{ max-height: 380px; overflow-y: auto; }}
-                        .daily-row {{ display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid #374151; }}
-                        .daily-name {{ width: 160px; font-size: 12px; color: #E5E7EB; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-                        .daily-bar-container {{ flex: 1; margin: 0 10px; height: 20px; background: #1F2937; border-radius: 10px; overflow: hidden; position: relative; }}
+                        .daily-row {{ display: flex; align-items: center; padding: 6px 0; border-bottom: 1px solid #e5e7eb; }}
+                        .daily-name {{ width: 160px; font-size: 12px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+                        .daily-bar-container {{ flex: 1; margin: 0 10px; height: 20px; background: #f3f4f6; border-radius: 10px; overflow: hidden; position: relative; }}
                         .daily-bar {{ height: 100%; border-radius: 10px; }}
-                        .daily-bar-text {{ position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #E5E7EB; font-weight: bold; }}
-                        .daily-stats {{ width: 100px; text-align: right; font-size: 11px; color: #9CA3AF; }}
+                        .daily-bar-text {{ position: absolute; right: 6px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #374151; font-weight: bold; }}
+                        .daily-stats {{ width: 100px; text-align: right; font-size: 11px; color: #6b7280; }}
                         </style>
                         </head>
                         <body>

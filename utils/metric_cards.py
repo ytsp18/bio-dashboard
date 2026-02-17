@@ -1,6 +1,6 @@
 """
 Metric Cards Component for Bio Dashboard
-Design: Operation-Focused Dashboard Cards
+Design: Operation-Focused Dashboard Cards (Light Theme)
 Features:
 - Border color indicates metric type
 - Trend comparison: Day, Week, Month
@@ -17,24 +17,24 @@ from datetime import date, timedelta
 # Color definitions
 BORDER_COLORS = {
     "info": "#3B82F6",      # Blue - general info
-    "success": "#10B981",   # Green - good values
-    "warning": "#F59E0B",   # Yellow/Orange - warning
-    "danger": "#EF4444",    # Red - bad values / needs attention
+    "success": "#16a34a",   # Green - good values
+    "warning": "#f59e0b",   # Yellow/Orange - warning
+    "danger": "#dc2626",    # Red - bad values / needs attention
 }
 
-# Background colors for alert states
+# Background colors for alert states (light theme)
 BG_COLORS = {
-    "normal": "#1A1F2E",
-    "warning": "#292520",   # Darker orange tint
-    "critical": "#2A1F1F",  # Darker red tint
+    "normal": "#ffffff",
+    "warning": "#fffbeb",   # Light yellow tint
+    "critical": "#fef2f2",  # Light red tint
 }
 
-# Status badge colors and labels
+# Status badge colors and labels (light theme)
 STATUS_CONFIG = {
-    "ok": {"color": "#10B981", "bg": "#064E3B", "label": "ปกติ", "icon": "✓"},
-    "warning": {"color": "#F59E0B", "bg": "#78350F", "label": "เตือน", "icon": "!"},
-    "critical": {"color": "#EF4444", "bg": "#7F1D1D", "label": "วิกฤต", "icon": "!!"},
-    "none": {"color": "#6B7280", "bg": "#374151", "label": "-", "icon": ""},
+    "ok": {"color": "#16a34a", "bg": "#dcfce7", "label": "ปกติ", "icon": "✓"},
+    "warning": {"color": "#b45309", "bg": "#fef3c7", "label": "เตือน", "icon": "!"},
+    "critical": {"color": "#dc2626", "bg": "#fee2e2", "label": "วิกฤต", "icon": "!!"},
+    "none": {"color": "#6b7280", "bg": "#f3f4f6", "label": "-", "icon": ""},
 }
 
 # Icons for metric types
@@ -65,21 +65,21 @@ METRIC_ICONS = {
 def get_trend_arrow(value: float) -> tuple[str, str]:
     """Get trend arrow and color based on value."""
     if value > 0:
-        return "▲", "#10B981"  # Green up
+        return "▲", "#16a34a"  # Green up
     elif value < 0:
-        return "▼", "#EF4444"  # Red down
+        return "▼", "#dc2626"  # Red down
     else:
-        return "—", "#6B7280"  # Gray neutral
+        return "—", "#6b7280"  # Gray neutral
 
 
 def get_trend_arrow_inverse(value: float) -> tuple[str, str]:
     """Get trend arrow for metrics where down is good (e.g., errors)."""
     if value > 0:
-        return "▲", "#EF4444"  # Red up (bad)
+        return "▲", "#dc2626"  # Red up (bad)
     elif value < 0:
-        return "▼", "#10B981"  # Green down (good)
+        return "▼", "#16a34a"  # Green down (good)
     else:
-        return "—", "#6B7280"  # Gray neutral
+        return "—", "#6b7280"  # Gray neutral
 
 
 def format_number(value: Union[int, float], is_percent: bool = False) -> str:
@@ -161,7 +161,7 @@ def render_metric_card(
         trend_parts.append(f'<span style="color:{color}">{arrow} {format_trend(trend_month, is_percent)} เดือน</span>')
 
     if trend_parts:
-        trend_html = f'<div style="font-size:0.7rem;color:#6B7280;margin-top:6px">{" | ".join(trend_parts)}</div>'
+        trend_html = f'<div style="font-size:0.7rem;color:#6b7280;margin-top:6px">{" | ".join(trend_parts)}</div>'
 
     # Build status badge HTML
     status_html = ""
@@ -172,16 +172,16 @@ def render_metric_card(
     # Build subtitle HTML
     subtitle_html = ""
     if subtitle:
-        subtitle_html = f'<div style="font-size:0.75rem;color:#6B7280;margin-top:2px">{subtitle}</div>'
+        subtitle_html = f'<div style="font-size:0.75rem;color:#6b7280;margin-top:2px">{subtitle}</div>'
 
     # Build progress bar HTML (for target comparison)
     progress_html = ""
     if target is not None and target > 0:
         pct = min((value / target) * 100, 100)
         pct_display = (value / target) * 100
-        bar_color = "#10B981" if pct_display <= 80 else ("#F59E0B" if pct_display <= 100 else "#EF4444")
+        bar_color = "#16a34a" if pct_display <= 80 else ("#f59e0b" if pct_display <= 100 else "#dc2626")
         tlabel = target_label or "เป้าหมาย"
-        progress_html = f'<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:0.7rem;color:#6B7280;margin-bottom:3px"><span>{tlabel}</span><span>{pct_display:.0f}% ({format_number(target)})</span></div><div style="background:#374151;border-radius:4px;height:6px;overflow:hidden"><div style="width:{pct}%;height:100%;background:{bar_color};border-radius:4px;transition:width 0.3s"></div></div></div>'
+        progress_html = f'<div style="margin-top:8px"><div style="display:flex;justify-content:space-between;font-size:0.7rem;color:#6b7280;margin-bottom:3px"><span>{tlabel}</span><span>{pct_display:.0f}% ({format_number(target)})</span></div><div style="background:#e5e7eb;border-radius:4px;height:6px;overflow:hidden"><div style="width:{pct}%;height:100%;background:{bar_color};border-radius:4px;transition:width 0.3s"></div></div></div>'
 
     # Help tooltip
     help_attr = f'title="{help_text}"' if help_text else ''
@@ -193,7 +193,7 @@ def render_metric_card(
     header_html = f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-size:1.5rem">{icon_char}</span>{status_html}</div>'
 
     # Single line HTML to avoid Streamlit parsing issues
-    card_html = f'<div {help_attr} style="background:{bg_color};border-radius:12px;padding:16px 20px;border-left:4px solid {border_color};border-top:1px solid #2D3748;border-right:1px solid #2D3748;border-bottom:1px solid #2D3748;{alert_style}">{header_html}<div style="font-size:1.75rem;font-weight:700;color:#FAFAFA;line-height:1.2">{format_number(value, is_percent)}</div><div style="font-size:0.85rem;color:#9CA3AF;margin-top:2px">{label}</div>{subtitle_html}{trend_html}{progress_html}</div>'
+    card_html = f'<div {help_attr} style="background:{bg_color};border-radius:8px;padding:16px 20px;border-left:4px solid {border_color};border-top:1px solid #e5e7eb;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.1);{alert_style}transition:transform 0.2s,box-shadow 0.2s;">{header_html}<div style="font-size:1.75rem;font-weight:700;color:#1f2937;line-height:1.2">{format_number(value, is_percent)}</div><div style="font-size:0.85rem;color:#6b7280;margin-top:2px">{label}</div>{subtitle_html}{trend_html}{progress_html}</div>'
 
     st.markdown(card_html, unsafe_allow_html=True)
 
@@ -257,10 +257,11 @@ METRIC_CARDS_CSS = """
 
 /* Operation Summary Panel */
 .op-summary-panel {
-    background: linear-gradient(135deg, #1E293B, #0F172A);
-    border-radius: 16px;
+    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+    border-radius: 8px;
     padding: 24px;
-    border: 1px solid #374151;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     margin-bottom: 24px;
 }
 
@@ -270,13 +271,13 @@ METRIC_CARDS_CSS = """
     justify-content: space-between;
     margin-bottom: 20px;
     padding-bottom: 16px;
-    border-bottom: 1px solid #374151;
+    border-bottom: 1px solid #e5e7eb;
 }
 
 .op-summary-title {
     font-size: 1.25rem;
     font-weight: 600;
-    color: #FAFAFA;
+    color: #1f2937;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -293,18 +294,18 @@ METRIC_CARDS_CSS = """
 }
 
 .op-summary-badge.ok {
-    background: #064E3B;
-    color: #10B981;
+    background: #dcfce7;
+    color: #16a34a;
 }
 
 .op-summary-badge.warning {
-    background: #78350F;
-    color: #F59E0B;
+    background: #fef3c7;
+    color: #b45309;
 }
 
 .op-summary-badge.critical {
-    background: #7F1D1D;
-    color: #EF4444;
+    background: #fee2e2;
+    color: #dc2626;
 }
 
 /* Quick Stat */
@@ -313,20 +314,21 @@ METRIC_CARDS_CSS = """
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
-    background: #1A1F2E;
-    border-radius: 10px;
+    background: #ffffff;
+    border-radius: 8px;
     border-left: 3px solid #3B82F6;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
 .quick-stat-value {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #FAFAFA;
+    color: #1f2937;
 }
 
 .quick-stat-label {
     font-size: 0.8rem;
-    color: #9CA3AF;
+    color: #6b7280;
 }
 </style>
 """
@@ -356,7 +358,7 @@ def render_mini_metric(
         arrow, color = get_arrow(trend)
         trend_html = f'<span style="color:{color};font-size:0.75rem;margin-left:8px">{arrow} {format_trend(trend, is_percent)}</span>'
 
-    card_html = f'<div style="background:#1A1F2E;border-radius:8px;padding:12px 16px;border-left:3px solid {border_color};border-top:1px solid #2D3748;border-right:1px solid #2D3748;border-bottom:1px solid #2D3748"><div style="font-size:0.75rem;color:#6B7280;margin-bottom:4px">{label}</div><div style="font-size:1.25rem;font-weight:600;color:#FAFAFA">{format_number(value, is_percent)}{trend_html}</div></div>'
+    card_html = f'<div style="background:#ffffff;border-radius:8px;padding:12px 16px;border-left:3px solid {border_color};border-top:1px solid #e5e7eb;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;box-shadow:0 1px 2px rgba(0,0,0,0.05)"><div style="font-size:0.75rem;color:#6b7280;margin-bottom:4px">{label}</div><div style="font-size:1.25rem;font-weight:600;color:#1f2937">{format_number(value, is_percent)}{trend_html}</div></div>'
 
     st.markdown(card_html, unsafe_allow_html=True)
 
@@ -388,7 +390,7 @@ def render_operation_summary(
         metrics_items = []
         for m in metrics[:6]:  # Max 6 quick metrics
             icon = METRIC_ICONS.get(m.get("icon", "count"), "📊")
-            metrics_items.append(f'<div style="text-align:center;padding:8px 16px"><div style="font-size:0.7rem;color:#6B7280">{icon} {m.get("label", "")}</div><div style="font-size:1.25rem;font-weight:700;color:#FAFAFA">{format_number(m.get("value", 0))}</div></div>')
+            metrics_items.append(f'<div style="text-align:center;padding:8px 16px"><div style="font-size:0.7rem;color:#6b7280">{icon} {m.get("label", "")}</div><div style="font-size:1.25rem;font-weight:700;color:#1f2937">{format_number(m.get("value", 0))}</div></div>')
         metrics_html = f'<div style="display:flex;flex-wrap:wrap;justify-content:space-around;gap:8px;margin-top:16px">{"".join(metrics_items)}</div>'
 
     # Build alerts HTML (single line for each)
@@ -404,7 +406,7 @@ def render_operation_summary(
     # Last updated
     updated_html = ""
     if last_updated:
-        updated_html = f'<div style="font-size:0.7rem;color:#4B5563;text-align:right;margin-top:12px">อัปเดตล่าสุด: {last_updated}</div>'
+        updated_html = f'<div style="font-size:0.7rem;color:#9ca3af;text-align:right;margin-top:12px">อัปเดตล่าสุด: {last_updated}</div>'
 
     # Single line panel HTML
     panel_html = f'<div class="op-summary-panel"><div class="op-summary-header"><div class="op-summary-title"><span style="font-size:1.5rem">📋</span> {title}</div><div class="op-summary-badge {overall_status}">{cfg["icon"]} {status_message or cfg["label"]}</div></div>{metrics_html}{alerts_html}{updated_html}</div>'
@@ -432,7 +434,7 @@ def render_action_card(
         count_html = f'<span style="background:{cfg["bg"]};color:{cfg["color"]};padding:4px 10px;border-radius:12px;font-size:0.85rem;font-weight:600">{count:,}</span>'
 
     # Single line HTML
-    card_html = f'<div style="background:#1A1F2E;border-radius:12px;padding:16px 20px;border:1px solid #2D3748;display:flex;align-items:center;gap:16px"><div style="width:48px;height:48px;background:#1E293B;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0">{icon_char}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:1rem;font-weight:600;color:#FAFAFA">{title}</span>{count_html}</div><div style="font-size:0.8rem;color:#9CA3AF">{description}</div></div></div>'
+    card_html = f'<div style="background:#ffffff;border-radius:8px;padding:16px 20px;border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.1);display:flex;align-items:center;gap:16px"><div style="width:48px;height:48px;background:#f3f4f6;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0">{icon_char}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:1rem;font-weight:600;color:#1f2937">{title}</span>{count_html}</div><div style="font-size:0.8rem;color:#6b7280">{description}</div></div></div>'
 
     st.markdown(card_html, unsafe_allow_html=True)
 
@@ -459,13 +461,13 @@ def render_kpi_gauge(
     """
     # Determine color
     if value >= thresholds[1]:
-        color = "#10B981"  # Green
+        color = "#16a34a"  # Green
         status = "ok"
     elif value >= thresholds[0]:
-        color = "#F59E0B"  # Yellow
+        color = "#f59e0b"  # Yellow
         status = "warning"
     else:
-        color = "#EF4444"  # Red
+        color = "#dc2626"  # Red
         status = "critical"
 
     pct = min((value / target) * 100, 100) if target > 0 else 0
@@ -473,7 +475,7 @@ def render_kpi_gauge(
     cfg = STATUS_CONFIG.get(status, STATUS_CONFIG["ok"])
 
     # Single line HTML
-    gauge_html = f'<div style="background:#1A1F2E;border-radius:12px;padding:16px 20px;border:1px solid #2D3748"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><span style="font-size:0.85rem;color:#9CA3AF">{label}</span><span style="background:{cfg["bg"]};color:{cfg["color"]};padding:2px 8px;border-radius:8px;font-size:0.7rem;font-weight:600">{cfg["label"]}</span></div><div style="font-size:2rem;font-weight:700;color:#FAFAFA;margin-bottom:8px">{value:.1f}<span style="font-size:1rem;color:#6B7280">{unit}</span></div><div style="background:#374151;border-radius:6px;height:8px;overflow:hidden"><div style="width:{pct}%;height:100%;background:{color};border-radius:6px;transition:width 0.5s"></div></div><div style="display:flex;justify-content:space-between;margin-top:6px;font-size:0.7rem;color:#6B7280"><span>0</span><span>เป้าหมาย: {target}{unit}</span></div></div>'
+    gauge_html = f'<div style="background:#ffffff;border-radius:8px;padding:16px 20px;border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.1)"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><span style="font-size:0.85rem;color:#6b7280">{label}</span><span style="background:{cfg["bg"]};color:{cfg["color"]};padding:2px 8px;border-radius:8px;font-size:0.7rem;font-weight:600">{cfg["label"]}</span></div><div style="font-size:2rem;font-weight:700;color:#1f2937;margin-bottom:8px">{value:.1f}<span style="font-size:1rem;color:#6b7280">{unit}</span></div><div style="background:#e5e7eb;border-radius:6px;height:8px;overflow:hidden"><div style="width:{pct}%;height:100%;background:{color};border-radius:6px;transition:width 0.5s"></div></div><div style="display:flex;justify-content:space-between;margin-top:6px;font-size:0.7rem;color:#6b7280"><span>0</span><span>เป้าหมาย: {target}{unit}</span></div></div>'
 
     st.markdown(gauge_html, unsafe_allow_html=True)
 
@@ -518,10 +520,10 @@ def render_uniform_card(
     # Subtitle HTML
     subtitle_html = ""
     if subtitle:
-        subtitle_html = f'<div style="font-size:0.75rem;color:#6B7280;margin-top:4px;line-height:1.3">{subtitle}</div>'
+        subtitle_html = f'<div style="font-size:0.75rem;color:#6b7280;margin-top:4px;line-height:1.3">{subtitle}</div>'
 
     # Single line HTML with fixed height
-    card_html = f'<div style="background:#1A1F2E;border-radius:12px;padding:16px 20px;border-left:4px solid {border_color};border-top:1px solid #2D3748;border-right:1px solid #2D3748;border-bottom:1px solid #2D3748;height:{height}px;display:flex;flex-direction:column;justify-content:space-between"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:1.3rem">{icon_char}</span><span style="font-size:0.9rem;color:#9CA3AF;font-weight:500">{title}</span></div><div style="font-size:1.85rem;font-weight:700;color:#FAFAFA">{format_number(value, is_percent)}{trend_html}</div></div>{subtitle_html}</div>'
+    card_html = f'<div style="background:#ffffff;border-radius:8px;padding:16px 20px;border-left:4px solid {border_color};border-top:1px solid #e5e7eb;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.1);height:{height}px;display:flex;flex-direction:column;justify-content:space-between"><div><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:1.3rem">{icon_char}</span><span style="font-size:0.9rem;color:#6b7280;font-weight:500">{title}</span></div><div style="font-size:1.85rem;font-weight:700;color:#1f2937">{format_number(value, is_percent)}{trend_html}</div></div>{subtitle_html}</div>'
 
     st.markdown(card_html, unsafe_allow_html=True)
 
