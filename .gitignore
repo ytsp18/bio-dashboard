@@ -34,5 +34,8 @@ tmp/
 temp/
 *.tmp
 
+# MCP config (contains service_role key)
+.mcp.json
+
 # Streamlit
 .streamlit/secrets.toml
