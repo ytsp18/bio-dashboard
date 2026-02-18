@@ -169,6 +169,17 @@ def _run_migrations():
         if 'ix_cards_status_serial' not in existing_indexes:
             migrations.append("CREATE INDEX IF NOT EXISTS ix_cards_status_serial ON cards (print_status, serial_number)")
 
+    # ========== Cards table - partial index for slot cut query ==========
+    if 'cards' in tables and not is_sqlite:
+        existing_indexes = {idx['name'] for idx in inspector.get_indexes('cards')}
+        if 'ix_cards_wrong_appt' not in existing_indexes:
+            migrations.append(
+                "CREATE INDEX IF NOT EXISTS ix_cards_wrong_appt "
+                "ON cards (appt_branch, appt_date) "
+                "WHERE (wrong_date = true OR wrong_branch = true) AND print_status = 'G'"
+            )
+            _log("Queued index: ix_cards_wrong_appt (partial)")
+
     # ========== QLog table - add missing columns ==========
     if 'qlogs' in tables and not is_sqlite:
         existing_columns = {col['name'] for col in inspector.get_columns('qlogs')}
