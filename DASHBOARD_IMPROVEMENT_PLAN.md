@@ -5,7 +5,7 @@
 
 **สถานะ:** 🔄 กำลังดำเนินการ
 **เริ่มต้น:** 2026-01-30
-**อัปเดตล่าสุด:** 2026-01-31 (Session 5 - Workload Forecast)
+**อัปเดตล่าสุด:** 2026-01-31 (Session 6 - Metric Cards Redesign)
 
 ---
 
@@ -63,12 +63,16 @@ st_echarts(options=options, height="400px")
 ปรับปรุง Summary Cards ให้ดูทันสมัย มี icon และ trend indicator
 
 ### Tasks
-- [ ] ติดตั้ง `streamlit-extras`
-- [ ] ออกแบบ Card Template ใหม่
-- [ ] เพิ่ม Icons (emoji หรือ Font Awesome)
-- [ ] เพิ่ม Trend Indicator (▲ ▼)
-- [ ] เพิ่ม Color Coding (เขียว/แดง/ส้ม)
-- [ ] ปรับ Spacing และ Layout
+- [x] ออกแบบ Card Template ใหม่ (Operation-focused)
+- [x] เพิ่ม Icons (emoji)
+- [x] เพิ่ม Trend Indicator (▲ ▼)
+- [x] เพิ่ม Color Coding (เขียว/แดง/ส้ม)
+- [x] เพิ่ม Status Badges (ok/warning/critical)
+- [x] เพิ่ม Progress Bars สำหรับ target comparison
+- [x] สร้าง Operation Summary Panel
+- [x] สร้าง Action Cards สำหรับ Anomaly section
+- [x] เพิ่ม KPI Gauge Component
+- [x] ปรับ Spacing และ Layout
 
 ### Dependencies
 ```bash
@@ -243,7 +247,7 @@ st.markdown("""
 | Phase | Status | Started | Completed |
 |-------|--------|---------|-----------|
 | 1. Charts (ECharts) | ✅ Completed | 2026-01-30 | 2026-01-31 |
-| 2. Metric Cards | ⬜ Pending | - | - |
+| 2. Metric Cards | ✅ Completed | 2026-01-31 | 2026-01-31 |
 | 3. Color Theme | ⬜ Pending | - | - |
 | 4. Sidebar | ⬜ Pending | - | - |
 | 5. Data Tables | ⬜ Pending | - | - |
@@ -290,6 +294,38 @@ streamlit-aggrid>=0.3.0
 ---
 
 ## Changelog
+
+### 2026-01-31 (Session 6 - Metric Cards Redesign)
+- **Feature: Operation Summary Panel**
+  - แสดงสถานะรวมของระบบ (Normal/Warning/Critical)
+  - 3 KPI cards: จำนวน upload, pending items, last update
+  - สถานะคำนวณจาก anomaly ratio อัตโนมัติ
+
+- **Feature: Enhanced Metric Cards**
+  - Status badges (สีเขียว/เหลือง/แดง) ตามเงื่อนไข
+  - Progress bars แสดง % เทียบกับ target
+  - Trend indicators (▲ ▼) สำหรับการเปลี่ยนแปลง
+  - Subtitle แสดงข้อมูลเพิ่มเติม
+
+- **Feature: Action Cards**
+  - แทนที่ Anomaly section เดิม
+  - แสดง icon, จำนวน, สถานะ, quick action button
+  - สถานะสีตามความสำคัญ (critical/warning/ok)
+
+- **Feature: KPI Gauge Component**
+  - วงกลม progress สำหรับ SLA metrics
+  - แสดง % และ label
+  - รองรับ custom color
+
+- **Technical: Single-line HTML**
+  - แก้ไขปัญหา HTML ไม่ render ใน Streamlit
+  - แปลง multi-line เป็น single-line strings
+
+- **Files Changed:**
+  - `utils/metric_cards.py` - เพิ่ม functions ใหม่ทั้งหมด
+  - `pages/2_📈_Overview.py` - ใช้ components ใหม่
+
+- **Version: 1.3.9**
 
 ### 2026-01-31 (Session 5 - Workload Forecast)
 - **Feature: Workload Forecast (นัดหมายล่วงหน้า)**
