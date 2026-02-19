@@ -11,7 +11,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import init_db
-from streamlit_echarts import st_echarts
+from streamlit_echarts import st_echarts, JsCode
 from utils.theme import apply_theme, render_theme_toggle
 from utils.auth_check import require_login
 
@@ -333,7 +333,7 @@ def build_calendar_options(cal_data, month, year, title="", max_cap=None):
     options = {
         "title": {"text": title, "left": "center", "textStyle": {"fontSize": 14}} if title else {},
         "tooltip": {
-            "formatter": """function(params) {
+            "formatter": JsCode("""function(params) {
                 var d = params.data;
                 if (!d || d.length < 6) return '';
                 var dateStr = d[0];
@@ -351,7 +351,7 @@ def build_calendar_options(cal_data, month, year, title="", max_cap=None):
                 if (cuts > 0) html += '✂️ ตัด: ' + cuts + '<br/>';
                 html += '(' + pct.toFixed(0) + '% ว่าง)';
                 return html;
-            }"""
+            }""")
         },
         "visualMap": {
             "min": -10,
@@ -391,13 +391,13 @@ def build_calendar_options(cal_data, month, year, title="", max_cap=None):
             "data": heatmap_data,
             "label": {
                 "show": True,
-                "formatter": """function(params) {
+                "formatter": JsCode("""function(params) {
                     var d = params.data;
                     if (!d || d.length < 6) return '';
                     var cap = d[3];
                     if (cap <= 0) return '-';
                     return d[2];
-                }""",
+                }"""),
                 "fontSize": 12,
                 "fontWeight": "bold",
             },
