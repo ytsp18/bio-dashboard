@@ -3,13 +3,14 @@ import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
 from io import BytesIO
+from html import escape as html_escape
 import calendar
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database.connection import init_db, get_session
+from database.connection import init_db
 from streamlit_echarts import st_echarts
 from utils.theme import apply_theme, render_theme_toggle
 from utils.auth_check import require_login
@@ -209,6 +210,9 @@ last_day = date(sel_year, sel_month, calendar.monthrange(sel_year, sel_month)[1]
 
 # ตัวกรองศูนย์
 capacity_map = get_capacity_map()
+if not capacity_map:
+    st.warning("⚠️ ไม่พบข้อมูล Capacity ของศูนย์ — กรุณาตรวจสอบตาราง Branch Master")
+    st.stop()
 branch_options = {k: f"{v['name']} ({k})" for k, v in sorted(capacity_map.items(), key=lambda x: x[1]['name'])}
 
 # โหมดแสดงผล: ทุกศูนย์ หรือ เลือกศูนย์
@@ -248,11 +252,13 @@ num_days = (last_day - first_day).days + 1
 # นับวันทำการ (ไม่รวมเสาร์-อาทิตย์)
 working_days = sum(1 for d in range(num_days) if (first_day + timedelta(days=d)).weekday() < 5)
 
+all_branches_set = {bc for bc in capacity_map.keys() if '-MB-' not in str(bc).upper()}
+
 if view_mode == "all":
-    for bc, info in capacity_map.items():
-        if '-MB-' not in str(bc).upper():  # ไม่รวมรถเคลื่อนที่
-            total_capacity += info['capacity'] * working_days
-    total_booked = sum(booked_data.values())
+    for bc in all_branches_set:
+        total_capacity += capacity_map[bc]['capacity'] * working_days
+    # นับเฉพาะ branch ที่มี capacity (ไม่รวม branch ที่ไม่ได้ตั้ง max_capacity)
+    total_booked = sum(v for (b, d), v in booked_data.items() if b in all_branches_set)
 else:
     for bc in selected_branches:
         cap = capacity_map.get(bc, {}).get('capacity', 0)
@@ -408,8 +414,7 @@ st.markdown("---")
 # ---------- Calendar Heatmap ----------
 if view_mode == "all":
     st.subheader("📅 Calendar Heatmap — ทุกศูนย์รวม")
-    all_branches = [bc for bc in capacity_map.keys() if '-MB-' not in str(bc).upper()]
-    cal_data = build_calendar_data(all_branches, booked_data, cut_data['by_branch_date'], capacity_map, sel_month, sel_year)
+    cal_data = build_calendar_data(list(all_branches_set), booked_data, cut_data['by_branch_date'], capacity_map, sel_month, sel_year)
     options = build_calendar_options(cal_data, sel_month, sel_year)
     st_echarts(options=options, height="320px", key="cal_all")
 
@@ -482,9 +487,7 @@ while len(upcoming_dates) < 7:
     d += timedelta(days=1)
 
 # กำหนดศูนย์ที่แสดง
-table_branches = selected_branches if selected_branches else [
-    bc for bc in capacity_map.keys() if '-MB-' not in str(bc).upper()
-]
+table_branches = selected_branches if selected_branches else list(all_branches_set)
 
 # โหลดข้อมูล 7 วัน (อาจต่างเดือนกับ calendar)
 booked_7d = get_booked_slots(upcoming_dates[0], upcoming_dates[-1], table_branches if selected_branches else None)
@@ -559,10 +562,11 @@ html_parts.append('</tr></thead><tbody>')
 # แถวข้อมูล
 for row in table_rows:
     html_parts.append('<tr>')
-    name = str(row['name'])[:35]
+    name = html_escape(str(row['name'])[:35])
+    full_name = html_escape(str(row['name']))
     cap = row['capacity']
-    cap_str = f"{cap:,}" if cap else '-'
-    html_parts.append(f'<td class="center-name" title="{row["name"]}">{name}</td>')
+    cap_str = f"{cap:,}" if cap is not None and cap > 0 else '-'
+    html_parts.append(f'<td class="center-name" title="{full_name}">{name}</td>')
     html_parts.append(f'<td>{cap_str}</td>')
 
     for day_data in row['days']:
@@ -620,7 +624,7 @@ with st.expander(f"✂️ รายละเอียดการตัด Slot 
         st.download_button(
             label="📥 ดาวน์โหลด Excel",
             data=buffer,
-            file_name=f"slot_cuts_{thai_months[sel_month]}_{be_year}.xlsx",
+            file_name=f"slot_cuts_{sel_month:02d}_{sel_year}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="download_cuts",
         )
