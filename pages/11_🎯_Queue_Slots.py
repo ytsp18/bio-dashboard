@@ -11,7 +11,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import init_db
-from streamlit_echarts import st_echarts, JsCode
+from streamlit_echarts import st_echarts
 from utils.theme import apply_theme, render_theme_toggle
 from utils.auth_check import require_login
 
@@ -314,48 +314,37 @@ def build_calendar_data(branches_list, booked, cuts, cap_map, month, year):
 
 
 def build_calendar_options(cal_data, month, year, title="", max_cap=None):
-    """สร้าง ECharts options สำหรับ calendar heatmap."""
+    """สร้าง ECharts options สำหรับ calendar heatmap.
+
+    Data format: [date_str, available_count] — ใช้ available เป็นค่าหลัก
+    เพื่อให้ label แสดง {c} = จำนวนว่าง และ visualMap map สีจากจำนวนว่าง
+    """
     num_days = calendar.monthrange(year, month)[1]
     range_start = f"{year}-{month:02d}-01"
     range_end = f"{year}-{month:02d}-{num_days:02d}"
 
-    # ข้อมูลสำหรับ heatmap: [[วันที่, ค่า], ...]
+    # ข้อมูล heatmap: [[date, available_count]] — ค่าง่ายที่ serialize ได้
     heatmap_data = []
     for item in cal_data:
         d_str, available, capacity, booked, cuts = item
-        # ใช้ % สำหรับ mapping สี (ว่าง / capacity × 100)
-        pct = (available / capacity * 100) if capacity > 0 else -1
-        heatmap_data.append([d_str, round(pct, 1), available, capacity, booked, cuts])
+        # วันหยุด (capacity=0) → ใส่ค่า -1 เพื่อให้ visualMap แสดงเป็นสีเทา
+        val = available if capacity > 0 else -1
+        heatmap_data.append([d_str, val])
 
     if max_cap is None:
-        max_cap = max((item[3] for item in cal_data), default=100)
+        max_cap = max((item[2] for item in cal_data), default=100)
+    # คำนวณ threshold สำหรับ visualMap (สีตาม % ของ max capacity)
+    threshold_20 = round(max_cap * 0.20)
+    threshold_10 = round(max_cap * 0.10)
 
     options = {
         "title": {"text": title, "left": "center", "textStyle": {"fontSize": 14}} if title else {},
         "tooltip": {
-            "formatter": JsCode("""function(params) {
-                var d = params.data;
-                if (!d || d.length < 6) return '';
-                var dateStr = d[0];
-                var pct = d[1];
-                var avail = d[2];
-                var cap = d[3];
-                var booked = d[4];
-                var cuts = d[5];
-                var parts = dateStr.split('-');
-                var display = parts[2] + '/' + parts[1] + '/' + (parseInt(parts[0]) + 543);
-                var html = '<b>' + display + '</b><br/>';
-                if (cap <= 0) return html + 'วันหยุด / ไม่มีข้อมูล';
-                html += '✅ ว่าง: <b>' + avail + '</b> / ' + cap + '<br/>';
-                html += '📅 จอง: ' + booked + '<br/>';
-                if (cuts > 0) html += '✂️ ตัด: ' + cuts + '<br/>';
-                html += '(' + pct.toFixed(0) + '% ว่าง)';
-                return html;
-            }""")
+            "formatter": "{b}: ว่าง {c}"
         },
         "visualMap": {
-            "min": -10,
-            "max": 100,
+            "min": -1,
+            "max": max(max_cap, 1),
             "calculable": True,
             "orient": "horizontal",
             "left": "center",
@@ -363,7 +352,14 @@ def build_calendar_options(cal_data, month, year, title="", max_cap=None):
             "inRange": {
                 "color": ["#7f1d1d", "#ef4444", "#eab308", "#22c55e", "#16a34a"]
             },
-            "text": ["ว่างมาก", "เกิน Cap"],
+            "pieces": [
+                {"min": -1, "max": -1, "color": "#e5e7eb", "label": "วันหยุด"},
+                {"min": 0, "max": 0, "color": "#7f1d1d", "label": "เต็ม"},
+                {"min": 1, "max": threshold_10, "color": "#ef4444", "label": f"<10% (≤{threshold_10})"},
+                {"min": threshold_10 + 1, "max": threshold_20, "color": "#eab308", "label": f"10-20%"},
+                {"min": threshold_20 + 1, "max": max_cap * 2, "color": "#22c55e", "label": f"≥20% (>{threshold_20})"},
+            ],
+            "type": "piecewise",
             "textStyle": {"fontSize": 11},
         },
         "calendar": {
@@ -391,13 +387,7 @@ def build_calendar_options(cal_data, month, year, title="", max_cap=None):
             "data": heatmap_data,
             "label": {
                 "show": True,
-                "formatter": JsCode("""function(params) {
-                    var d = params.data;
-                    if (!d || d.length < 6) return '';
-                    var cap = d[3];
-                    if (cap <= 0) return '-';
-                    return d[2];
-                }"""),
+                "formatter": "{c}",
                 "fontSize": 12,
                 "fontWeight": "bold",
             },
