@@ -220,6 +220,8 @@ class ExcelParser:
         # Rename columns that exist
         rename_dict = {k: v for k, v in column_map.items() if k in df.columns}
         df = df.rename(columns=rename_dict)
+        # Drop duplicate columns after rename (e.g. both "Serial Number" and "Serial_Number" → "serial_number")
+        df = df.loc[:, ~df.columns.duplicated(keep='first')]
 
         # Fix Serial Number and Work Permit - preserve leading zeros
         # These are stored as float in Excel, need to convert to string with proper format
@@ -318,6 +320,7 @@ class ExcelParser:
 
         rename_dict = {k: v for k, v in column_map.items() if k in df.columns}
         df = df.rename(columns=rename_dict)
+        df = df.loc[:, ~df.columns.duplicated(keep='first')]
 
         # Fix Serial Number, Work Permit, and Card ID - preserve leading zeros
         if 'serial_number' in df.columns:
@@ -370,6 +373,7 @@ class ExcelParser:
 
         rename_dict = {k: v for k, v in column_map.items() if k in df.columns}
         df = df.rename(columns=rename_dict)
+        df = df.loc[:, ~df.columns.duplicated(keep='first')]
 
         # Fix Serial Number and Card ID - preserve leading zeros
         if 'serial_number' in df.columns:
@@ -397,6 +401,7 @@ class ExcelParser:
 
         rename_dict = {k: v for k, v in column_map.items() if k in df.columns}
         df = df.rename(columns=rename_dict)
+        df = df.loc[:, ~df.columns.duplicated(keep='first')]
 
         # Ensure good_count is numeric - handle cases where columns shifted
         if 'good_count' in df.columns:
@@ -483,6 +488,7 @@ class ExcelParser:
 
         rename_dict = {k: v for k, v in column_map.items() if k in data_df.columns}
         data_df = data_df.rename(columns=rename_dict)
+        data_df = data_df.loc[:, ~data_df.columns.duplicated(keep='first')]
 
         # Fix Serial Number format
         if 'serial_number' in data_df.columns:
@@ -519,6 +525,7 @@ class ExcelParser:
 
         rename_dict = {k: v for k, v in column_map.items() if k in df.columns}
         df = df.rename(columns=rename_dict)
+        df = df.loc[:, ~df.columns.duplicated(keep='first')]
 
         return df
 
@@ -546,6 +553,7 @@ class ExcelParser:
 
         rename_dict = {k: v for k, v in column_map.items() if k in df.columns}
         df = df.rename(columns=rename_dict)
+        df = df.loc[:, ~df.columns.duplicated(keep='first')]
 
         return df
 
@@ -607,6 +615,7 @@ class ExcelParser:
 
         rename_dict = {k: v for k, v in column_map.items() if k in data_df.columns}
         data_df = data_df.rename(columns=rename_dict)
+        data_df = data_df.loc[:, ~data_df.columns.duplicated(keep='first')]
 
         # Convert numeric columns
         if 'g_count' in data_df.columns:

@@ -1,5 +1,57 @@
 # Session Log - Bio Dashboard
 
+## สิ่งที่ทำเสร็จแล้ว (23 Feb 2026 - Session 9: COPY Protocol + Parser Fix)
+
+### 18. Fix Unified Report Upload Error + COPY Protocol Optimization
+
+**ปัญหาที่พบ:**
+
+1. **Error: "The truth value of a Series is ambiguous"**
+   - เมื่ออัปโหลด `Bio_unified_report_กุมภาพันธ์_2569.xlsx`
+   - Root cause: ไฟล์ Sheet 13 มีทั้ง `Serial Number` และ `Serial_Number` → rename ทั้งคู่เป็น `serial_number` → ได้ 2 columns ชื่อเดียวกัน → `df['serial_number']` return DataFrame แทน Series
+
+2. **Performance: Unified Report import ช้ามาก**
+   - เดิมใช้ ORM `session.add()` ทีละ row สำหรับ 120K+ rows
+   - Bio Raw / Appointment / QLog / Delivery ใช้ COPY protocol แล้ว แต่ Unified Report ยังไม่ได้ migrate
+
+3. **Bio Raw upload error: "invalid input syntax for type integer: 0.0"**
+   - emergency column ถูกแปลงเป็น float64 ระหว่าง apply/lambda → to_csv เขียน "0.0"
+
+**สิ่งที่พัฒนา:**
+
+1. **Fix duplicate column rename** (`services/excel_parser.py`)
+   - เพิ่ม `df = df.loc[:, ~df.columns.duplicated(keep='first')]` หลัง rename ใน 8 parse methods
+   - ครอบคลุม: `parse_all_data`, `parse_good_cards`, `parse_bad_cards`, `parse_delivery_cards`, `parse_center_stats`, `parse_sla_over_12`, `parse_wrong_center`, `parse_complete_diff`
+
+2. **COPY protocol migration** (`services/data_service.py`)
+   - สร้าง `_copy_df_to_table()` helper — รองรับ PostgreSQL COPY + SQLite fallback
+   - Rewrite `import_excel()` ทั้งหมด — build DataFrame per table → COPY
+   - 7 tables: cards, bad_cards, center_stats, anomaly_sla, wrong_centers, complete_diffs, delivery_cards
+   - เพิ่ม `progress_callback` parameter สำหรับ real-time progress
+
+3. **Progress bar + detailed results** (`pages/1_📤_Upload.py`)
+   - อัปเดต Tab 1 ให้ส่ง `progress_callback` ไป `import_excel()`
+   - แสดง progress ระหว่างนำเข้าแต่ละ table
+   - Success message แสดง breakdown จำนวน records ทุก table
+
+4. **Emergency column Int64 fix** (merged earlier)
+   - เปลี่ยนจาก `apply(lambda)` เป็น `pd.to_numeric().astype('Int64')` เพื่อรักษา nullable integer
+
+**Rollback:**
+- สร้าง `ROLLBACK_v2.3.0.md` — คำแนะนำ rollback ทีละไฟล์ / ทั้งหมด
+
+**ไฟล์ที่แก้ไข:**
+- `services/data_service.py` - Rewrite import_excel() + _copy_df_to_table()
+- `services/excel_parser.py` - Duplicate column dedup (8 locations)
+- `pages/1_📤_Upload.py` - Progress callback + detailed results
+- `__version__.py` - Bumped to 2.3.0
+- `CHANGELOG.md` - v2.3.0 entry
+- `ROLLBACK_v2.3.0.md` - New rollback guide
+
+**Version:** 2.3.0
+
+---
+
 ## สิ่งที่ทำเสร็จแล้ว (10 Feb 2026 - Session 8: Smart Appointment Import)
 
 ### 17. Appointment Import — Smart Duplicate Handling
@@ -255,10 +307,9 @@
 ---
 
 ## Git Status
-- **Version:** 1.4.0
+- **Version:** 2.3.0
 - **Branch:** main
 - **Remote:** https://github.com/ytsp18/bio-dashboard.git
-- **Latest Commit:** `b9f1762` - Fix BioRecord import - use local import in cached function
 
 ## QLog Upload - Column Mapping
 

@@ -2,6 +2,46 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [2.3.0] - 2026-02-23
+
+### Fixed
+- **Unified Report Upload Error — Duplicate Column Names**
+  - Problem: `The truth value of a Series is ambiguous` when uploading Feb 2569 report
+  - Root cause: Excel file has both `Serial Number` and `Serial_Number` in Sheet 13 → after rename, two columns named `serial_number` → `df['serial_number']` returns DataFrame instead of Series
+  - Solution: Added `df.loc[:, ~df.columns.duplicated(keep='first')]` after every `rename()` call in all 8 parse methods
+  - Files: `services/excel_parser.py`
+
+### Performance
+- **Unified Report Import — COPY Protocol Migration (5-10x faster)**
+  - Problem: `import_excel()` used ORM `session.add()` row-by-row for 120K+ rows → extremely slow
+  - Solution: Migrated to PostgreSQL COPY protocol via `cursor.copy_expert()`
+  - New helper: `_copy_df_to_table()` — handles PostgreSQL COPY + SQLite fallback
+  - 7 tables migrated: `cards`, `bad_cards`, `center_stats`, `anomaly_sla`, `wrong_centers`, `complete_diffs`, `delivery_cards`
+  - `report` table (1 row) still uses ORM
+  - Files: `services/data_service.py`
+
+### Changed
+- **Unified Report Upload — Progress Bar with Detail**
+  - Added `progress_callback` parameter to `import_excel()` for real-time progress updates
+  - Upload page now shows progress per table (cards → bad_cards → centers → ...)
+  - Success message shows detailed import breakdown per table
+  - Files: `pages/1_📤_Upload.py`, `services/data_service.py`
+
+### Added
+- **Rollback Guide** (`ROLLBACK_v2.3.0.md`)
+  - Step-by-step rollback instructions for all 3 changed files
+  - Pre-rollback commit hashes for each file
+  - 3 rollback options (full, partial, per-file)
+
+### Files Modified
+- `services/data_service.py` - Complete rewrite of `import_excel()` + new `_copy_df_to_table()` helper
+- `services/excel_parser.py` - Added duplicate column dedup in 8 parse methods
+- `pages/1_📤_Upload.py` - Progress callback + detailed import results
+- `__version__.py` - Bumped to 2.3.0
+- `ROLLBACK_v2.3.0.md` - New rollback guide
+
+---
+
 ## [2.0.0] - 2026-02-17
 
 ### Changed

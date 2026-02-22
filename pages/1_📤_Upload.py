@@ -197,13 +197,30 @@ with tab1:
                     status = st.empty()
 
                     try:
-                        status.text("กำลังประมวลผล...")
-                        progress.progress(30)
-                        result = DataService.import_excel(tmp_path, original_filename=uploaded_unified.name)
+                        def progress_cb(pct, msg):
+                            progress.progress(min(pct, 100))
+                            status.text(msg)
+
+                        result = DataService.import_excel(
+                            tmp_path,
+                            original_filename=uploaded_unified.name,
+                            progress_callback=progress_cb,
+                        )
                         progress.progress(100)
                         status.empty()
 
-                        st.success(f"นำเข้าสำเร็จ! บัตรดี: {result['total_good']:,} | บัตรเสีย: {result['total_bad']:,}")
+                        # Show detailed import result
+                        st.success(
+                            f"นำเข้าสำเร็จ! บัตรดี: {result['total_good']:,} | "
+                            f"บัตรเสีย: {result['total_bad']:,}\n\n"
+                            f"cards: {result['cards_imported']:,} | "
+                            f"bad_cards: {result['bad_cards_imported']:,} | "
+                            f"centers: {result['centers_imported']:,} | "
+                            f"SLA anomaly: {result['sla_anomalies_imported']:,} | "
+                            f"wrong center: {result['wrong_center_imported']:,} | "
+                            f"complete diff: {result['complete_diff_imported']:,} | "
+                            f"delivery: {result['delivery_imported']:,}"
+                        )
                         st.balloons()
                     except Exception as e:
                         st.error(f"เกิดข้อผิดพลาด: {str(e)}")
