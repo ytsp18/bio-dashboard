@@ -1004,10 +1004,11 @@ with tab4:
 
                             # Convert DataFrame to CSV string buffer
                             status_text.text("กำลังเตรียมข้อมูลสำหรับ COPY...")
-                            # Fix: Convert float columns to int for PostgreSQL COPY
+                            # Fix: Keep Int64 dtype (not object/float) so to_csv writes integers, not "0.0"
                             copy_df = import_df[columns].copy()
                             if 'emergency' in copy_df.columns:
-                                copy_df['emergency'] = copy_df['emergency'].apply(lambda x: int(x) if pd.notna(x) else None)
+                                # Ensure Int64 dtype is preserved (not converted to float via apply/lambda)
+                                copy_df['emergency'] = pd.to_numeric(copy_df['emergency'], errors='coerce').astype('Int64')
                             buffer = StringIO()
                             copy_df.to_csv(buffer, index=False, header=False, na_rep='\\N')
                             buffer.seek(0)
