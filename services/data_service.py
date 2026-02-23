@@ -41,8 +41,15 @@ class DataService:
             sql = f"INSERT INTO {table_name} ({cols_str}) VALUES ({placeholders})"
             raw_conn = session.connection().connection
             cursor = raw_conn.cursor()
-            # Convert DataFrame to list of tuples, replacing NaN with None
-            records = copy_df.where(copy_df.notna(), None).values.tolist()
+            # Convert DataFrame to list of tuples, replacing NaN/pd.NA with None
+            # Also convert pandas nullable types (Int64, boolean) to Python native
+            def to_native(val):
+                if pd.isna(val):
+                    return None
+                if hasattr(val, 'item'):  # numpy/pandas scalar
+                    return val.item()
+                return val
+            records = [[to_native(v) for v in row] for row in copy_df.values]
             for i in range(0, len(records), 5000):
                 cursor.executemany(sql, records[i:i+5000])
         else:
@@ -309,7 +316,7 @@ class DataService:
             cs_copy = pd.DataFrame()
             for col in ['branch_code', 'branch_name']:
                 cs_copy[col] = center_stats_df[col].apply(safe_str) if col in center_stats_df.columns else None
-            cs_copy['good_count'] = center_stats_df['good_count'].apply(safe_int) if 'good_count' in center_stats_df.columns else 0
+            cs_copy['good_count'] = pd.to_numeric(center_stats_df['good_count'], errors='coerce').astype('Int64') if 'good_count' in center_stats_df.columns else 0
             cs_copy['avg_sla'] = center_stats_df['avg_sla'].apply(safe_float) if 'avg_sla' in center_stats_df.columns else None
             cs_copy['max_sla'] = center_stats_df['max_sla'].apply(safe_float) if 'max_sla' in center_stats_df.columns else None
             cs_copy['report_id'] = report_id
@@ -348,7 +355,7 @@ class DataService:
             for col in ['appointment_id', 'branch_code', 'branch_name', 'region', 'card_id',
                          'serial_number', 'work_permit_no', 'operator']:
                 cd_copy[col] = complete_diff_df[col].apply(safe_str) if col in complete_diff_df.columns else None
-            cd_copy['g_count'] = complete_diff_df['g_count'].apply(safe_int) if 'g_count' in complete_diff_df.columns else None
+            cd_copy['g_count'] = pd.to_numeric(complete_diff_df['g_count'], errors='coerce').astype('Int64') if 'g_count' in complete_diff_df.columns else None
             cd_copy['sla_minutes'] = complete_diff_df['sla_minutes'].apply(safe_float) if 'sla_minutes' in complete_diff_df.columns else None
             cd_copy['print_date'] = parse_date_col(complete_diff_df['print_date']) if 'print_date' in complete_diff_df.columns else None
             cd_copy['report_id'] = report_id
