@@ -2,6 +2,21 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [2.3.4] - 2026-02-23
+
+### Changed
+- **Forecast Alert Clarity** — Warning message now shows distinct center count plus cumulative total
+  - Old: "พบ 704 ศูนย์/วัน ที่มีนัดหมายเกิน Capacity"
+  - New: "พบ **X ศูนย์** มีวันที่นัดหมายเกิน Capacity (รวม 704 ศูนย์×วัน)"
+- **Treemap Short Names** — Uses readable short names instead of branch codes; fixes "-" display for unknown centers
+- **Queue Slot Menu Order** — Moved from position 11 to 4 (right after Forecast)
+- **Calendar Heatmap Fix** — Hidden built-in visualMap legend that overlapped chart; hidden "-1" label on holidays
+- **Anomaly Performance** — Major speed improvement:
+  - All 4 tab queries now cached (ttl=1h since data updates once daily)
+  - Added 4 DB indexes for anomaly-specific queries
+  - min/max date range query cached
+  - First load faster via indexes, subsequent loads instant from cache
+
 ## [2.3.3] - 2026-02-23
 
 ### Added

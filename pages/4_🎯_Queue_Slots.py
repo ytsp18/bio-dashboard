@@ -325,13 +325,18 @@ def build_calendar_options(cal_data, month, year, title="", max_cap=None):
     range_start = f"{year}-{month:02d}-01"
     range_end = f"{year}-{month:02d}-{num_days:02d}"
 
-    # ข้อมูล heatmap: [[date, available_count]] — ค่าง่ายที่ serialize ได้
+    # ข้อมูล heatmap: [{value: [date, count], ...}] — rich format for per-item label control
     heatmap_data = []
     for item in cal_data:
         d_str, available, capacity, booked, cuts = item
-        # วันหยุด (capacity=0) → ใส่ค่า -1 เพื่อให้ visualMap แสดงเป็นสีเทา
-        val = available if capacity > 0 else -1
-        heatmap_data.append([d_str, val])
+        if capacity > 0:
+            heatmap_data.append({"value": [d_str, available]})
+        else:
+            # วันหยุด (capacity=0) → ค่า -1 + ซ่อน label
+            heatmap_data.append({
+                "value": [d_str, -1],
+                "label": {"show": False}
+            })
 
     if max_cap is None:
         max_cap = max((item[2] for item in cal_data), default=100)
@@ -342,15 +347,16 @@ def build_calendar_options(cal_data, month, year, title="", max_cap=None):
     options = {
         "title": {"text": title, "left": "center", "textStyle": {"fontSize": 14}} if title else {},
         "tooltip": {
-            "formatter": "{b}: ว่าง {c}"
+            "show": True,
         },
         "visualMap": {
             "min": -1,
             "max": max(max_cap, 1),
-            "calculable": True,
+            "calculable": False,
             "orient": "horizontal",
             "left": "center",
             "bottom": 0,
+            "show": False,  # Hide built-in legend — use HTML legend below chart
             "inRange": {
                 "color": ["#7f1d1d", "#ef4444", "#eab308", "#22c55e", "#16a34a"]
             },
@@ -392,6 +398,7 @@ def build_calendar_options(cal_data, month, year, title="", max_cap=None):
                 "formatter": "{c}",
                 "fontSize": 12,
                 "fontWeight": "bold",
+                "color": "#333",
             },
             "emphasis": {
                 "itemStyle": {"shadowBlur": 10, "shadowColor": "rgba(0,0,0,0.3)"}

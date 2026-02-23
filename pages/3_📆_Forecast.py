@@ -298,7 +298,7 @@ def get_upcoming_appointments_full(selected_branches=None, start_date=None, end_
 
             by_center.append({
                 'branch_code': c.branch_code,
-                'branch_name': branch_map.get(c.branch_code, c.branch_code),
+                'branch_name': short_name_map.get(c.branch_code, branch_map.get(c.branch_code, c.branch_code)),
                 'count': c.total,
                 'avg_daily': round(avg_daily, 1),
                 'max_daily': max_daily,
@@ -336,7 +336,7 @@ def get_upcoming_appointments_full(selected_branches=None, start_date=None, end_
 
             by_center_daily.append({
                 'branch_code': c.branch_code,
-                'branch_name': branch_map.get(c.branch_code, c.branch_code),
+                'branch_name': short_name_map.get(c.branch_code, branch_map.get(c.branch_code, c.branch_code)),
                 'date': c.appt_date,
                 'count': c.total,
                 'capacity': capacity,
@@ -560,13 +560,19 @@ if stats['has_data']:
     with col4:
         st.metric("📈 30 วัน", f"{stats['day30']:,}", help=f"ตั้งแต่ {start_date.strftime('%d/%m')} - {(start_date + timedelta(days=29)).strftime('%d/%m')}")
     with col5:
-        st.metric("🔴 เกิน Capacity", f"{stats['over_capacity_count']:,}", help="จำนวนศูนย์/วัน ที่เกิน capacity")
+        st.metric("🔴 เกิน Capacity", f"{stats['over_capacity_count']:,}", help="นับรวมทุกศูนย์ทุกวัน — เช่น ศูนย์ A เกิน 3 วัน + ศูนย์ B เกิน 2 วัน = 5")
     with col6:
-        st.metric("🟡 ใกล้เต็ม (≥80%)", f"{stats['warning_count']:,}", help="จำนวนศูนย์/วัน ที่ใช้งาน ≥80%")
+        st.metric("🟡 ใกล้เต็ม (≥80%)", f"{stats['warning_count']:,}", help="นับรวมทุกศูนย์ทุกวัน ที่ใช้งาน ≥80% ของ Capacity")
 
     # Alerts
     if stats['over_capacity_count'] > 0:
-        st.error(f"⚠️ **แจ้งเตือน:** พบ {stats['over_capacity_count']} ศูนย์/วัน ที่มีนัดหมายเกิน Capacity ที่รองรับได้!")
+        # Count distinct centers that are over capacity
+        over_centers = set()
+        for c in stats.get('by_center', []):
+            if c.get('status') == 'over':
+                over_centers.add(c['branch_code'])
+        n_centers = len(over_centers)
+        st.error(f"⚠️ **แจ้งเตือน:** พบ **{n_centers} ศูนย์** มีวันที่นัดหมายเกิน Capacity (รวม {stats['over_capacity_count']:,} ศูนย์×วัน) — ดูรายละเอียดในตารางด้านล่าง")
     if stats['warning_count'] > 0:
         st.warning(f"⚡ **เฝ้าระวัง:** พบ {stats['warning_count']} ศูนย์/วัน ที่มีนัดหมาย ≥80% ของ Capacity")
 
@@ -889,8 +895,11 @@ if stats['has_data']:
 
                 usage_text = f"สูงสุด {max_usage_pct:.0f}%" if max_usage_pct else "N/A"
 
+                # Use short name for display, fall back to branch_code
+                display_name = short_name_map.get(c['branch_code'], c['branch_code'] or '-')
+
                 treemap_data.append({
-                    "name": c['branch_code'],  # Show branch_code in box
+                    "name": display_name,
                     "value": round(display_value, 1),
                     "itemStyle": {"color": color},
                     "branch_name": c['branch_name'],  # Full name for tooltip

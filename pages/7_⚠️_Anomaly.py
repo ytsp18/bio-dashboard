@@ -21,7 +21,7 @@ init_db()
 st.set_page_config(page_title="Anomaly - Bio Dashboard", page_icon="⚠️", layout="wide")
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_anomaly_summary_cached(start_date, end_date):
     """Cached anomaly summary counts."""
     from database.connection import get_session as _get_session
@@ -56,6 +56,153 @@ def get_anomaly_summary_cached(start_date, end_date):
             'wrong_branch_count': wrong_branch_count,
             'branch_list': branch_list,
         }
+    finally:
+        _session.close()
+
+
+@st.cache_data(ttl=3600, show_spinner="กำลังโหลดข้อมูลผิดวัน...")
+def get_wrong_date_data(start_date, end_date, branch_filter, limit):
+    """Cached wrong date query."""
+    from database.connection import get_session as _get_session
+    from database.models import Card as _Card
+    from sqlalchemy import and_ as _and
+    from utils.branch_display import get_branch_short_name as _short
+
+    _session = _get_session()
+    try:
+        _date_filter = _and(_Card.print_date >= start_date, _Card.print_date <= end_date)
+        q = _session.query(_Card).filter(_date_filter, _Card.wrong_date == True)
+        if branch_filter and branch_filter != 'ทั้งหมด':
+            q = q.filter(_Card.branch_code == branch_filter)
+        results = q.limit(limit).all()
+        return [{
+            'Appointment ID': c.appointment_id,
+            'รหัสศูนย์': c.branch_code,
+            'ชื่อศูนย์': _short(c.branch_code, c.branch_name),
+            'วันที่นัด': c.appt_date,
+            'วันที่ออกบัตร': c.print_date,
+            'Serial Number': c.serial_number,
+            'สถานะ': 'บัตรดี' if c.print_status == 'G' else 'บัตรเสีย',
+            'ผู้ให้บริการ': c.operator or '-',
+        } for c in results]
+    finally:
+        _session.close()
+
+
+@st.cache_data(ttl=3600, show_spinner="กำลังโหลดข้อมูลผิดศูนย์...")
+def get_wrong_branch_data(start_date, end_date, branch_filter, limit):
+    """Cached wrong branch query."""
+    from database.connection import get_session as _get_session
+    from database.models import Card as _Card
+    from sqlalchemy import and_ as _and
+    from utils.branch_display import get_branch_short_name as _short
+
+    _session = _get_session()
+    try:
+        _date_filter = _and(_Card.print_date >= start_date, _Card.print_date <= end_date)
+        q = _session.query(_Card).filter(_date_filter, _Card.wrong_branch == True)
+        if branch_filter and branch_filter != 'ทั้งหมด':
+            q = q.filter(_Card.branch_code == branch_filter)
+        results = q.limit(limit).all()
+        return [{
+            'Appointment ID': c.appointment_id,
+            'ศูนย์ที่นัด': c.appt_branch or '-',
+            'ศูนย์ที่ออกบัตร': c.branch_code,
+            'ชื่อศูนย์': _short(c.branch_code, c.branch_name),
+            'Serial Number': c.serial_number,
+            'Card ID': c.card_id,
+            'สถานะ': 'บัตรดี' if c.print_status == 'G' else 'บัตรเสีย',
+            'วันที่พิมพ์': c.print_date,
+            'ผู้ให้บริการ': c.operator or '-',
+        } for c in results]
+    finally:
+        _session.close()
+
+
+@st.cache_data(ttl=3600, show_spinner="กำลังโหลดข้อมูล G>1...")
+def get_multi_g_appt_data(start_date, end_date, limit):
+    """Cached multi-G per appointment query."""
+    from database.connection import get_session as _get_session
+    from database.models import Card as _Card
+    from sqlalchemy import func as _func, and_ as _and
+    from utils.branch_display import get_branch_short_name as _short
+
+    _session = _get_session()
+    try:
+        _date_filter = _and(_Card.print_date >= start_date, _Card.print_date <= end_date)
+        multi_g_appts = _session.query(
+            _Card.appointment_id,
+            _func.count(_Card.id).label('count')
+        ).filter(
+            _date_filter, _Card.print_status == 'G'
+        ).group_by(_Card.appointment_id).having(_func.count(_Card.id) > 1).order_by(
+            _func.count(_Card.id).desc()
+        ).limit(limit).all()
+
+        if not multi_g_appts:
+            return []
+
+        appt_ids = [a.appointment_id for a in multi_g_appts]
+        cards = _session.query(_Card).filter(
+            _date_filter, _Card.print_status == 'G',
+            _Card.appointment_id.in_(appt_ids)
+        ).order_by(_Card.appointment_id).all()
+
+        return [{
+            'Appointment ID': c.appointment_id,
+            'รหัสศูนย์': c.branch_code,
+            'ชื่อศูนย์': _short(c.branch_code, c.branch_name),
+            'Card ID': c.card_id,
+            'Serial Number': c.serial_number,
+            'Work Permit': c.work_permit_no,
+            'SLA (นาที)': round(c.sla_minutes, 2) if c.sla_minutes else 0,
+            'ผู้ให้บริการ': c.operator or '-',
+            'วันที่': c.print_date,
+        } for c in cards]
+    finally:
+        _session.close()
+
+
+@st.cache_data(ttl=3600, show_spinner="กำลังโหลดข้อมูล Card ID G>1...")
+def get_multi_g_cardid_data(start_date, end_date, limit):
+    """Cached multi-G per card_id query."""
+    from database.connection import get_session as _get_session
+    from database.models import Card as _Card
+    from sqlalchemy import func as _func, and_ as _and
+    from utils.branch_display import get_branch_short_name as _short
+
+    _session = _get_session()
+    try:
+        _date_filter = _and(_Card.print_date >= start_date, _Card.print_date <= end_date)
+        multi_g = _session.query(
+            _Card.card_id,
+            _func.count(_Card.id).label('count')
+        ).filter(
+            _date_filter, _Card.print_status == 'G',
+            _Card.card_id.isnot(None), _Card.card_id != ''
+        ).group_by(_Card.card_id).having(_func.count(_Card.id) > 1).order_by(
+            _func.count(_Card.id).desc()
+        ).limit(limit).all()
+
+        if not multi_g:
+            return []
+
+        card_id_list = [c.card_id for c in multi_g]
+        cards = _session.query(_Card).filter(
+            _date_filter, _Card.print_status == 'G',
+            _Card.card_id.in_(card_id_list)
+        ).order_by(_Card.card_id).all()
+
+        return [{
+            'Card ID': c.card_id,
+            'Appointment ID': c.appointment_id,
+            'รหัสศูนย์': c.branch_code,
+            'ชื่อศูนย์': _short(c.branch_code, c.branch_name),
+            'Serial Number': c.serial_number,
+            'Work Permit': c.work_permit_no,
+            'ผู้ให้บริการ': c.operator or '-',
+            'วันที่': c.print_date,
+        } for c in cards]
     finally:
         _session.close()
 
@@ -213,8 +360,17 @@ try:
     # Date filter
     st.markdown('<div class="section-header-blue">📅 เลือกช่วงเวลา</div>', unsafe_allow_html=True)
 
-    min_date = session.query(func.min(Card.print_date)).scalar()
-    max_date = session.query(func.max(Card.print_date)).scalar()
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def _get_date_range():
+        from database.connection import get_session as _gs
+        from database.models import Card as _C
+        from sqlalchemy import func as _f
+        _s = _gs()
+        try:
+            return _s.query(_f.min(_C.print_date)).scalar(), _s.query(_f.max(_C.print_date)).scalar()
+        finally:
+            _s.close()
+    min_date, max_date = _get_date_range()
 
     if min_date and max_date:
         col1, col2 = st.columns(2)
@@ -436,24 +592,9 @@ try:
             with col2:
                 wd_limit = st.slider("จำนวนแสดง", 100, 5000, 500, key="wd_limit")
 
-            query = session.query(Card).filter(date_filter, Card.wrong_date == True)
-            if wd_branch_filter != 'ทั้งหมด':
-                query = query.filter(Card.branch_code == wd_branch_filter)
+            data = get_wrong_date_data(start_date, end_date, wd_branch_filter, wd_limit)
 
-            wrong_date = query.limit(wd_limit).all()
-
-            if wrong_date:
-                data = [{
-                    'Appointment ID': c.appointment_id,
-                    'รหัสศูนย์': c.branch_code,
-                    'ชื่อศูนย์': get_branch_short_name(c.branch_code, c.branch_name),
-                    'วันที่นัด': c.appt_date,
-                    'วันที่ออกบัตร': c.print_date,
-                    'Serial Number': c.serial_number,
-                    'สถานะ': 'บัตรดี' if c.print_status == 'G' else 'บัตรเสีย',
-                    'ผู้ให้บริการ': c.operator or '-',
-                } for c in wrong_date]
-
+            if data:
                 df = pd.DataFrame(data)
                 st.dataframe(df, use_container_width=True, hide_index=True, height=400)
 
@@ -482,25 +623,9 @@ try:
             with col2:
                 wb_limit = st.slider("จำนวนแสดง", 100, 5000, 500, key="wb_limit")
 
-            query = session.query(Card).filter(date_filter, Card.wrong_branch == True)
-            if wb_branch_filter != 'ทั้งหมด':
-                query = query.filter(Card.branch_code == wb_branch_filter)
+            data = get_wrong_branch_data(start_date, end_date, wb_branch_filter, wb_limit)
 
-            wrong_branch = query.limit(wb_limit).all()
-
-            if wrong_branch:
-                data = [{
-                    'Appointment ID': c.appointment_id,
-                    'ศูนย์ที่นัด': c.appt_branch or '-',
-                    'ศูนย์ที่ออกบัตร': c.branch_code,
-                    'ชื่อศูนย์': get_branch_short_name(c.branch_code, c.branch_name),
-                    'Serial Number': c.serial_number,
-                    'Card ID': c.card_id,
-                    'สถานะ': 'บัตรดี' if c.print_status == 'G' else 'บัตรเสีย',
-                    'วันที่พิมพ์': c.print_date,
-                    'ผู้ให้บริการ': c.operator or '-',
-                } for c in wrong_branch]
-
+            if data:
                 df = pd.DataFrame(data)
                 st.dataframe(df, use_container_width=True, hide_index=True, height=400)
 
@@ -527,36 +652,9 @@ try:
 
             mg_limit = st.slider("จำนวน Appointment แสดง", 50, 500, 100, key="mg_limit")
 
-            # Get appointments with multiple G cards
-            multi_g_appts = session.query(
-                Card.appointment_id,
-                func.count(Card.id).label('count')
-            ).filter(
-                date_filter, Card.print_status == 'G'
-            ).group_by(Card.appointment_id).having(func.count(Card.id) > 1).order_by(
-                func.count(Card.id).desc()
-            ).limit(mg_limit).all()
+            data = get_multi_g_appt_data(start_date, end_date, mg_limit)
 
-            if multi_g_appts:
-                appt_ids = [a.appointment_id for a in multi_g_appts]
-                multi_g_cards = session.query(Card).filter(
-                    date_filter,
-                    Card.print_status == 'G',
-                    Card.appointment_id.in_(appt_ids)
-                ).order_by(Card.appointment_id).all()
-
-                data = [{
-                    'Appointment ID': c.appointment_id,
-                    'รหัสศูนย์': c.branch_code,
-                    'ชื่อศูนย์': get_branch_short_name(c.branch_code, c.branch_name),
-                    'Card ID': c.card_id,
-                    'Serial Number': c.serial_number,
-                    'Work Permit': c.work_permit_no,
-                    'SLA (นาที)': round(c.sla_minutes, 2) if c.sla_minutes else 0,
-                    'ผู้ให้บริการ': c.operator or '-',
-                    'วันที่': c.print_date,
-                } for c in multi_g_cards]
-
+            if data:
                 df = pd.DataFrame(data)
                 st.info(f"พบ **{multi_g_count:,}** Appointment ที่มีบัตรดีมากกว่า 1 ใบ (แสดง {len(multi_g_appts)} รายการ รวม **{len(df):,}** บัตร)")
                 st.dataframe(df, use_container_width=True, hide_index=True, height=400)
@@ -584,36 +682,9 @@ try:
 
             cg_limit = st.slider("จำนวน Card ID แสดง", 50, 500, 100, key="cg_limit")
 
-            # Get Card IDs with multiple G cards
-            multi_g_card_ids = session.query(
-                Card.card_id,
-                func.count(Card.id).label('count')
-            ).filter(
-                date_filter, Card.print_status == 'G',
-                Card.card_id.isnot(None), Card.card_id != ''
-            ).group_by(Card.card_id).having(func.count(Card.id) > 1).order_by(
-                func.count(Card.id).desc()
-            ).limit(cg_limit).all()
+            data = get_multi_g_cardid_data(start_date, end_date, cg_limit)
 
-            if multi_g_card_ids:
-                card_id_list = [c.card_id for c in multi_g_card_ids]
-                multi_g_by_card = session.query(Card).filter(
-                    date_filter,
-                    Card.print_status == 'G',
-                    Card.card_id.in_(card_id_list)
-                ).order_by(Card.card_id).all()
-
-                data = [{
-                    'Card ID': c.card_id,
-                    'Appointment ID': c.appointment_id,
-                    'รหัสศูนย์': c.branch_code,
-                    'ชื่อศูนย์': get_branch_short_name(c.branch_code, c.branch_name),
-                    'Serial Number': c.serial_number,
-                    'Work Permit': c.work_permit_no,
-                    'ผู้ให้บริการ': c.operator or '-',
-                    'วันที่': c.print_date,
-                } for c in multi_g_by_card]
-
+            if data:
                 df = pd.DataFrame(data)
                 st.info(f"พบ **{card_id_g_count:,}** Card ID ที่มีบัตรดีมากกว่า 1 ใบ (แสดง {len(multi_g_card_ids)} รายการ รวม **{len(df):,}** บัตร)")
                 st.dataframe(df, use_container_width=True, hide_index=True, height=400)
