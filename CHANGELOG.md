@@ -2,6 +2,23 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [2.3.2] - 2026-02-23
+
+### Changed
+- **Appointment & Service Chart — New 3-Stage Funnel Logic**
+  - Old logic: Only counted `appt_status == 'SUCCESS'` as appointments → Feb data mostly WAITING → chart showed almost no data
+  - Old logic: Used QLog `qlog_status == 'S'` as "Check-in" — confusing meaning
+  - New logic: 3-stage funnel showing the full service journey:
+    1. **นัดหมาย** — All appointments except CANCEL/EXPIRED (from Appointment table)
+    2. **มา Check-in** — People who came to center and got queue ticket (QLog with `qlog_num` present)
+    3. **ออกบัตร** — People who actually got cards printed (unique `appointment_id` from BioRecord)
+  - Updated metrics: 5 KPIs (total appointments, check-in, card issued, no-show, conversion rate)
+  - Updated bar chart: 4 series (appointments, check-in, card issued, no-show line)
+  - Updated pie chart: 3 segments (card issued, checked-in but no card, no-show)
+  - Updated info box with correct descriptions
+  - Renamed function: `get_noshow_stats()` → `get_appointment_service_stats()`
+  - Files: `pages/2_📈_Overview.py`
+
 ## [2.3.1] - 2026-02-23
 
 ### Fixed

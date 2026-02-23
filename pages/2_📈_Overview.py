@@ -613,56 +613,55 @@ def get_upcoming_appointments(selected_branches=None):
 
 
 @st.cache_data(ttl=300)
-def get_noshow_stats(start_date, end_date, selected_branches=None):
+def get_appointment_service_stats(start_date, end_date, selected_branches=None):
     """
-    Get No-show statistics from Appointment and QLog tables.
-    No-show = Appointment (STATUS='SUCCESS') - QLog (QLOG_STATUS='S')
+    Get appointment → check-in → card issuance funnel statistics.
+    นัดหมาย = Appointment (ทุก status ยกเว้น CANCEL, EXPIRED)
+    มา Check-in = QLog ที่มี qlog_num (มาถึงศูนย์ รับบัตรคิวแล้ว)
+    ออกบัตร = BioRecord unique appointment_id (มีการพิมพ์บัตรจริง)
     """
     start_time = time.perf_counter()
     session = get_session()
     try:
-        # Check if we have Appointment data
+        # Check if we have data
         from sqlalchemy import exists as sa_exists
         has_appt_data = session.query(sa_exists().where(Appointment.id.isnot(None))).scalar()
         has_qlog_data = session.query(sa_exists().where(QLog.id.isnot(None))).scalar()
+        has_bio_data = session.query(sa_exists().where(BioRecord.id.isnot(None))).scalar()
 
         if not has_appt_data:
             return {
                 'has_data': False,
                 'total_appointments': 0,
                 'checked_in': 0,
+                'card_issued': 0,
                 'no_show': 0,
                 'daily_data': []
             }
 
-        # Build date filter for Appointment
+        # Build date filter for Appointment - include all except CANCEL/EXPIRED
         appt_filters = [
             Appointment.appt_date >= start_date,
             Appointment.appt_date <= end_date,
-            Appointment.appt_status == 'SUCCESS'  # Only confirmed appointments
+            ~Appointment.appt_status.in_(['CANCEL', 'EXPIRED'])
         ]
 
         # Add branch filter if specified
         if selected_branches and len(selected_branches) > 0:
             appt_filters.append(Appointment.branch_code.in_(selected_branches))
 
-        # Total appointments (confirmed)
+        # 1. Total appointments (all active statuses)
         total_appts = session.query(func.count(func.distinct(Appointment.appointment_id))).filter(
             and_(*appt_filters)
         ).scalar() or 0
 
-        # Get all appointment IDs for the period
-        appt_ids_subq = session.query(Appointment.appointment_id).filter(
-            and_(*appt_filters)
-        ).distinct().subquery()
-
-        # Count check-ins from QLog
+        # 2. Check-in count from QLog (has qlog_num = came to center and got queue ticket)
+        checked_in = 0
         if has_qlog_data:
             qlog_filters = [
                 QLog.qlog_date >= start_date,
                 QLog.qlog_date <= end_date,
-                QLog.qlog_status == 'S',  # Successfully served
-                QLog.appointment_code.in_(session.query(appt_ids_subq))
+                QLog.qlog_num.isnot(None),
             ]
             if selected_branches and len(selected_branches) > 0:
                 qlog_filters.append(QLog.branch_code.in_(selected_branches))
@@ -670,10 +669,22 @@ def get_noshow_stats(start_date, end_date, selected_branches=None):
             checked_in = session.query(func.count(func.distinct(QLog.appointment_code))).filter(
                 and_(*qlog_filters)
             ).scalar() or 0
-        else:
-            checked_in = 0
 
-        no_show = total_appts - checked_in
+        # 3. Card issued count from BioRecord (actual card printing)
+        card_issued = 0
+        if has_bio_data:
+            bio_filters = [
+                BioRecord.print_date >= start_date,
+                BioRecord.print_date <= end_date,
+            ]
+            if selected_branches and len(selected_branches) > 0:
+                bio_filters.append(BioRecord.branch_code.in_(selected_branches))
+
+            card_issued = session.query(func.count(func.distinct(BioRecord.appointment_id))).filter(
+                and_(*bio_filters)
+            ).scalar() or 0
+
+        no_show = max(0, total_appts - checked_in)
 
         # Daily breakdown for chart
         daily_data = []
@@ -687,6 +698,7 @@ def get_noshow_stats(start_date, end_date, selected_branches=None):
         ).group_by(Appointment.appt_date).all()
 
         # Get daily check-in counts from QLog
+        checkin_map = {}
         if has_qlog_data:
             daily_checkins = session.query(
                 QLog.qlog_date,
@@ -694,24 +706,38 @@ def get_noshow_stats(start_date, end_date, selected_branches=None):
             ).filter(
                 QLog.qlog_date >= start_date,
                 QLog.qlog_date <= end_date,
-                QLog.qlog_status == 'S',
-                QLog.appointment_code.in_(session.query(appt_ids_subq))
+                QLog.qlog_num.isnot(None),
             )
             if selected_branches and len(selected_branches) > 0:
                 daily_checkins = daily_checkins.filter(QLog.branch_code.in_(selected_branches))
             daily_checkins = daily_checkins.group_by(QLog.qlog_date).all()
             checkin_map = {d.qlog_date: d.checkin for d in daily_checkins}
-        else:
-            checkin_map = {}
+
+        # Get daily card issuance counts from BioRecord
+        bio_map = {}
+        if has_bio_data:
+            daily_bio = session.query(
+                BioRecord.print_date,
+                func.count(func.distinct(BioRecord.appointment_id)).label('issued')
+            ).filter(
+                BioRecord.print_date >= start_date,
+                BioRecord.print_date <= end_date,
+            )
+            if selected_branches and len(selected_branches) > 0:
+                daily_bio = daily_bio.filter(BioRecord.branch_code.in_(selected_branches))
+            daily_bio = daily_bio.group_by(BioRecord.print_date).all()
+            bio_map = {d.print_date: d.issued for d in daily_bio}
 
         # Combine into daily_data
         for d in daily_appts:
             checkin = checkin_map.get(d.appt_date, 0)
+            issued = bio_map.get(d.appt_date, 0)
             daily_data.append({
                 'date': d.appt_date,
                 'total_appt': d.total,
                 'checked_in': checkin,
-                'no_show': d.total - checkin
+                'card_issued': issued,
+                'no_show': max(0, d.total - checkin)
             })
 
         # Sort by date
@@ -721,13 +747,14 @@ def get_noshow_stats(start_date, end_date, selected_branches=None):
             'has_data': True,
             'total_appointments': total_appts,
             'checked_in': checked_in,
+            'card_issued': card_issued,
             'no_show': no_show,
             'daily_data': daily_data
         }
     finally:
         session.close()
         duration = (time.perf_counter() - start_time) * 1000
-        log_perf(f"get_noshow_stats({start_date} to {end_date})", duration)
+        log_perf(f"get_appointment_service_stats({start_date} to {end_date})", duration)
 
 
 st.set_page_config(page_title="Overview - Bio Dashboard", page_icon="📈", layout="wide")
@@ -1149,32 +1176,37 @@ else:
         st.info("ไม่มีข้อมูลในช่วงเวลาที่เลือก")
 
     # ==================== APPOINTMENT & SERVICE ANALYSIS ====================
-    noshow_stats = get_noshow_stats(start_date, end_date, selected_branches)
+    service_stats = get_appointment_service_stats(start_date, end_date, selected_branches)
 
-    if noshow_stats['has_data']:
+    if service_stats['has_data']:
         st.markdown("---")
-        st.markdown("### 📅 ข้อมูลการนัดหมายและเข้าใช้บริการ")
-        st.caption("📌 ข้อมูลจากตาราง Appointment และ QLog | No-Show = นัดหมายแล้วไม่มา Check-in")
+        st.markdown("### 📅 ข้อมูลการนัดหมาย → Check-in → ออกบัตร")
+        st.caption("📌 Funnel: นัดหมาย (Appointment) → มา Check-in (QLog) → ออกบัตรจริง (Bio Record)")
 
-        # Metrics row
-        col1, col2, col3, col4 = st.columns(4)
+        # Metrics row - 5 columns for funnel
+        col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
-            st.metric("📋 นัดหมายทั้งหมด", f"{noshow_stats['total_appointments']:,}")
+            st.metric("📋 นัดหมายทั้งหมด", f"{service_stats['total_appointments']:,}")
         with col2:
-            st.metric("✅ มา Check-in", f"{noshow_stats['checked_in']:,}")
+            checkin_pct = (service_stats['checked_in'] / service_stats['total_appointments'] * 100) if service_stats['total_appointments'] > 0 else 0
+            st.metric("🏢 มา Check-in", f"{service_stats['checked_in']:,}", f"{checkin_pct:.1f}%")
         with col3:
-            noshow_pct = (noshow_stats['no_show'] / noshow_stats['total_appointments'] * 100) if noshow_stats['total_appointments'] > 0 else 0
-            st.metric("❌ No-Show", f"{noshow_stats['no_show']:,}", f"{noshow_pct:.1f}%")
+            issued_pct = (service_stats['card_issued'] / service_stats['total_appointments'] * 100) if service_stats['total_appointments'] > 0 else 0
+            st.metric("✅ ออกบัตรแล้ว", f"{service_stats['card_issued']:,}", f"{issued_pct:.1f}%")
         with col4:
-            checkin_pct = (noshow_stats['checked_in'] / noshow_stats['total_appointments'] * 100) if noshow_stats['total_appointments'] > 0 else 0
-            st.metric("📊 อัตรามา Check-in", f"{checkin_pct:.1f}%")
+            noshow_pct = (service_stats['no_show'] / service_stats['total_appointments'] * 100) if service_stats['total_appointments'] > 0 else 0
+            st.metric("❌ ไม่มา Check-in", f"{service_stats['no_show']:,}", f"{noshow_pct:.1f}%")
+        with col5:
+            # Conversion rate: checked_in → card_issued
+            conversion = (service_stats['card_issued'] / service_stats['checked_in'] * 100) if service_stats['checked_in'] > 0 else 0
+            st.metric("📊 อัตราออกบัตร", f"{conversion:.1f}%")
 
-        # Daily No-Show Chart
-        if noshow_stats['daily_data']:
-            noshow_df = pd.DataFrame(noshow_stats['daily_data'])
-            noshow_dates = [d.strftime('%d/%m') if hasattr(d, 'strftime') else str(d) for d in noshow_df['date']]
+        # Daily Chart - 4 series
+        if service_stats['daily_data']:
+            svc_df = pd.DataFrame(service_stats['daily_data'])
+            svc_dates = [d.strftime('%d/%m') if hasattr(d, 'strftime') else str(d) for d in svc_df['date']]
 
-            noshow_chart_options = {
+            svc_chart_options = {
                 "animation": True,
                 "animationDuration": 800,
                 "backgroundColor": "transparent",
@@ -1186,16 +1218,16 @@ else:
                     "textStyle": {"color": "#374151"},
                 },
                 "legend": {
-                    "data": ["นัดหมาย (Appointment)", "มา Check-in", "No-Show"],
+                    "data": ["นัดหมาย", "มา Check-in", "ออกบัตร", "ไม่มา"],
                     "bottom": 0,
                     "textStyle": {"color": "#6b7280"},
                 },
                 "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "10%", "containLabel": True},
                 "xAxis": {
                     "type": "category",
-                    "data": noshow_dates,
+                    "data": svc_dates,
                     "axisLine": {"lineStyle": {"color": "#d1d5db"}},
-                    "axisLabel": {"color": "#6b7280", "rotate": 45 if len(noshow_dates) > 15 else 0},
+                    "axisLabel": {"color": "#6b7280", "rotate": 45 if len(svc_dates) > 15 else 0},
                 },
                 "yAxis": {
                     "type": "value",
@@ -1205,30 +1237,37 @@ else:
                 },
                 "series": [
                     {
-                        "name": "นัดหมาย (Appointment)",
+                        "name": "นัดหมาย",
                         "type": "bar",
-                        "data": noshow_df['total_appt'].tolist(),
+                        "data": svc_df['total_appt'].tolist(),
                         "itemStyle": {"color": "#3B82F6"},
-                        "barMaxWidth": 40,
+                        "barMaxWidth": 35,
                     },
                     {
                         "name": "มา Check-in",
                         "type": "bar",
-                        "data": noshow_df['checked_in'].tolist(),
-                        "itemStyle": {"color": "#10B981"},
-                        "barMaxWidth": 40,
+                        "data": svc_df['checked_in'].tolist(),
+                        "itemStyle": {"color": "#8B5CF6"},
+                        "barMaxWidth": 35,
                     },
                     {
-                        "name": "No-Show",
+                        "name": "ออกบัตร",
+                        "type": "bar",
+                        "data": svc_df['card_issued'].tolist(),
+                        "itemStyle": {"color": "#10B981"},
+                        "barMaxWidth": 35,
+                    },
+                    {
+                        "name": "ไม่มา",
                         "type": "line",
-                        "data": noshow_df['no_show'].tolist(),
+                        "data": svc_df['no_show'].tolist(),
                         "itemStyle": {"color": "#EF4444"},
                         "lineStyle": {"width": 3, "type": "dashed"},
                         "symbol": "circle",
                         "symbolSize": 8,
                         "smooth": True,
                         "label": {
-                            "show": len(noshow_dates) <= 10,
+                            "show": len(svc_dates) <= 10,
                             "position": "top",
                             "color": "#EF4444",
                             "fontSize": 11,
@@ -1237,12 +1276,12 @@ else:
                     },
                 ]
             }
-            st_echarts(options=noshow_chart_options, height="400px", key="noshow_chart")
+            st_echarts(options=svc_chart_options, height="400px", key="service_funnel_chart")
 
-            # Pie chart for No-Show ratio
+            # Pie chart + Info box
             col1, col2 = st.columns(2)
             with col1:
-                noshow_pie = {
+                funnel_pie = {
                     "animation": True,
                     "backgroundColor": "transparent",
                     "tooltip": {
@@ -1258,7 +1297,7 @@ else:
                         "textStyle": {"color": "#6b7280"},
                     },
                     "series": [{
-                        "name": "สถานะนัดหมาย",
+                        "name": "สถานะการบริการ",
                         "type": "pie",
                         "radius": ["40%", "70%"],
                         "center": ["50%", "45%"],
@@ -1274,34 +1313,36 @@ else:
                             "formatter": "{d}%"
                         },
                         "data": [
-                            {"value": noshow_stats['checked_in'], "name": "มา Check-in", "itemStyle": {"color": "#10B981"}},
-                            {"value": noshow_stats['no_show'], "name": "No-Show", "itemStyle": {"color": "#EF4444"}}
+                            {"value": service_stats['card_issued'], "name": "ออกบัตรแล้ว", "itemStyle": {"color": "#10B981"}},
+                            {"value": max(0, service_stats['checked_in'] - service_stats['card_issued']), "name": "Check-in แต่ยังไม่ออกบัตร", "itemStyle": {"color": "#F59E0B"}},
+                            {"value": service_stats['no_show'], "name": "ไม่มา Check-in", "itemStyle": {"color": "#EF4444"}}
                         ]
                     }]
                 }
-                st.markdown("**สัดส่วน Check-in / No-Show**")
-                st_echarts(options=noshow_pie, height="280px", key="noshow_pie")
+                st.markdown("**สัดส่วนสถานะจากการนัดหมาย**")
+                st_echarts(options=funnel_pie, height="280px", key="service_pie")
 
             with col2:
                 # Info box
                 st.markdown("""
                 <div style="background: #ffffff; border-radius: 12px; padding: 20px; border: 1px solid #e5e7eb;">
-                    <h4 style="color: #1f2937; margin: 0 0 16px 0;">📊 สรุปข้อมูล No-Show</h4>
+                    <h4 style="color: #1f2937; margin: 0 0 16px 0;">📊 สรุป Funnel การให้บริการ</h4>
                     <ul style="color: #6b7280; margin: 0; padding-left: 20px;">
-                        <li><b style="color: #3B82F6;">นัดหมาย (Appointment)</b> - จำนวนคนที่นัดหมายไว้ (STATUS=SUCCESS)</li>
-                        <li><b style="color: #10B981;">มา Check-in</b> - จำนวนคนที่มา Check-in จริง (QLOG_STATUS=S)</li>
-                        <li><b style="color: #EF4444;">No-Show</b> - นัดหมายแล้วไม่มา = นัดหมาย - Check-in</li>
+                        <li><b style="color: #3B82F6;">นัดหมาย</b> — จำนวนคนนัดหมายทั้งหมด (ไม่นับ CANCEL/EXPIRED)</li>
+                        <li><b style="color: #8B5CF6;">มา Check-in</b> — คนที่มาถึงศูนย์และรับบัตรคิว (มี QLOG_NUM)</li>
+                        <li><b style="color: #10B981;">ออกบัตร</b> — คนที่มีการพิมพ์บัตรจริง (จาก Bio Record)</li>
+                        <li><b style="color: #EF4444;">ไม่มา</b> — นัดหมายแล้วไม่มา Check-in</li>
                     </ul>
                     <hr style="border-color: #e5e7eb; margin: 16px 0;">
                     <p style="color: #6b7280; font-size: 0.85rem; margin: 0;">
-                        💡 ข้อมูลมาจากไฟล์ Appointment และ QLog ที่อัพโหลดแยก
+                        💡 ข้อมูลจาก 3 แหล่ง: Appointment, QLog, Bio Raw
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
     else:
         st.markdown("---")
-        st.markdown("### 📅 ข้อมูลการนัดหมายและเข้าใช้บริการ")
-        st.info("⚠️ ยังไม่มีข้อมูล Appointment/QLog - กรุณาอัพโหลดไฟล์ Appointment และ QLog ในหน้า Upload เพื่อดูข้อมูลการนัดหมาย")
+        st.markdown("### 📅 ข้อมูลการนัดหมาย → Check-in → ออกบัตร")
+        st.info("⚠️ ยังไม่มีข้อมูล Appointment - กรุณาอัพโหลดไฟล์ Appointment ในหน้า Upload เพื่อดูข้อมูลการนัดหมาย")
 
     # ==================== UPCOMING APPOINTMENTS (WORKLOAD FORECAST) ====================
     upcoming_stats = get_upcoming_appointments(selected_branches)
