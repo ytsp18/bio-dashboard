@@ -14,6 +14,7 @@ from database.models import Card, BadCard, AnomalySLA, WrongCenter
 from sqlalchemy import func, and_, case, or_
 from utils.theme import apply_theme, render_theme_toggle
 from utils.auth_check import require_login
+from utils.branch_display import get_branch_short_name
 
 init_db()
 
@@ -445,7 +446,7 @@ try:
                 data = [{
                     'Appointment ID': c.appointment_id,
                     'รหัสศูนย์': c.branch_code,
-                    'ชื่อศูนย์': (c.branch_name[:30] + '...' if c.branch_name and len(c.branch_name) > 30 else c.branch_name) or '-',
+                    'ชื่อศูนย์': get_branch_short_name(c.branch_code, c.branch_name),
                     'วันที่นัด': c.appt_date,
                     'วันที่ออกบัตร': c.print_date,
                     'Serial Number': c.serial_number,
@@ -492,7 +493,7 @@ try:
                     'Appointment ID': c.appointment_id,
                     'ศูนย์ที่นัด': c.appt_branch or '-',
                     'ศูนย์ที่ออกบัตร': c.branch_code,
-                    'ชื่อศูนย์': (c.branch_name[:30] + '...' if c.branch_name and len(c.branch_name) > 30 else c.branch_name) or '-',
+                    'ชื่อศูนย์': get_branch_short_name(c.branch_code, c.branch_name),
                     'Serial Number': c.serial_number,
                     'Card ID': c.card_id,
                     'สถานะ': 'บัตรดี' if c.print_status == 'G' else 'บัตรเสีย',
@@ -547,7 +548,7 @@ try:
                 data = [{
                     'Appointment ID': c.appointment_id,
                     'รหัสศูนย์': c.branch_code,
-                    'ชื่อศูนย์': (c.branch_name[:25] + '...' if c.branch_name and len(c.branch_name) > 25 else c.branch_name) or '-',
+                    'ชื่อศูนย์': get_branch_short_name(c.branch_code, c.branch_name),
                     'Card ID': c.card_id,
                     'Serial Number': c.serial_number,
                     'Work Permit': c.work_permit_no,
@@ -606,7 +607,7 @@ try:
                     'Card ID': c.card_id,
                     'Appointment ID': c.appointment_id,
                     'รหัสศูนย์': c.branch_code,
-                    'ชื่อศูนย์': (c.branch_name[:25] + '...' if c.branch_name and len(c.branch_name) > 25 else c.branch_name) or '-',
+                    'ชื่อศูนย์': get_branch_short_name(c.branch_code, c.branch_name),
                     'Serial Number': c.serial_number,
                     'Work Permit': c.work_permit_no,
                     'ผู้ให้บริการ': c.operator or '-',

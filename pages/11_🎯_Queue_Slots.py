@@ -14,6 +14,7 @@ from database.connection import init_db
 from streamlit_echarts import st_echarts
 from utils.theme import apply_theme, render_theme_toggle
 from utils.auth_check import require_login
+from utils.branch_display import get_branch_short_name
 
 init_db()
 
@@ -39,7 +40,7 @@ def get_capacity_map():
         result = {}
         for r in rows:
             result[r.branch_code] = {
-                'name': r.branch_name or r.branch_code,
+                'name': get_branch_short_name(r.branch_code, r.branch_name),
                 'capacity': r.max_capacity,
             }
         return result
@@ -125,6 +126,7 @@ def get_slot_cut_data(start_date, end_date, selected_branches=None):
             _Card.appointment_id,
             _Card.appt_branch,
             _Card.appt_date,
+            _Card.branch_code,
             _Card.branch_name,
             _Card.print_date,
             _Card.serial_number,
@@ -138,7 +140,7 @@ def get_slot_cut_data(start_date, end_date, selected_branches=None):
                 'Appointment ID': r.appointment_id,
                 'ศูนย์นัดเดิม': r.appt_branch,
                 'วันนัดเดิม': r.appt_date.strftime('%d/%m/%Y') if r.appt_date else '-',
-                'ศูนย์ที่ไปจริง': r.branch_name or '-',
+                'ศูนย์ที่ไปจริง': get_branch_short_name(r.branch_code, r.branch_name),
                 'วันที่ไปจริง': r.print_date.strftime('%d/%m/%Y') if r.print_date else '-',
                 'Serial Number': r.serial_number or '-',
                 'ผิดวัน': '✓' if r.wrong_date else '',

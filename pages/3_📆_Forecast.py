@@ -17,6 +17,7 @@ from sqlalchemy import func, and_, or_
 from utils.theme import apply_theme
 from utils.auth_check import require_login
 from utils.logger import log_perf
+from utils.branch_display import get_branch_short_name_map
 
 init_db()
 
@@ -244,6 +245,7 @@ def get_upcoming_appointments_full(selected_branches=None, start_date=None, end_
 
         # By center (all centers, not just top 15)
         branch_map = get_branch_name_map_cached()
+        short_name_map = get_branch_short_name_map()
         by_center_query = session.query(
             Appointment.branch_code,
             func.count(func.distinct(Appointment.appointment_id)).label('total')
@@ -983,7 +985,7 @@ if stats['has_data']:
             with col1:
                 # Horizontal bar chart - top 20 (filtered by center type)
                 bar_centers = filtered_centers[:20] if filtered_centers else stats['by_center'][:20]
-                center_names = [c['branch_name'][:30] + '...' if len(c['branch_name']) > 30 else c['branch_name'] for c in reversed(bar_centers)]
+                center_names = [short_name_map.get(c['branch_code'], c['branch_name']) for c in reversed(bar_centers)]
                 center_avg = [c['avg_daily'] for c in reversed(bar_centers)]
                 center_capacity = [c['capacity'] if c['capacity'] else 0 for c in reversed(bar_centers)]
                 center_colors = []
@@ -1095,7 +1097,7 @@ if stats['has_data']:
                     usage_str = f"{c['usage_pct']:.0f}%" if c['usage_pct'] else "-"
                     table_data.append({
                         "": status_icon,
-                        "ศูนย์": c['branch_name'][:25] + '...' if len(c['branch_name']) > 25 else c['branch_name'],
+                        "ศูนย์": short_name_map.get(c['branch_code'], c['branch_name']),
                         "รวม": f"{c['count']:,}",
                         "เฉลี่ย/วัน": f"{c['avg_daily']:.0f}",
                         "Capacity": capacity_str,

@@ -14,6 +14,7 @@ from database.models import Card, Report, CompleteDiff
 from sqlalchemy import func, and_, or_
 from utils.auth_check import require_login
 from utils.theme import apply_theme
+from utils.branch_display import get_branch_short_name
 
 init_db()
 
@@ -267,7 +268,7 @@ try:
                     'Appointment ID': r.appointment_id,
                     'จำนวน G': r.g_count,
                     'รหัสศูนย์': r.branch_code,
-                    'ชื่อศูนย์': r.branch_name[:40] if r.branch_name else '-',
+                    'ชื่อศูนย์': get_branch_short_name(r.branch_code, r.branch_name),
                     'ภูมิภาค': r.region or '-',
                     'Card ID': r.card_id,
                     'Serial Number': r.serial_number,

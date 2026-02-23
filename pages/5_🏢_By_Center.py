@@ -12,6 +12,7 @@ import re
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import init_db, get_session, get_branch_name_map_cached
+from utils.branch_display import get_branch_short_name_map
 from database.models import Card, BranchMaster
 from services.data_service import DataService
 from sqlalchemy import func, and_, case, or_
@@ -331,6 +332,7 @@ try:
             if center_stats:
                 # Get branch name mapping from BranchMaster
                 branch_name_map = get_branch_name_map_cached()
+                short_name_map = get_branch_short_name_map()
 
                 # Build province mapping using BranchMaster names
                 province_to_centers = {}
@@ -370,7 +372,7 @@ try:
                     elif search_type == 'ชื่อศูนย์':
                         # Build options using BranchMaster names
                         name_options = ['ทั้งหมด'] + sorted([
-                            f"{cs.branch_code} - {branch_name_map.get(cs.branch_code, cs.branch_name)[:50] if branch_name_map.get(cs.branch_code, cs.branch_name) else 'N/A'}"
+                            f"{cs.branch_code} - {short_name_map.get(cs.branch_code, cs.branch_name or 'N/A')}"
                             for cs in center_stats
                         ])
                         selected_filter = st.selectbox(
@@ -443,7 +445,7 @@ try:
                         # Get branch name from BranchMaster
                         branch_name = branch_name_map.get(cs.branch_code, cs.branch_name or '-')
                         center_data.append({
-                            'ศูนย์บริการ': (branch_name[:50] + '...') if branch_name and len(branch_name) > 50 else branch_name,
+                            'ศูนย์บริการ': short_name_map.get(cs.branch_code, branch_name or '-'),
                             'จังหวัด': province,
                             'จำนวนทั้งหมด': cs.total,
                             'บัตรดี': cs.good_count or 0,
@@ -731,7 +733,7 @@ try:
 
                         elif detail_search_type == 'ชื่อศูนย์':
                             # Show full branch name from BranchMaster
-                            detail_options = [(cs.branch_code, branch_name_map.get(cs.branch_code, cs.branch_name)[:60] if branch_name_map.get(cs.branch_code, cs.branch_name) else 'N/A') for cs in filtered_center_stats]
+                            detail_options = [(cs.branch_code, short_name_map.get(cs.branch_code, cs.branch_name or 'N/A')) for cs in filtered_center_stats]
                             selected_detail = st.selectbox(
                                 "เลือกศูนย์",
                                 options=detail_options,
@@ -752,7 +754,7 @@ try:
                             # Then select center in that province - show branch name
                             centers_in_prov = [cs for cs in filtered_center_stats if center_to_province.get(cs.branch_code, 'ไม่ระบุ') == selected_province]
                             if centers_in_prov:
-                                detail_options = [(cs.branch_code, branch_name_map.get(cs.branch_code, cs.branch_name)[:60] if branch_name_map.get(cs.branch_code, cs.branch_name) else 'N/A') for cs in centers_in_prov]
+                                detail_options = [(cs.branch_code, short_name_map.get(cs.branch_code, cs.branch_name or 'N/A')) for cs in centers_in_prov]
                                 selected_detail = st.selectbox(
                                     "เลือกศูนย์",
                                     options=detail_options,
@@ -770,7 +772,7 @@ try:
                         if center_info:
                             province_name = center_to_province.get(center_info.branch_code, '-')
                             # Get branch name from BranchMaster
-                            display_branch_name = branch_name_map.get(center_info.branch_code, center_info.branch_name or center_info.branch_code)
+                            display_branch_name = short_name_map.get(center_info.branch_code, center_info.branch_name or center_info.branch_code)
                             st.markdown(f"### 🏢 {display_branch_name}")
                             st.markdown(f"**จังหวัด:** {province_name}")
 
@@ -1143,7 +1145,7 @@ try:
 
                             if centers_in_region:
                                 centers_data = pd.DataFrame([{
-                                    'ศูนย์บริการ': (branch_name_map.get(c.branch_code, c.branch_name)[:50] + '...') if len(branch_name_map.get(c.branch_code, c.branch_name) or '') > 50 else branch_name_map.get(c.branch_code, c.branch_name or '-'),
+                                    'ศูนย์บริการ': short_name_map.get(c.branch_code, c.branch_name or '-'),
                                     'จำนวน': c.total,
                                     'บัตรดี': c.good or 0,
                                     'อัตราบัตรดี (%)': round((c.good or 0) / c.total * 100, 1) if c.total > 0 else 0,

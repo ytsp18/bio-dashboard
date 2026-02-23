@@ -2,6 +2,27 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [2.3.3] - 2026-02-23
+
+### Added
+- **New Service Centers** — Added 4 new Non-B centers to BranchMaster:
+  - BKK-SC-S-005 (IT Square, Lak Si) — capacity 144
+  - BKK-SC-S-006 (Pongsupee Building, สจก. 10) — capacity 144
+  - BKK-SC-S-007 (Big C Bangna, สจก. 3) — capacity 144
+  - CBI-SC-S-002 (EEC Chon Buri Non-B) — capacity 96
+
+### Changed
+- **Branch Short Names** — New `utils/branch_display.py` utility replaces all truncated names across 7 pages
+  - Long names like "ศูนย์บริการใบอนุญาตทำงานต่างจังหวัด จังหวัดสมุทรสาคร" → "ศูนย์บริการ จ.สมุทรสาคร"
+  - BKK 10 SC centers fully disambiguated (number + location qualifier)
+  - Centralized `get_branch_short_name()` and `get_branch_short_name_map()` with 1-hour cache
+  - Files: `pages/2-8, 11`, `utils/branch_display.py`
+- **Workload Forecast Split SC/OB** — Overview page now shows 2 separate charts:
+  - Left: ศูนย์บริการ (SC) with SC-only capacity line
+  - Right: ศูนย์แรกรับ (OB) with OB-only capacity line
+  - Each with its own average reference line
+  - Files: `pages/2_📈_Overview.py`
+
 ## [2.3.2] - 2026-02-23
 
 ### Changed

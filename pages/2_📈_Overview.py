@@ -507,20 +507,59 @@ def get_upcoming_appointments(selected_branches=None):
 
         daily_data = [{'date': d.appt_date, 'count': d.total} for d in daily_appts]
 
+        # Daily breakdown by center type (SC vs OB) - JOIN with BranchMaster
+        daily_by_type = session.query(
+            Appointment.appt_date,
+            BranchMaster.branch_code,
+            func.count(func.distinct(Appointment.appointment_id)).label('total')
+        ).join(
+            BranchMaster, Appointment.branch_code == BranchMaster.branch_code
+        ).filter(
+            and_(*base_filters),
+            Appointment.appt_date <= chart_end_date
+        ).group_by(Appointment.appt_date, BranchMaster.branch_code).all()
+
+        # Aggregate by type (SC vs OB) per day
+        from collections import defaultdict
+        sc_daily_map = defaultdict(int)
+        ob_daily_map = defaultdict(int)
+        for row in daily_by_type:
+            bcode = str(row.branch_code or '')
+            parts = bcode.split('-')
+            btype = parts[1] if len(parts) >= 2 else ''
+            if btype == 'SC':
+                sc_daily_map[row.appt_date] += row.total
+            elif btype == 'OB':
+                ob_daily_map[row.appt_date] += row.total
+
+        # Build sorted daily lists for SC and OB
+        all_dates = sorted(set(list(sc_daily_map.keys()) + list(ob_daily_map.keys())))
+        daily_sc = [{'date': d, 'count': sc_daily_map.get(d, 0)} for d in all_dates]
+        daily_ob = [{'date': d, 'count': ob_daily_map.get(d, 0)} for d in all_dates]
+
         # Get capacity map from BranchMaster
         # Exclude mobile units (-MB-) from total_capacity as they operate on-demand (max 160/day)
         # Mobile units have branch_code like ACR-MB-S-001, BKK-MB-S-001 (contains -MB-)
         capacity_map = {}
         total_capacity = 0
+        capacity_sc = 0
+        capacity_ob = 0
         branch_capacities = session.query(
             BranchMaster.branch_code,
             BranchMaster.max_capacity
         ).filter(BranchMaster.max_capacity.isnot(None)).all()
         for bc in branch_capacities:
             capacity_map[bc.branch_code] = bc.max_capacity
+            bcode = str(bc.branch_code or '')
+            parts = bcode.split('-')
+            btype = parts[1] if len(parts) >= 2 else ''
             # Only add to total_capacity if NOT a mobile unit (contains -MB-)
-            if '-MB-' not in str(bc.branch_code).upper():
+            if '-MB-' not in bcode.upper():
                 total_capacity += bc.max_capacity
+            if btype == 'SC':
+                capacity_sc += bc.max_capacity
+            elif btype == 'OB':
+                capacity_ob += bc.max_capacity
 
         # By center breakdown with capacity (top 15 centers with most appointments in next 7 days)
         branch_map = get_branch_name_map_cached()
@@ -600,11 +639,15 @@ def get_upcoming_appointments(selected_branches=None):
             'next_7_days': next_7_count,
             'next_30_days': next_30_count,
             'daily_data': daily_data,
+            'daily_sc': daily_sc,
+            'daily_ob': daily_ob,
             'by_center': by_center,
             'by_center_daily': by_center_daily,
             'over_capacity_count': over_capacity_count,
             'max_date': max_future_date,
-            'total_capacity': total_capacity
+            'total_capacity': total_capacity,
+            'capacity_sc': capacity_sc,
+            'capacity_ob': capacity_ob,
         }
     finally:
         session.close()
@@ -1374,92 +1417,117 @@ else:
         with col4:
             st.metric("📈 30 วันข้างหน้า", f"{upcoming_stats['next_30_days']:,}")
 
-        # Daily forecast chart
+        # Daily forecast chart - split by SC and OB
         if upcoming_stats['daily_data']:
-            upcoming_df = pd.DataFrame(upcoming_stats['daily_data'])
-            upcoming_dates = [d.strftime('%d/%m') if hasattr(d, 'strftime') else str(d) for d in upcoming_df['date']]
-
-            # Mark today and tomorrow
             from datetime import date as dt_date
             today_dt = dt_date.today()
 
-            # Calculate average for reference line
-            avg_count = upcoming_df['count'].mean() if len(upcoming_df) > 0 else 0
+            # Get capacity by type
+            capacity_sc = upcoming_stats.get('capacity_sc', 0)
+            capacity_ob = upcoming_stats.get('capacity_ob', 0)
 
-            # Get total capacity for limit line
-            total_capacity = upcoming_stats.get('total_capacity', 0)
+            # Helper function to build chart options
+            def _build_forecast_chart(daily_list, capacity_val, chart_title, color_main, key_suffix):
+                if not daily_list:
+                    return None
+                df = pd.DataFrame(daily_list)
+                dates = [d.strftime('%d/%m') if hasattr(d, 'strftime') else str(d) for d in df['date']]
+                avg_val = df['count'].mean() if len(df) > 0 else 0
 
-            upcoming_chart_options = {
-                "animation": True,
-                "animationDuration": 800,
-                "backgroundColor": "transparent",
-                "tooltip": {
-                    "trigger": "axis",
-                    "axisPointer": {"type": "shadow"},
-                    "backgroundColor": "rgba(255, 255, 255, 0.95)",
-                    "borderColor": "#e5e7eb",
-                    "textStyle": {"color": "#374151"},
-                },
-                "legend": {
-                    "data": ["นัดหมายล่วงหน้า", "Capacity รวม", "ค่าเฉลี่ย"],
-                    "bottom": 0,
-                    "textStyle": {"color": "#6b7280"},
-                },
-                "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "10%", "containLabel": True},
-                "xAxis": {
-                    "type": "category",
-                    "data": upcoming_dates,
-                    "axisLine": {"lineStyle": {"color": "#d1d5db"}},
-                    "axisLabel": {"color": "#6b7280", "rotate": 45 if len(upcoming_dates) > 15 else 0},
-                },
-                "yAxis": {
-                    "type": "value",
-                    "axisLine": {"lineStyle": {"color": "#d1d5db"}},
-                    "axisLabel": {"color": "#6b7280"},
-                    "splitLine": {"lineStyle": {"color": "#e5e7eb"}},
-                },
-                "series": [
-                    {
-                        "name": "นัดหมายล่วงหน้า",
-                        "type": "bar",
-                        "data": [
-                            {
-                                "value": row['count'],
-                                "itemStyle": {
-                                    "color": "#F59E0B" if row['date'] == today_dt else (
-                                        "#3B82F6" if row['date'] == today_dt + timedelta(days=1) else "#6366F1"
-                                    )
-                                }
-                            } for _, row in upcoming_df.iterrows()
-                        ],
-                        "barMaxWidth": 50,
-                        "label": {
-                            "show": len(upcoming_dates) <= 14,
-                            "position": "top",
-                            "color": "#6b7280",
-                            "fontSize": 10
+                return {
+                    "animation": True,
+                    "animationDuration": 800,
+                    "backgroundColor": "transparent",
+                    "tooltip": {
+                        "trigger": "axis",
+                        "axisPointer": {"type": "shadow"},
+                        "backgroundColor": "rgba(255, 255, 255, 0.95)",
+                        "borderColor": "#e5e7eb",
+                        "textStyle": {"color": "#374151"},
+                    },
+                    "legend": {
+                        "data": [chart_title, "Capacity", "ค่าเฉลี่ย"],
+                        "bottom": 0,
+                        "textStyle": {"color": "#6b7280"},
+                    },
+                    "grid": {"left": "3%", "right": "4%", "bottom": "15%", "top": "10%", "containLabel": True},
+                    "xAxis": {
+                        "type": "category",
+                        "data": dates,
+                        "axisLine": {"lineStyle": {"color": "#d1d5db"}},
+                        "axisLabel": {"color": "#6b7280", "rotate": 45 if len(dates) > 15 else 0},
+                    },
+                    "yAxis": {
+                        "type": "value",
+                        "axisLine": {"lineStyle": {"color": "#d1d5db"}},
+                        "axisLabel": {"color": "#6b7280"},
+                        "splitLine": {"lineStyle": {"color": "#e5e7eb"}},
+                    },
+                    "series": [
+                        {
+                            "name": chart_title,
+                            "type": "bar",
+                            "data": [
+                                {
+                                    "value": row['count'],
+                                    "itemStyle": {
+                                        "color": "#F59E0B" if row['date'] == today_dt else (
+                                            "#3B82F6" if row['date'] == today_dt + timedelta(days=1) else color_main
+                                        )
+                                    }
+                                } for _, row in df.iterrows()
+                            ],
+                            "barMaxWidth": 50,
+                            "label": {
+                                "show": len(dates) <= 14,
+                                "position": "top",
+                                "color": "#6b7280",
+                                "fontSize": 10
+                            }
+                        },
+                        {
+                            "name": "Capacity",
+                            "type": "line",
+                            "data": [capacity_val] * len(dates),
+                            "itemStyle": {"color": "#10B981"},
+                            "lineStyle": {"width": 3, "type": "solid"},
+                            "symbol": "none",
+                        },
+                        {
+                            "name": "ค่าเฉลี่ย",
+                            "type": "line",
+                            "data": [round(avg_val)] * len(dates),
+                            "itemStyle": {"color": "#EF4444"},
+                            "lineStyle": {"width": 2, "type": "dashed"},
+                            "symbol": "none",
                         }
-                    },
-                    {
-                        "name": "Capacity รวม",
-                        "type": "line",
-                        "data": [total_capacity] * len(upcoming_dates),
-                        "itemStyle": {"color": "#10B981"},
-                        "lineStyle": {"width": 3, "type": "solid"},
-                        "symbol": "none",
-                    },
-                    {
-                        "name": "ค่าเฉลี่ย",
-                        "type": "line",
-                        "data": [round(avg_count)] * len(upcoming_dates),
-                        "itemStyle": {"color": "#EF4444"},
-                        "lineStyle": {"width": 2, "type": "dashed"},
-                        "symbol": "none",
-                    }
-                ]
-            }
-            st.markdown(f"**📊 ปริมาณนัดหมายรายวัน** (สีส้ม = วันนี้, สีฟ้า = พรุ่งนี้, เส้นเขียว = Capacity {total_capacity:,}, เส้นประแดง = ค่าเฉลี่ย)")
-            st_echarts(options=upcoming_chart_options, height="350px", key="upcoming_daily_chart")
+                    ]
+                }
+
+            # Build SC and OB charts
+            sc_chart = _build_forecast_chart(
+                upcoming_stats.get('daily_sc', []), capacity_sc,
+                "ศูนย์บริการ (SC)", "#6366F1", "sc"
+            )
+            ob_chart = _build_forecast_chart(
+                upcoming_stats.get('daily_ob', []), capacity_ob,
+                "ศูนย์แรกรับ (OB)", "#8B5CF6", "ob"
+            )
+
+            # Display in 2 columns
+            col_sc, col_ob = st.columns(2)
+            with col_sc:
+                st.markdown(f"**🏢 ศูนย์บริการ (SC)** — Capacity {capacity_sc:,}")
+                if sc_chart:
+                    st_echarts(options=sc_chart, height="350px", key="forecast_sc_chart")
+                else:
+                    st.info("ไม่มีข้อมูลนัดหมายศูนย์บริการ")
+            with col_ob:
+                st.markdown(f"**🏠 ศูนย์แรกรับ (OB)** — Capacity {capacity_ob:,}")
+                if ob_chart:
+                    st_echarts(options=ob_chart, height="350px", key="forecast_ob_chart")
+                else:
+                    st.info("ไม่มีข้อมูลนัดหมายศูนย์แรกรับ")
     else:
         st.markdown("---")
         st.markdown("### 📆 นัดหมายล่วงหน้า (Workload Forecast)")

@@ -13,6 +13,7 @@ from services.data_service import DataService
 from sqlalchemy import func, or_, and_
 from utils.theme import apply_theme
 from utils.auth_check import require_login
+from utils.branch_display import get_branch_short_name
 
 init_db()
 
@@ -388,7 +389,7 @@ try:
                     'Card ID': card.card_id,
                     'Serial Number': card.serial_number,
                     'Work Permit': card.work_permit_no or '-',
-                    'ศูนย์บริการ': branch_name[:50] if branch_name else '-',
+                    'ศูนย์บริการ': get_branch_short_name(card.branch_code, branch_name),
                     'สถานะ': status_icon,
                     'SLA (นาที)': round(card.sla_minutes, 2) if card.sla_minutes else 0,
                     'Flags': ', '.join(flags) if flags else '-',
@@ -469,7 +470,7 @@ try:
                                     detail_data.append({
                                         'Serial': card.serial_number,
                                         'Card ID': card.card_id,
-                                        'ศูนย์': branch_name_map.get(card.branch_code, card.branch_code or '-'),
+                                        'ศูนย์': get_branch_short_name(card.branch_code, branch_name_map.get(card.branch_code, '')),
                                         'Operator': card.operator or '-',
                                         'วันที่พิมพ์': str(card.print_date),
                                         'SLA (นาที)': round(card.sla_minutes, 2) if card.sla_minutes else '-'
@@ -484,7 +485,7 @@ try:
                                         'Appointment': card.appointment_id,
                                         'Card ID': card.card_id,
                                         'สถานะ': 'ดี' if card.print_status == 'G' else 'เสีย',
-                                        'ศูนย์': branch_name_map.get(card.branch_code, card.branch_code or '-'),
+                                        'ศูนย์': get_branch_short_name(card.branch_code, branch_name_map.get(card.branch_code, '')),
                                         'วันที่พิมพ์': str(card.print_date)
                                     })
                                 st.dataframe(pd.DataFrame(detail_data), use_container_width=True, hide_index=True)

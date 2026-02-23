@@ -13,6 +13,7 @@ from services.data_service import DataService
 from sqlalchemy import func, and_
 from utils.theme import apply_theme, render_theme_toggle
 from utils.auth_check import require_login
+from utils.branch_display import get_branch_short_name
 
 init_db()
 
@@ -154,7 +155,7 @@ try:
                     'วันที่พิมพ์': card.print_date,
                     'ผู้ให้บริการ': card.operator or '-',
                     # Center info
-                    'ศูนย์บริการ': (branch_name[:60] if branch_name else '-'),
+                    'ศูนย์บริการ': get_branch_short_name(card.branch_code, branch_name),
                     'ภูมิภาค': card.region or '-',
                     # SLA info
                     'SLA (นาที)': round(card.sla_minutes, 2) if card.sla_minutes else None,
