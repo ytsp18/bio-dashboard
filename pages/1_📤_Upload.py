@@ -67,21 +67,89 @@ st.markdown("""
 # ==================== HELPER FUNCTIONS ====================
 
 def parse_date(val):
-    """Parse date from various formats."""
+    """Parse date from various formats, prioritizing DD-MM-YYYY (Thai standard)."""
     if pd.isna(val):
         return None
     if isinstance(val, (datetime, pd.Timestamp)):
         return val.date() if hasattr(val, 'date') else val
     try:
         val_str = str(val).strip()
-        for fmt in ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%Y/%m/%d']:
+        # Try DD-MM-YYYY first (Thai standard), then YYYY-MM-DD
+        for fmt in ['%d-%m-%Y', '%d/%m/%Y', '%Y-%m-%d', '%Y/%m/%d']:
             try:
                 return datetime.strptime(val_str[:10], fmt).date()
             except:
                 continue
-        return pd.to_datetime(val).date()
+        return pd.to_datetime(val, dayfirst=True).date()
     except:
         return None
+
+
+def parse_print_date_series(series, source_date_series=None):
+    """Parse print_date column handling mixed formats + Date Flip.
+
+    Handles two issues:
+    1. Mixed formats: DD-MM-YYYY and YYYY-MM-DD HH:MM:SS in same column
+       (pandas can't auto-detect mixed formats in a single call)
+    2. Date Flip: dates where day <= 12 get misinterpreted as MM-DD-YYYY
+       (e.g., 04-02-2026 in Excel becomes 2026-04-02 instead of 2026-02-04)
+
+    Uses source_date column (if available) to detect and fix Date Flip.
+    """
+    str_series = series.astype(str).str.strip()
+
+    # Step 1: Try YYYY-MM-DD HH:MM:SS format first (most common from Excel/datetime)
+    parsed = pd.to_datetime(str_series, format='%Y-%m-%d %H:%M:%S', errors='coerce')
+
+    # Step 2: Fill remaining NaT with YYYY-MM-DD (no time)
+    mask_nat = parsed.isna()
+    if mask_nat.any():
+        parsed2 = pd.to_datetime(str_series[mask_nat], format='%Y-%m-%d', errors='coerce')
+        parsed.loc[mask_nat] = parsed2
+
+    # Step 3: Fill remaining NaT with DD-MM-YYYY (Thai standard)
+    mask_nat = parsed.isna()
+    if mask_nat.any():
+        parsed3 = pd.to_datetime(str_series[mask_nat], format='%d-%m-%Y', errors='coerce')
+        parsed.loc[mask_nat] = parsed3
+
+    # Step 4: Fill remaining NaT with DD/MM/YYYY
+    mask_nat = parsed.isna()
+    if mask_nat.any():
+        parsed4 = pd.to_datetime(str_series[mask_nat], format='%d/%m/%Y', errors='coerce')
+        parsed.loc[mask_nat] = parsed4
+
+    # Step 5: Fix Date Flip using source_date if available
+    if source_date_series is not None:
+        source_dates = pd.to_datetime(source_date_series.astype(str).str.strip(),
+                                       format='%d-%m-%Y', errors='coerce')
+        # Fallback: try other formats for source_date
+        sd_nat = source_dates.isna()
+        if sd_nat.any():
+            source_dates.loc[sd_nat] = pd.to_datetime(
+                source_date_series[sd_nat].astype(str).str.strip(),
+                format='%Y-%m-%d', errors='coerce')
+
+        # Find rows where parsed month != source month (Date Flip indicator)
+        mask_flip = (
+            parsed.notna() &
+            source_dates.notna() &
+            (parsed.dt.month != source_dates.dt.month)
+        )
+
+        if mask_flip.any():
+            # Swap month and day for flipped dates
+            flipped = parsed[mask_flip]
+            try:
+                corrected = flipped.map(
+                    lambda x: x.replace(month=x.day, day=x.month)
+                    if x.day <= 12 else x
+                )
+                parsed.loc[mask_flip] = corrected
+            except Exception:
+                pass  # If correction fails, keep original
+
+    return parsed
 
 
 def parse_sla_duration(duration_str):
@@ -894,7 +962,10 @@ with tab4:
 
             total = len(df)
             if col_map['print_date']:
-                df['_date'] = df[col_map['print_date']].apply(parse_date)
+                df['_date'] = parse_print_date_series(
+                    df[col_map['print_date']],
+                    source_date_series=df['source_date'] if 'source_date' in df.columns else None
+                ).dt.date
                 valid_dates = df['_date'].dropna()
                 min_date = valid_dates.min() if len(valid_dates) > 0 else None
                 max_date = valid_dates.max() if len(valid_dates) > 0 else None
@@ -990,7 +1061,10 @@ with tab4:
                             'print_status': df[col_map['print_status']].astype(str).str.strip() if col_map.get('print_status') else None,
                             'reject_type': df[col_map['reject_type']].astype(str).str.strip() if col_map.get('reject_type') else None,
                             'operator': df[col_map['operator']].astype(str).str.strip() if col_map.get('operator') else None,
-                            'print_date': pd.to_datetime(df[col_map['print_date']], errors='coerce') if col_map.get('print_date') else None,
+                            'print_date': parse_print_date_series(
+                                df[col_map['print_date']],
+                                source_date_series=df['source_date'] if 'source_date' in df.columns else None
+                            ) if col_map.get('print_date') else None,
                             'sla_start': df[col_map['sla_start']].astype(str).str.strip() if col_map.get('sla_start') else None,
                             'sla_stop': df[col_map['sla_stop']].astype(str).str.strip() if col_map.get('sla_stop') else None,
                             'sla_duration': df[col_map['sla_duration']].astype(str).str.strip() if col_map.get('sla_duration') else None,

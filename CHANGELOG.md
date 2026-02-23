@@ -2,6 +2,21 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [2.3.1] - 2026-02-23
+
+### Fixed
+- **Bio Raw Date Parsing — Mixed Format + Date Flip**
+  - Problem 1: CSV has mixed date formats (`YYYY-MM-DD HH:MM:SS` and `DD-MM-YYYY`) in `Print Date` column → `pd.to_datetime()` without format spec fails on `DD-MM-YYYY` where day > 12 (e.g., `13-02-2026` → NaT) — 34,690 rows lost
+  - Problem 2: Date Flip — dates where day ≤ 12 (e.g., `04-02-2026`) misinterpreted as month-day → Feb 4 stored as Apr 2 — 8,433 rows wrong
+  - Solution: New `parse_print_date_series()` function with multi-format parsing:
+    1. Try `YYYY-MM-DD HH:MM:SS` first (most common from Excel/datetime)
+    2. Try `YYYY-MM-DD` (no time)
+    3. Try `DD-MM-YYYY` (Thai standard)
+    4. Try `DD/MM/YYYY` (alternative)
+    5. Cross-reference with `source_date` column to detect and fix Date Flip
+  - Also updated `parse_date()` to prioritize `DD-MM-YYYY` format (Thai standard)
+  - Files: `pages/1_📤_Upload.py`
+
 ## [2.3.0] - 2026-02-23
 
 ### Fixed
