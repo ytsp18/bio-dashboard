@@ -1,5 +1,5 @@
 # CLAUDE.md — BIO Dashboard
-# Version: 3.0
+# Version: 3.1
 
 ---
 
@@ -10,7 +10,8 @@
 - **Hosting**: Streamlit Cloud (auto-deploy on push to main)
 - **Supabase MCP**: ใช้ `list_projects` ก่อนเสมอ ห้าม hardcode project_id (อาจเปลี่ยน)
 - **Repo**: https://github.com/ytsp18/bio-dashboard.git
-- **Version file**: `__version__.py` (ปัจจุบัน 2.2.0)
+- **Version file**: `__version__.py` (ปัจจุบัน 2.3.4)
+- **Data update**: วันละครั้ง — ไม่ใช่ realtime → cache ttl ควรเป็น 1 ชั่วโมงขึ้นไป
 
 ---
 
@@ -36,9 +37,33 @@
 - ใช้ connection pooling (Supabase Session Pooler) อย่าสร้าง connection ใหม่เอง
 
 ### Streamlit
-- ใช้ `@st.cache_data` สำหรับ data queries, `@st.cache_resource` สำหรับ DB connections
+- ใช้ `@st.cache_data(ttl=3600)` สำหรับ data queries (ข้อมูลอัปเดตวันละครั้ง → ttl 1 ชั่วโมงขึ้นไป)
+- ใช้ `@st.cache_resource` สำหรับ DB connections
 - ใช้ `@st.fragment` สำหรับ component ที่ update บ่อยเพื่อลด full rerun
 - Import ORM models ใน cached function ต้องใช้ **local import** (ไม่งั้น cache จะ break)
+
+### Branch Display Names
+- ใช้ `utils/branch_display.py` → `get_branch_short_name(branch_code, branch_name)` แทน truncation ทุกที่
+- ห้าม truncate ชื่อศูนย์ (`branch_name[:50]`) — ใช้ short name แทนเสมอ
+- `get_branch_short_name_map()` = cached dict {branch_code: short_name} ดึงจาก DB
+- BKK มี 10 ศูนย์ SC — ต้องจำแนกด้วยเลข + สถานที่ + Non-B tag
+- จังหวัดที่มีหลายศูนย์ SC: BKK(10), CBI(3), RNG(2), TAK(2)
+
+### Page Order (v2.3.4+)
+| # | Page | File |
+|---|------|------|
+| 0 | Register | `0_📝_Register.py` |
+| 1 | Upload | `1_📤_Upload.py` |
+| 2 | Overview | `2_📈_Overview.py` |
+| 3 | Forecast | `3_📆_Forecast.py` |
+| 4 | Queue Slots | `4_🎯_Queue_Slots.py` |
+| 5 | Search | `5_🔍_Search.py` |
+| 6 | By Center | `6_🏢_By_Center.py` |
+| 7 | Anomaly | `7_⚠️_Anomaly.py` |
+| 8 | Raw Data | `8_📋_Raw_Data.py` |
+| 9 | Complete Diff | `9_📊_Complete_Diff.py` |
+| 10 | Admin | `10_👤_Admin.py` |
+| 11 | Profile | `11_🔐_Profile.py` |
 
 ### General
 - อ่าน function ที่เกี่ยวข้องก่อนแก้เสมอ — ห้ามเดา
@@ -51,11 +76,12 @@
 |--------|---------|
 | `database/models.py` | `database/connection.py` (migration), `services/data_service.py` (queries) |
 | `services/excel_parser.py` | `pages/1_📤_Upload.py` |
-| `auth/*` | `pages/9_👤_Admin.py`, `pages/10_🔐_Profile.py` |
-| `utils/metric_cards.py` | `pages/2_📈_Overview.py`, `pages/5_🏢_By_Center.py` |
+| `auth/*` | `pages/10_👤_Admin.py`, `pages/11_🔐_Profile.py` |
+| `utils/metric_cards.py` | `pages/2_📈_Overview.py`, `pages/6_🏢_By_Center.py` |
+| `utils/branch_display.py` | ทุก page ที่แสดงชื่อศูนย์ (7 pages) |
 | `utils/security.py` | ทุก page ที่รับ input |
 | `services/data_service.py` | ทุก page ที่แสดงข้อมูล |
-| `pages/11_🎯_Queue_Slots.py` | `database/models.py` (Card, Appointment, BranchMaster), `database/connection.py` (partial index) |
+| `pages/4_🎯_Queue_Slots.py` | `database/models.py` (Card, Appointment, BranchMaster), `database/connection.py` (partial index) |
 
 ---
 
@@ -109,3 +135,7 @@ streamlit run app.py
 | ใช้ `JsCode()` ใน `st_echarts` | MarshallComponentException บน Cloud | ใช้ string template (`{b}`, `{c}`) + piecewise visualMap แทน |
 | สร้าง HTML จาก DB data ไม่ escape | XSS / HTML injection | ใช้ `html.escape()` กับทุก user data ใน HTML |
 | เพิ่ม index ใน Supabase ไม่รัน ANALYZE | Planner เลือก index เก่า, query ช้า | รัน `ANALYZE tablename;` หลังเพิ่ม index |
+| ตัดชื่อศูนย์ `branch_name[:50]` | ชื่อจังหวัดหายไป อ่านไม่ออก | ใช้ `get_branch_short_name()` จาก `utils/branch_display.py` |
+| ตั้ง cache ttl สั้นเกินไป (เช่น 300s) | Query DB บ่อยเกินจำเป็น (ข้อมูลอัปเดตวันละครั้ง) | ใช้ `ttl=3600` (1 ชั่วโมง) ขึ้นไป |
+| ECharts visualMap ทับกราฟ | Legend ซ้อนทับ chart content | ใช้ `"show": False` + HTML legend แยกด้านล่าง |
+| ย้ายหน้า page ไม่อัปเดต File Dependencies | CLAUDE.md อ้างถึง file number เก่า | อัปเดตทุกที่ที่อ้างชื่อไฟล์ page |
