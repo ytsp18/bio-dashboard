@@ -234,6 +234,8 @@ with tab2:
                 # This simplified version just changes the password
                 result = change_password(current_username, new_password)
                 if result['success']:
+                    from auth.authenticator import _get_cached_users
+                    _get_cached_users.clear()
                     st.success("✅ เปลี่ยนรหัสผ่านสำเร็จ!")
                     st.info("กรุณา Logout และ Login ใหม่ด้วยรหัสผ่านใหม่")
                 else:

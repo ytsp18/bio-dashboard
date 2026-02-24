@@ -200,7 +200,9 @@ with tab1:
                             result = change_password(selected_user, new_password)
                             if result['success']:
                                 from utils.security import audit_user_action
+                                from auth.authenticator import _get_cached_users
                                 audit_user_action('password_changed', selected_user)
+                                _get_cached_users.clear()
                                 st.success("✅ เปลี่ยนรหัสผ่านสำเร็จ")
                             else:
                                 st.error(f"❌ {result['error']}")
