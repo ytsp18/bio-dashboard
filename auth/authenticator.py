@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.connection import init_db
-from .db_user_manager import get_all_users_for_auth
+from .db_user_manager import get_all_users_for_auth, lookup_username_by_email
 
 
 def get_cookie_config():
@@ -102,7 +102,13 @@ def check_authentication():
     # Check for lockout before showing login
     username_input = st.session_state.get('username', '')
     if username_input:
-        allowed, message = check_login_allowed(username_input)
+        # If user entered email, resolve to username for lockout check
+        check_name = username_input
+        if '@' in username_input:
+            resolved = lookup_username_by_email(username_input)
+            if resolved:
+                check_name = resolved
+        allowed, message = check_login_allowed(check_name)
         if not allowed:
             st.error(f'🔒 {message}')
             return False
@@ -117,15 +123,12 @@ def check_authentication():
 
     # Check authentication status from session state
     if st.session_state.get('authentication_status'):
-        # If user logged in with email, resolve to real username
+        # If user logged in with email alias, resolve to real username
         logged_in_key = st.session_state.get('username', '')
         if logged_in_key and '@' in logged_in_key:
-            # Lookup real username from credentials
-            creds = config.get('credentials', {}).get('usernames', {})
-            for uname, udata in creds.items():
-                if '@' not in uname and udata.get('email', '').lower() == logged_in_key.lower():
-                    st.session_state['username'] = uname
-                    break
+            resolved = lookup_username_by_email(logged_in_key)
+            if resolved:
+                st.session_state['username'] = resolved
 
         # Store authenticator in session state
         st.session_state['authenticator'] = authenticator

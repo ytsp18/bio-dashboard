@@ -97,6 +97,7 @@ def get_all_users_for_auth() -> Dict[str, Dict[str, Any]]:
 
     Returns dict keyed by username AND email (as alias) so users can
     log in with either their username or email address.
+    Each entry is a separate dict copy to avoid shared-reference issues.
     """
     session = get_session()
     try:
@@ -109,12 +110,29 @@ def get_all_users_for_auth() -> Dict[str, Dict[str, Any]]:
                 'password': u.password_hash,
                 'role': u.role,
             }
-            # Primary key: username
             result[u.username] = user_data
-            # Alias key: email (allows login with email)
-            if u.email and u.email != u.username:
-                result[u.email] = user_data
+            # Add email as alias key (separate copy)
+            if u.email and u.email.lower() != u.username.lower():
+                result[u.email.lower()] = {
+                    'name': u.name,
+                    'email': u.email,
+                    'password': u.password_hash,
+                    'role': u.role,
+                }
         return result
+    finally:
+        session.close()
+
+
+def lookup_username_by_email(email: str) -> Optional[str]:
+    """Lookup username by email address. Returns username or None."""
+    session = get_session()
+    try:
+        user = session.query(User.username).filter(
+            User.email == email.lower(),
+            User.is_active == True
+        ).first()
+        return user.username if user else None
     finally:
         session.close()
 
