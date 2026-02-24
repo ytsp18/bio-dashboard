@@ -93,19 +93,28 @@ def get_user_for_auth(username: str) -> Optional[Dict[str, Any]]:
 
 
 def get_all_users_for_auth() -> Dict[str, Dict[str, Any]]:
-    """Get all users in format suitable for streamlit_authenticator."""
+    """Get all users in format suitable for streamlit_authenticator.
+
+    Returns dict keyed by username AND email (as alias) so users can
+    log in with either their username or email address.
+    """
     session = get_session()
     try:
         users = session.query(User).filter(User.is_active == True).all()
-        return {
-            u.username: {
+        result = {}
+        for u in users:
+            user_data = {
                 'name': u.name,
                 'email': u.email,
                 'password': u.password_hash,
                 'role': u.role,
             }
-            for u in users
-        }
+            # Primary key: username
+            result[u.username] = user_data
+            # Alias key: email (allows login with email)
+            if u.email and u.email != u.username:
+                result[u.email] = user_data
+        return result
     finally:
         session.close()
 

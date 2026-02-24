@@ -117,6 +117,16 @@ def check_authentication():
 
     # Check authentication status from session state
     if st.session_state.get('authentication_status'):
+        # If user logged in with email, resolve to real username
+        logged_in_key = st.session_state.get('username', '')
+        if logged_in_key and '@' in logged_in_key:
+            # Lookup real username from credentials
+            creds = config.get('credentials', {}).get('usernames', {})
+            for uname, udata in creds.items():
+                if '@' not in uname and udata.get('email', '').lower() == logged_in_key.lower():
+                    st.session_state['username'] = uname
+                    break
+
         # Store authenticator in session state
         st.session_state['authenticator'] = authenticator
 
@@ -130,8 +140,14 @@ def check_authentication():
     elif st.session_state.get('authentication_status') is False:
         st.error('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
 
-        # Log failed login attempt
+        # Log failed login attempt (resolve email to username for lockout)
         failed_username = st.session_state.get('username', '')
+        if failed_username and '@' in failed_username:
+            creds = config.get('credentials', {}).get('usernames', {})
+            for uname, udata in creds.items():
+                if '@' not in uname and udata.get('email', '').lower() == failed_username.lower():
+                    failed_username = uname
+                    break
         if failed_username and not st.session_state.get('_last_failed_user') == failed_username:
             audit_login(failed_username, success=False)
             st.session_state['_last_failed_user'] = failed_username
