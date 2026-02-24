@@ -2,6 +2,20 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [2.3.5] - 2026-02-24
+
+### Added
+- **Email Login Support** — Users can now log in with either username or email address
+  - `get_all_users_for_auth()` returns credentials keyed by both username AND email (alias)
+  - After login with email, session username auto-resolves to real username
+  - Lockout check works correctly with email input (resolves to username first)
+  - Failed login audit correctly maps email back to username
+  - New helper: `lookup_username_by_email()` in `db_user_manager.py`
+  - Files: `auth/db_user_manager.py`, `auth/authenticator.py`
+
+### Fixed
+- **Password Reset Cache** — `change_password()` in Profile page now clears `_get_cached_users` cache after password change, so new password takes effect immediately without waiting for TTL expiry
+
 ## [2.3.4] - 2026-02-23
 
 ### Changed
