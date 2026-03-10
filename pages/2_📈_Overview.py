@@ -194,20 +194,17 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
         complete_cards = complete_stats.complete_sn or 0
         unique_work_permit = complete_stats.complete_wp or 0
 
-        appt_multiple_g = session.query(Card.appointment_id).filter(
+        # Single subquery for appointments with multiple G cards (avoids duplicate GROUP BY)
+        multi_g_appts = session.query(
+            Card.appointment_id,
+            func.count(Card.id).label('cnt')
+        ).filter(
             date_filter, Card.print_status == 'G',
             Card.appointment_id.isnot(None), Card.appointment_id != ''
-        ).group_by(Card.appointment_id).having(func.count(Card.id) > 1).count()
+        ).group_by(Card.appointment_id).having(func.count(Card.id) > 1).subquery()
 
-        appt_multiple_records = session.query(func.count(Card.id)).filter(
-            date_filter, Card.print_status == 'G',
-            Card.appointment_id.in_(
-                session.query(Card.appointment_id).filter(
-                    date_filter, Card.print_status == 'G',
-                    Card.appointment_id.isnot(None), Card.appointment_id != ''
-                ).group_by(Card.appointment_id).having(func.count(Card.id) > 1)
-            )
-        ).scalar() or 0
+        appt_multiple_g = session.query(func.count()).select_from(multi_g_appts).scalar() or 0
+        appt_multiple_records = session.query(func.coalesce(func.sum(multi_g_appts.c.cnt), 0)).scalar() or 0
 
         duplicate_serial = session.query(Card.serial_number).filter(
             date_filter, Card.print_status == 'G'

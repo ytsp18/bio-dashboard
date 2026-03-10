@@ -207,7 +207,9 @@ CREATE POLICY "audit_append_only" ON audit_logs
 | Phase | Status | Date | Notes |
 |---|---|---|---|
 | Phase 1: Block Anon Access | **Done** | 2026-02-11 | RLS enabled on 22 tables, Security Advisor 0 errors |
+| RLS Policy Review | **Low Risk** | 2026-03-10 | 22 tables use permissive `USING (true)` — see note below |
 | Performance: Index Optimization | **Done** | 2026-02-11 | 9 new indexes, 20 duplicates dropped (~58 MB saved) |
+| Performance: Query Optimization | **Done** | 2026-03-10 | Cache TTL 3600s + new partial indexes for slow queries |
 | Data: Skip Duplicate on Upload | Planning | - | Bio Raw / Appointment / QLog / Delivery upload ทั้งหมด |
 | Data: Date Range from Bio Raw | Planning | - | Overview date filter ดึงแค่ cards table |
 | Phase 2: Role-Based Policies | Planning | - | Need auth mapping decision |
@@ -277,7 +279,46 @@ ORDER BY tablename, policyname;
 
 ---
 
+## RLS Policy Assessment (2026-03-10)
+
+**สถานะ:** ความเสี่ยงต่ำ — ไม่ต้องแก้ไขเร่งด่วน
+
+**22 tables ใช้ permissive `USING (true)` policy:**
+- Policy ปัจจุบัน: `authenticated_full_access` → user ที่ authenticated ผ่าน Supabase Auth เข้าถึงได้ทุก row
+- **anon key** อยู่ใน `st.secrets` ไม่ได้เปิดให้ browser เห็น → ไม่มีใครใช้ anon key เรียก PostgREST API ได้จากภายนอก
+- App ใช้ SQLAlchemy ผ่าน connection pooler (Session Mode) → bypass RLS อยู่แล้ว
+- Supabase Dashboard อาจแสดง warning "permissive policies" → เป็น informational ไม่ใช่ vulnerability
+
+**ทำไมยังไม่ต้องแก้:**
+1. anon key ไม่ expose → attacker ไม่มี key เรียก API
+2. App ไม่ได้ใช้ PostgREST → RLS ไม่มีผลต่อ app
+3. แก้ policy ให้ restrictive ต้อง map Streamlit users → Supabase Auth (Phase 2)
+
+**ควรแก้เมื่อ:**
+- เปิด API ให้ external client เรียก
+- ย้ายไป Supabase Auth (Phase 2)
+- ต้องการ branch-level data isolation (Phase 3)
+
+---
+
 ## Change Log
+
+### 2026-03-10 — RLS Assessment + Query Performance Optimization
+
+**RLS Assessment:**
+- 22 tables use permissive `USING (true)` policies → low risk (anon key in `st.secrets`)
+- Documented assessment and future fix criteria in roadmap
+
+**Performance — New Partial Indexes (3 total, ~79 MB):**
+| Index | Table | Purpose |
+|---|---|---|
+| `ix_qlogs_checkin_cover` | qlogs | Check-in count WHERE qlog_num IS NOT NULL |
+| `ix_qlogs_branch_checkin` | qlogs | Branch daily breakdown WHERE qlog_num IS NOT NULL |
+| `ix_appointments_active_cover` | appointments | Active appt count WHERE status NOT IN (CANCEL, EXPIRED) |
+
+**Performance — Query Fixes:**
+- Bio Raw upload: Replaced `serial_number || '_' || print_status IN (...)` string concat (full table scan) with `tuple_()` comparison (uses index)
+- Overview: Eliminated duplicate GROUP BY subquery for appointment-multiple-G stats
 
 ### 2026-02-22 — Data Quality Issues Identified
 - พบว่า Bio Raw upload ไม่มี skip duplicate → อัปโหลดซ้ำได้ → นับซ้ำ

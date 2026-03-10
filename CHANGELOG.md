@@ -2,6 +2,22 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [2.3.9] - 2026-03-10
+
+### Performance
+- **3 new partial indexes** for slow queries (total ~79 MB):
+  - `ix_qlogs_checkin_cover` — QLog check-in count: `(qlog_date, appointment_code) WHERE qlog_num IS NOT NULL`
+  - `ix_qlogs_branch_checkin` — QLog branch daily breakdown: `(branch_code, qlog_date, appointment_code) WHERE qlog_num IS NOT NULL`
+  - `ix_appointments_active_cover` — Active appointments count: `(appt_date, appointment_id) WHERE appt_status NOT IN ('CANCEL','EXPIRED')`
+- **Fix bio_records string concat query** — Upload duplicate check used `serial_number || '_' || print_status IN (...)` raw SQL which forced full table scan (1,814 calls × 1000 params). Replaced with SQLAlchemy `tuple_()` comparison that uses `ix_bio_records_serial` index.
+- **Eliminate duplicate GROUP BY** — Overview appointment-multiple-G stats ran the same GROUP BY HAVING subquery twice. Consolidated into single subquery with `count()` + `sum()` reads.
+
+### Added
+- **RLS Policy Assessment** in SECURITY_ROADMAP — Documented that 22 permissive `USING (true)` policies are low risk (anon key in `st.secrets`, app uses SQLAlchemy bypassing RLS).
+
+### Changed
+- **connection.py** — Added auto-create definitions for 3 new partial indexes (qlogs + appointments).
+
 ## [2.3.8] - 2026-03-10
 
 ### Changed

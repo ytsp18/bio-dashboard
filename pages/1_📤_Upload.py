@@ -1002,27 +1002,27 @@ with tab4:
             session = get_session()
             try:
                 if col_map.get('serial_number') and col_map.get('print_status'):
-                    from sqlalchemy import text
-                    # Create composite key for checking
-                    df['_check_key'] = df[col_map['serial_number']].astype(str).str.strip() + '_' + df[col_map['print_status']].astype(str).str.strip()
-                    file_keys = df['_check_key'].unique().tolist()
+                    from sqlalchemy import tuple_
+                    # Extract serial_number and print_status as separate columns
+                    sn_col = df[col_map['serial_number']].astype(str).str.strip()
+                    ps_col = df[col_map['print_status']].astype(str).str.strip()
+                    # Build unique (sn, ps) pairs from file
+                    file_pairs = list(set(zip(sn_col, ps_col)))
 
                     existing_keys = set()
                     batch_size = 1000
-                    for i in range(0, len(file_keys), batch_size):
-                        batch = file_keys[i:i+batch_size]
-                        result = session.execute(
-                            text("SELECT serial_number || '_' || print_status FROM bio_records WHERE serial_number || '_' || print_status IN :keys"),
-                            {"keys": tuple(batch) if len(batch) > 1 else (batch[0], batch[0])}
-                        )
-                        existing_keys.update(row[0] for row in result)
+                    for i in range(0, len(file_pairs), batch_size):
+                        batch = file_pairs[i:i+batch_size]
+                        # Use tuple comparison — PostgreSQL can use ix_bio_records_serial index
+                        result = session.query(
+                            BioRecord.serial_number, BioRecord.print_status
+                        ).filter(
+                            tuple_(BioRecord.serial_number, BioRecord.print_status).in_(batch)
+                        ).all()
+                        existing_keys.update(f"{r[0]}_{r[1]}" for r in result)
 
                     if existing_keys:
                         st.warning(f"⚠️ พบข้อมูลซ้ำในฐานข้อมูล {len(existing_keys):,} รายการ (Serial+Status เดียวกัน)")
-
-                    # Clean up temp column
-                    if '_check_key' in df.columns:
-                        df = df.drop(columns=['_check_key'])
             finally:
                 session.close()
 

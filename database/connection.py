@@ -180,6 +180,37 @@ def _run_migrations():
             )
             _log("Queued index: ix_cards_wrong_appt (partial)")
 
+    # ========== QLog table - partial indexes for check-in queries ==========
+    if 'qlogs' in tables and not is_sqlite:
+        existing_indexes = {idx['name'] for idx in inspector.get_indexes('qlogs')}
+        # Covering index for check-in count (WHERE qlog_num IS NOT NULL)
+        if 'ix_qlogs_checkin_cover' not in existing_indexes:
+            migrations.append(
+                "CREATE INDEX IF NOT EXISTS ix_qlogs_checkin_cover "
+                "ON qlogs (qlog_date, appointment_code) "
+                "WHERE qlog_num IS NOT NULL"
+            )
+            _log("Queued index: ix_qlogs_checkin_cover (partial)")
+        # Branch-filtered check-in breakdown
+        if 'ix_qlogs_branch_checkin' not in existing_indexes:
+            migrations.append(
+                "CREATE INDEX IF NOT EXISTS ix_qlogs_branch_checkin "
+                "ON qlogs (branch_code, qlog_date, appointment_code) "
+                "WHERE qlog_num IS NOT NULL"
+            )
+            _log("Queued index: ix_qlogs_branch_checkin (partial)")
+
+    # ========== Appointments table - partial index for active statuses ==========
+    if 'appointments' in tables and not is_sqlite:
+        existing_indexes = {idx['name'] for idx in inspector.get_indexes('appointments')}
+        if 'ix_appointments_active_cover' not in existing_indexes:
+            migrations.append(
+                "CREATE INDEX IF NOT EXISTS ix_appointments_active_cover "
+                "ON appointments (appt_date, appointment_id) "
+                "WHERE appt_status NOT IN ('CANCEL', 'EXPIRED')"
+            )
+            _log("Queued index: ix_appointments_active_cover (partial)")
+
     # ========== QLog table - add missing columns ==========
     if 'qlogs' in tables and not is_sqlite:
         existing_columns = {col['name'] for col in inspector.get_columns('qlogs')}
