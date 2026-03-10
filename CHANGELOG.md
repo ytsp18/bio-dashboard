@@ -2,6 +2,11 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [2.3.7] - 2026-03-10
+
+### Fixed
+- **Upload timeout on re-upload** — Replace ORM cascade delete (`session.delete()`) with bulk SQL DELETE for child tables when re-uploading existing report. ORM was deleting 8,000+ rows one-by-one causing statement timeout on Supabase.
+
 ## [2.3.6] - 2026-03-10
 
 ### Fixed

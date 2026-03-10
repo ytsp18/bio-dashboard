@@ -142,10 +142,14 @@ class DataService:
         _progress(20, "กำลังเตรียมนำเข้าฐานข้อมูล...")
 
         with session_scope() as session:
-            # Check if report already exists
+            # Check if report already exists — use bulk SQL DELETE (not ORM cascade)
             existing = session.query(Report).filter(Report.filename == filename).first()
             if existing:
-                session.delete(existing)
+                old_id = existing.id
+                # Bulk delete child tables first (fast SQL vs slow ORM cascade)
+                for child_model in [DeliveryCard, AnomalySLA, WrongCenter, CompleteDiff, CenterStat, BadCard, Card]:
+                    session.query(child_model).filter(child_model.report_id == old_id).delete(synchronize_session=False)
+                session.query(Report).filter(Report.id == old_id).delete(synchronize_session=False)
                 session.flush()
 
             # Create report record (ORM - only 1 row)
