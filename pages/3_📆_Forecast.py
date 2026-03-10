@@ -534,6 +534,9 @@ selected_branches = tuple(selected_branch_codes) if selected_branch_codes else N
 # Get Data
 stats = get_upcoming_appointments_full(selected_branches, start_date, end_date, include_all_status)
 
+# Branch short name map for display (used in treemap, bar chart, table)
+short_name_map = get_branch_short_name_map()
+
 if stats['has_data']:
     # Summary Metrics
     st.markdown("---")
