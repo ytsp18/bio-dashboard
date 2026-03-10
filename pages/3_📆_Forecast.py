@@ -22,7 +22,7 @@ from utils.branch_display import get_branch_short_name_map
 init_db()
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def get_checkin_data(selected_branches=None, start_date=None, end_date=None):
     """
     Get check-in data from QLog for comparison with appointments.
@@ -89,7 +89,7 @@ def get_checkin_data(selected_branches=None, start_date=None, end_date=None):
         session.close()
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def get_branch_list_forecast():
     """Get list of all branches that have appointments."""
     session = get_session()
@@ -114,7 +114,7 @@ def get_branch_list_forecast():
         session.close()
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def get_upcoming_appointments_full(selected_branches=None, start_date=None, end_date=None, include_all_status=False):
     """
     Get detailed appointments for workload forecasting.

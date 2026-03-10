@@ -25,7 +25,7 @@ st.set_page_config(page_title="Queue Slots - Bio Dashboard", page_icon="🎯", l
 # Cached Data Functions (local imports เพื่อป้องกัน cache break)
 # ============================================================
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_capacity_map():
     """ดึง max_capacity ของทุกศูนย์จาก BranchMaster."""
     from database.connection import get_session as _get_session
@@ -48,7 +48,7 @@ def get_capacity_map():
         _session.close()
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_booked_slots(start_date, end_date, selected_branches=None):
     """ดึงจำนวน appointment ที่จองแล้ว GROUP BY branch_code, appt_date."""
     from database.connection import get_session as _get_session
@@ -83,7 +83,7 @@ def get_booked_slots(start_date, end_date, selected_branches=None):
         _session.close()
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_slot_cut_data(start_date, end_date, selected_branches=None):
     """ดึงข้อมูล slot ที่ถูกตัด — ผู้รับบริการไปออกบัตรผิดวัน/ผิดศูนย์แล้ว."""
     from database.connection import get_session as _get_session

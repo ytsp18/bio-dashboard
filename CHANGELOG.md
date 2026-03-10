@@ -2,6 +2,14 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [2.3.8] - 2026-03-10
+
+### Changed
+- **Cache TTL optimization** — Increase all page cache TTLs from 60-600s to 3600s (1 hour). Data updates once daily so frequent re-queries were unnecessary. Affected pages: Overview (6 queries), Forecast (3), Queue Slots (3), By Center (2).
+
+### Fixed
+- **Anomaly page link broken** — Overview action cards referenced old page path `6_⚠️_Anomaly.py` instead of `7_⚠️_Anomaly.py` after page reorder.
+
 ## [2.3.7] - 2026-03-10
 
 ### Fixed

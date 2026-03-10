@@ -26,7 +26,7 @@ init_db()
 
 
 # Cached function for branch list
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=3600)
 def get_branch_list():
     """Get list of all branches from BranchMaster (primary) with fallback to Card table."""
     session = get_session()
@@ -55,7 +55,7 @@ def get_branch_list():
 
 
 # Cached function for overview stats - OPTIMIZED version
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def get_overview_stats(start_date, end_date, selected_branches=None):
     """Get cached overview statistics - optimized with combined queries."""
     start_time = time.perf_counter()
@@ -307,7 +307,7 @@ def get_overview_stats(start_date, end_date, selected_branches=None):
         log_perf(f"get_overview_stats({start_date} to {end_date})", duration)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def get_daily_stats(start_date, end_date, selected_branches=None):
     """Get cached daily statistics for chart - separated by center type (SC/OB)."""
     start_time = time.perf_counter()
@@ -397,7 +397,7 @@ def get_daily_stats(start_date, end_date, selected_branches=None):
         log_perf(f"get_daily_stats({start_date} to {end_date})", duration)
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=3600)
 def get_date_range():
     """Get cached min/max dates."""
     start_time = time.perf_counter()
@@ -418,7 +418,7 @@ def get_date_range():
         log_perf("get_date_range", duration)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def get_upcoming_appointments(selected_branches=None):
     """
     Get upcoming appointments for workload forecasting.
@@ -655,7 +655,7 @@ def get_upcoming_appointments(selected_branches=None):
         log_perf("get_upcoming_appointments", duration)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def get_appointment_service_stats(start_date, end_date, selected_branches=None):
     """
     Get appointment → check-in → card issuance funnel statistics.
@@ -1746,7 +1746,7 @@ else:
             status="warning" if wrong_branch > 0 else "ok",
             count=wrong_branch if wrong_branch > 0 else None,
             action_label="ดูรายละเอียด" if wrong_branch > 0 else None,
-            action_page="pages/6_⚠️_Anomaly.py" if wrong_branch > 0 else None,
+            action_page="pages/7_⚠️_Anomaly.py" if wrong_branch > 0 else None,
         )
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
@@ -1757,7 +1757,7 @@ else:
             status="warning" if wrong_date > 0 else "ok",
             count=wrong_date if wrong_date > 0 else None,
             action_label="ดูรายละเอียด" if wrong_date > 0 else None,
-            action_page="pages/6_⚠️_Anomaly.py" if wrong_date > 0 else None,
+            action_page="pages/7_⚠️_Anomaly.py" if wrong_date > 0 else None,
         )
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
@@ -1768,7 +1768,7 @@ else:
             status="critical" if duplicate_serial > 0 else "ok",
             count=duplicate_serial if duplicate_serial > 0 else None,
             action_label="ดูรายละเอียด" if duplicate_serial > 0 else None,
-            action_page="pages/6_⚠️_Anomaly.py" if duplicate_serial > 0 else None,
+            action_page="pages/7_⚠️_Anomaly.py" if duplicate_serial > 0 else None,
         )
 
     with col2:
@@ -1779,7 +1779,7 @@ else:
             status="warning" if appt_multiple_g > 0 else "ok",
             count=appt_multiple_g if appt_multiple_g > 0 else None,
             action_label="ดูรายละเอียด" if appt_multiple_g > 0 else None,
-            action_page="pages/6_⚠️_Anomaly.py" if appt_multiple_g > 0 else None,
+            action_page="pages/7_⚠️_Anomaly.py" if appt_multiple_g > 0 else None,
         )
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
@@ -1790,7 +1790,7 @@ else:
             status="warning" if sla_over_12 > 0 else "ok",
             count=sla_over_12 if sla_over_12 > 0 else None,
             action_label="ดูรายละเอียด" if sla_over_12 > 0 else None,
-            action_page="pages/6_⚠️_Anomaly.py" if sla_over_12 > 0 else None,
+            action_page="pages/7_⚠️_Anomaly.py" if sla_over_12 > 0 else None,
         )
         st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
@@ -1801,7 +1801,7 @@ else:
             status="warning" if wait_over_1hr > 0 else "ok",
             count=wait_over_1hr if wait_over_1hr > 0 else None,
             action_label="ดูรายละเอียด" if wait_over_1hr > 0 else None,
-            action_page="pages/6_⚠️_Anomaly.py" if wait_over_1hr > 0 else None,
+            action_page="pages/7_⚠️_Anomaly.py" if wait_over_1hr > 0 else None,
         )
 
     # Quick action button to Anomaly page
@@ -1809,4 +1809,4 @@ else:
         st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
         col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
         with col_btn2:
-            st.page_link("pages/6_⚠️_Anomaly.py", label="📋 ไปหน้า Anomaly เพื่อตรวจสอบทั้งหมด", icon="➡️", use_container_width=True)
+            st.page_link("pages/7_⚠️_Anomaly.py", label="📋 ไปหน้า Anomaly เพื่อตรวจสอบทั้งหมด", icon="➡️", use_container_width=True)

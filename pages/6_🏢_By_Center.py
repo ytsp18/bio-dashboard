@@ -24,7 +24,7 @@ init_db()
 st.set_page_config(page_title="Center & Region - Bio Dashboard", page_icon="🏢", layout="wide")
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_center_stats_cached(start_date, end_date):
     """Cached center statistics query."""
     from types import SimpleNamespace
@@ -68,7 +68,7 @@ def get_center_stats_cached(start_date, end_date):
         _session.close()
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_region_stats_cached(start_date, end_date):
     """Cached region statistics query."""
     from types import SimpleNamespace
