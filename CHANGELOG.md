@@ -2,6 +2,11 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [2.3.6] - 2026-03-10
+
+### Fixed
+- **Upload UnboundLocalError** — Fix `cannot access local variable 'sheet13_indexed'` when importing unified reports where Sheet 13 has enough data to trigger `use_sheet_13_only=True` path. Added default `pd.DataFrame()` initialization before conditional block.
+
 ## [2.3.5] - 2026-02-24
 
 ### Added

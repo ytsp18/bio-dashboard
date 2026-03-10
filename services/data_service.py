@@ -114,6 +114,7 @@ class DataService:
 
         # Build Sheet 13 lookup for enrichment (monthly reports)
         sheet13_lookup = {}
+        sheet13_indexed = pd.DataFrame()
         if not use_sheet_13_only and total_from_all > 0:
             sheet13_indexed = all_data.set_index('serial_number', drop=False) if 'serial_number' in all_data.columns else pd.DataFrame()
             # De-duplicate index (keep first)
