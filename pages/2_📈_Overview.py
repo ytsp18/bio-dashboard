@@ -492,8 +492,8 @@ def get_upcoming_appointments(selected_branches=None):
         next_7_count = period_counts.next_7 or 0
         next_30_count = period_counts.next_30 or 0
 
-        # Daily breakdown for chart (next 30 days or until max date)
-        chart_end_date = min(next_30_days, max_future_date)
+        # Daily breakdown for chart — show ALL available future appointment data
+        chart_end_date = max_future_date
         daily_appts = session.query(
             Appointment.appt_date,
             func.count(func.distinct(Appointment.appointment_id)).label('total')
@@ -730,12 +730,32 @@ def get_appointment_service_stats(start_date, end_date, selected_branches=None):
             bio_served = card_issued  # same count — unique appt_ids that got cards
 
         # 4. Skip queue = served by Bio but no QLog check-in
-        # Approximation: skip_queue ≈ bio_served - checked_in
-        # (Avoids slow NOT IN subquery across 200K+ rows on Supabase)
+        # Use EXISTS to compute overlap (bio appts that also have qlog) — ~6s for 30 days
         if not has_qlog_data:
             skip_queue = bio_served
+        elif has_bio_data and bio_served > 0:
+            from sqlalchemy import exists as sa_exists_fn
+            qlog_exists_filters = [
+                QLog.appointment_code == BioRecord.appointment_id,
+                QLog.qlog_date >= start_date,
+                QLog.qlog_date <= end_date,
+                QLog.qlog_num.isnot(None),
+            ]
+            if selected_branches and len(selected_branches) > 0:
+                qlog_exists_filters.append(QLog.branch_code.in_(selected_branches))
+            qlog_exists = sa_exists_fn().where(and_(*qlog_exists_filters))
+
+            overlap_q = session.query(func.count(func.distinct(BioRecord.appointment_id))).filter(
+                BioRecord.print_date >= start_date,
+                BioRecord.print_date <= end_date,
+                qlog_exists,
+            )
+            if selected_branches and len(selected_branches) > 0:
+                overlap_q = overlap_q.filter(BioRecord.branch_code.in_(selected_branches))
+            overlap = overlap_q.scalar() or 0
+            skip_queue = max(0, bio_served - overlap)
         else:
-            skip_queue = max(0, bio_served - checked_in)
+            skip_queue = 0
 
         no_show = max(0, total_appts - checked_in - skip_queue)
 
@@ -781,15 +801,35 @@ def get_appointment_service_stats(start_date, end_date, selected_branches=None):
             daily_bio = daily_bio.group_by(BioRecord.print_date).all()
             bio_map = {d.print_date: d.issued for d in daily_bio}
 
-        # Get daily skip-queue counts using SQL (fast — no row-by-row fetch)
+        # Get daily skip-queue via EXISTS overlap (accurate — ~3s for 30 days)
         skip_queue_map = {}
-        if has_bio_data:
-            # Approximate daily skip_queue from already-computed maps:
-            # skip_queue_day ≈ max(0, bio_issued_day - checkin_day)
-            # This is fast and accurate enough for daily chart display
+        if has_bio_data and bio_map:
+            daily_qlog_exists_filters = [
+                QLog.appointment_code == BioRecord.appointment_id,
+                QLog.qlog_date == BioRecord.print_date,
+                QLog.qlog_num.isnot(None),
+            ]
+            if selected_branches and len(selected_branches) > 0:
+                daily_qlog_exists_filters.append(QLog.branch_code.in_(selected_branches))
+            from sqlalchemy import exists as sa_exists_fn2
+            daily_qlog_exists = sa_exists_fn2().where(and_(*daily_qlog_exists_filters))
+
+            daily_overlap_q = session.query(
+                BioRecord.print_date,
+                func.count(func.distinct(BioRecord.appointment_id)).label('overlap')
+            ).filter(
+                BioRecord.print_date >= start_date,
+                BioRecord.print_date <= end_date,
+                daily_qlog_exists,
+            )
+            if selected_branches and len(selected_branches) > 0:
+                daily_overlap_q = daily_overlap_q.filter(BioRecord.branch_code.in_(selected_branches))
+            daily_overlap = daily_overlap_q.group_by(BioRecord.print_date).all()
+            overlap_map = {d.print_date: d.overlap for d in daily_overlap}
+
             for dt, bio_count in bio_map.items():
-                checkin_count = checkin_map.get(dt, 0)
-                skip_queue_map[dt] = max(0, bio_count - checkin_count)
+                overlap_count = overlap_map.get(dt, 0)
+                skip_queue_map[dt] = max(0, bio_count - overlap_count)
 
         # Combine into daily_data
         for d in daily_appts:

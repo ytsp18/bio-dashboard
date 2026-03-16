@@ -438,7 +438,7 @@ if view_mode == "future":
         days_preset = st.selectbox(
             "ช่วงเวลา",
             options=[7, 14, 30, 60, 90],
-            index=2,
+            index=4,
             format_func=lambda x: f"{x} วันข้างหน้า",
             key="days_preset"
         )

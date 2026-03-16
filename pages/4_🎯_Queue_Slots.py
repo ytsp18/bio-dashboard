@@ -412,10 +412,32 @@ st.markdown("---")
 
 # ---------- Calendar Heatmap ----------
 if view_mode == "all":
-    st.subheader("📅 Calendar Heatmap — ทุกศูนย์รวม")
-    cal_data = build_calendar_data(list(all_branches_set), booked_data, cut_data['by_branch_date'], capacity_map, sel_month, sel_year)
-    options = build_calendar_options(cal_data, sel_month, sel_year)
-    st_echarts(options=options, height="320px", key="cal_all")
+    # Classify branches by service type
+    sc_branches = [bc for bc in all_branches_set if '-SC-' in str(bc).upper()]
+    ob_branches = [bc for bc in all_branches_set if '-OB-' in str(bc).upper()]
+
+    st.subheader("📅 Calendar Heatmap — แยกตามประเภทบริการ")
+
+    # Show SC and OB heatmaps side by side
+    hm_col1, hm_col2 = st.columns(2)
+    with hm_col1:
+        st.markdown("**ศูนย์บริการ (SC)**")
+        if sc_branches:
+            cal_sc = build_calendar_data(sc_branches, booked_data, cut_data['by_branch_date'], capacity_map, sel_month, sel_year)
+            max_cap_sc = sum(capacity_map.get(bc, {}).get('capacity', 0) for bc in sc_branches)
+            options_sc = build_calendar_options(cal_sc, sel_month, sel_year, max_cap=max_cap_sc)
+            st_echarts(options=options_sc, height="320px", key="cal_sc")
+        else:
+            st.info("ไม่พบข้อมูลศูนย์ SC")
+    with hm_col2:
+        st.markdown("**ศูนย์แรกรับ (OB)**")
+        if ob_branches:
+            cal_ob = build_calendar_data(ob_branches, booked_data, cut_data['by_branch_date'], capacity_map, sel_month, sel_year)
+            max_cap_ob = sum(capacity_map.get(bc, {}).get('capacity', 0) for bc in ob_branches)
+            options_ob = build_calendar_options(cal_ob, sel_month, sel_year, max_cap=max_cap_ob)
+            st_echarts(options=options_ob, height="320px", key="cal_ob")
+        else:
+            st.info("ไม่พบข้อมูลศูนย์ OB")
 
     # คำอธิบายสี
     st.markdown("""
@@ -515,8 +537,23 @@ for bc in table_branches:
     row_data['total_avail'] = total_avail
     table_rows.append(row_data)
 
-# เรียงตาม slot ว่างน้อยสุดขึ้นก่อน
-table_rows.sort(key=lambda x: x['total_avail'])
+# Classify rows by service type then sort within each group
+def get_service_type(bc):
+    bc_upper = str(bc).upper()
+    if '-SC-' in bc_upper:
+        return 'SC'
+    elif '-OB-' in bc_upper:
+        return 'OB'
+    elif '-MB-' in bc_upper:
+        return 'MB'
+    return 'OTHER'
+
+for row in table_rows:
+    row['service_type'] = get_service_type(row['branch_code'])
+
+# Sort: SC first, then OB, then others — within each group sort by availability
+type_order = {'SC': 0, 'OB': 1, 'MB': 2, 'OTHER': 3}
+table_rows.sort(key=lambda x: (type_order.get(x['service_type'], 9), x['total_avail']))
 
 
 def get_slot_cell_style(available, capacity):
@@ -558,8 +595,16 @@ for ud in upcoming_dates:
     html_parts.append(f'<th>{ud.strftime("%d/%m")}<br/><small>{day_name}</small></th>')
 html_parts.append('</tr></thead><tbody>')
 
-# แถวข้อมูล
+# แถวข้อมูล — แยกกลุ่มตามประเภทบริการ
+type_labels = {'SC': '🏢 ศูนย์บริการ (SC)', 'OB': '🏗️ ศูนย์แรกรับ (OB)', 'MB': '🚐 หน่วยเคลื่อนที่ (MB)', 'OTHER': '📦 อื่นๆ'}
+current_type = None
+num_cols = len(upcoming_dates) + 2  # name + cap + dates
 for row in table_rows:
+    stype = row.get('service_type', 'OTHER')
+    if stype != current_type:
+        current_type = stype
+        label = type_labels.get(stype, stype)
+        html_parts.append(f'<tr><td colspan="{num_cols}" style="background: #f0f4ff; color: #3b82f6; font-weight: bold; text-align: left; padding: 8px 12px; border-top: 2px solid #93c5fd;">{label}</td></tr>')
     html_parts.append('<tr>')
     name = html_escape(str(row['name'])[:35])
     full_name = html_escape(str(row['name']))
