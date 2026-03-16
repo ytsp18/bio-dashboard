@@ -160,6 +160,8 @@ def get_upcoming_appointments_full(selected_branches=None, start_date=None, end_
         base_filters = [
             Appointment.appt_date >= start_date,
             Appointment.appt_date <= end_date,
+            Appointment.branch_code.isnot(None),
+            Appointment.branch_code != '',
         ]
 
         # Filter by status based on mode

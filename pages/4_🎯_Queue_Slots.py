@@ -620,6 +620,11 @@ for row in table_rows:
 
         if cap <= 0:
             cell_text = '-'
+        elif available < 0:
+            over = abs(available)
+            cell_text = f"<b>เกิน {over}</b>"
+            if cuts > 0:
+                cell_text += f" <small style='color:#d97706;'>✂️{cuts}</small>"
         else:
             cell_text = f"{available}/{cap}"
             if cuts > 0:
@@ -636,6 +641,7 @@ st.markdown("""
 <div style="background: #ffffff; border-radius: 8px; padding: 8px 16px; border: 1px solid #e5e7eb; margin-top: 8px;">
     <span style="color: #6b7280; font-size: 0.85rem;">
         <b>อ่านค่า:</b> <code>ว่าง/Cap</code> เช่น <code>12/80</code> = ว่าง 12 จาก 80 |
+        <b style="color: #7f1d1d;">เกิน 5</b> = จองเกิน Cap 5 slot |
         <span style="color: #d97706;">✂️3</span> = ตัด 3 slot |
         <b>สี:</b>
         <span style="background: rgba(34,197,94,0.3); padding: 1px 6px; border-radius: 3px;">≥20%</span>
