@@ -730,36 +730,12 @@ def get_appointment_service_stats(start_date, end_date, selected_branches=None):
             bio_served = card_issued  # same count — unique appt_ids that got cards
 
         # 4. Skip queue = served by Bio but no QLog check-in
-        # skip_queue = bio_served - overlap(bio, qlog)
-        # no_show = total - checked_in - skip_queue
-        skip_queue = max(0, bio_served - min(bio_served, checked_in))
-        # More precise: count appt_ids in Bio that are NOT in QLog
-        if has_bio_data:
-            bio_appt_subq = session.query(func.distinct(BioRecord.appointment_id)).filter(
-                BioRecord.print_date >= start_date,
-                BioRecord.print_date <= end_date,
-            )
-            if selected_branches and len(selected_branches) > 0:
-                bio_appt_subq = bio_appt_subq.filter(BioRecord.branch_code.in_(selected_branches))
-
-            if has_qlog_data:
-                qlog_appt_subq = session.query(func.distinct(QLog.appointment_code)).filter(
-                    QLog.qlog_date >= start_date,
-                    QLog.qlog_date <= end_date,
-                    QLog.qlog_num.isnot(None),
-                )
-                if selected_branches and len(selected_branches) > 0:
-                    qlog_appt_subq = qlog_appt_subq.filter(QLog.branch_code.in_(selected_branches))
-
-                # Bio appt_ids NOT IN QLog appt_codes = skip queue
-                skip_queue = session.query(func.count()).select_from(
-                    bio_appt_subq.filter(
-                        ~BioRecord.appointment_id.in_(qlog_appt_subq)
-                    ).subquery()
-                ).scalar() or 0
-            else:
-                # No QLog data at all — all bio_served skipped queue
-                skip_queue = bio_served
+        # Approximation: skip_queue ≈ bio_served - checked_in
+        # (Avoids slow NOT IN subquery across 200K+ rows on Supabase)
+        if not has_qlog_data:
+            skip_queue = bio_served
+        else:
+            skip_queue = max(0, bio_served - checked_in)
 
         no_show = max(0, total_appts - checked_in - skip_queue)
 
