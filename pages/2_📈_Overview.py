@@ -854,15 +854,14 @@ if not min_date or not max_date:
     st.info("ยังไม่มีข้อมูล - กรุณาอัพโหลดไฟล์รายงานก่อน")
 else:
     if 'filter_start' not in st.session_state:
-        st.session_state.filter_start = min_date
+        # Default to last 30 days (not full range) for fast initial load
+        st.session_state.filter_start = max(min_date, max_date - timedelta(days=30))
     if 'filter_end' not in st.session_state:
         st.session_state.filter_end = max_date
 
     if st.session_state.filter_start < min_date:
         st.session_state.filter_start = min_date
     if st.session_state.filter_end > max_date:
-        st.session_state.filter_end = max_date
-    if st.session_state.filter_end < max_date:
         st.session_state.filter_end = max_date
 
     # Filter Section
