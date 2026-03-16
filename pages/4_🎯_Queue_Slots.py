@@ -347,7 +347,7 @@ def build_calendar_options(cal_data, month, year, title="", max_cap=None):
     options = {
         "title": {"text": title, "left": "center", "textStyle": {"fontSize": 14}} if title else {},
         "tooltip": {
-            "show": True,
+            "show": False,
         },
         "visualMap": {
             "min": -1,
@@ -395,8 +395,8 @@ def build_calendar_options(cal_data, month, year, title="", max_cap=None):
             "data": heatmap_data,
             "label": {
                 "show": True,
-                "formatter": "{c}",
-                "fontSize": 12,
+                "formatter": "{@[1]}",
+                "fontSize": 10,
                 "fontWeight": "bold",
                 "color": "#333",
             },
@@ -418,26 +418,24 @@ if view_mode == "all":
 
     st.subheader("📅 Calendar Heatmap — แยกตามประเภทบริการ")
 
-    # Show SC and OB heatmaps side by side
-    hm_col1, hm_col2 = st.columns(2)
-    with hm_col1:
-        st.markdown("**ศูนย์บริการ (SC)**")
-        if sc_branches:
-            cal_sc = build_calendar_data(sc_branches, booked_data, cut_data['by_branch_date'], capacity_map, sel_month, sel_year)
-            max_cap_sc = sum(capacity_map.get(bc, {}).get('capacity', 0) for bc in sc_branches)
-            options_sc = build_calendar_options(cal_sc, sel_month, sel_year, max_cap=max_cap_sc)
-            st_echarts(options=options_sc, height="320px", key="cal_sc")
-        else:
-            st.info("ไม่พบข้อมูลศูนย์ SC")
-    with hm_col2:
-        st.markdown("**ศูนย์แรกรับ (OB)**")
-        if ob_branches:
-            cal_ob = build_calendar_data(ob_branches, booked_data, cut_data['by_branch_date'], capacity_map, sel_month, sel_year)
-            max_cap_ob = sum(capacity_map.get(bc, {}).get('capacity', 0) for bc in ob_branches)
-            options_ob = build_calendar_options(cal_ob, sel_month, sel_year, max_cap=max_cap_ob)
-            st_echarts(options=options_ob, height="320px", key="cal_ob")
-        else:
-            st.info("ไม่พบข้อมูลศูนย์ OB")
+    # Show SC and OB heatmaps stacked vertically for full width
+    st.markdown("**🏢 ศูนย์บริการ (SC)**")
+    if sc_branches:
+        cal_sc = build_calendar_data(sc_branches, booked_data, cut_data['by_branch_date'], capacity_map, sel_month, sel_year)
+        max_cap_sc = sum(capacity_map.get(bc, {}).get('capacity', 0) for bc in sc_branches)
+        options_sc = build_calendar_options(cal_sc, sel_month, sel_year, max_cap=max_cap_sc)
+        st_echarts(options=options_sc, height="280px", key="cal_sc")
+    else:
+        st.info("ไม่พบข้อมูลศูนย์ SC")
+
+    st.markdown("**🏗️ ศูนย์แรกรับ (OB)**")
+    if ob_branches:
+        cal_ob = build_calendar_data(ob_branches, booked_data, cut_data['by_branch_date'], capacity_map, sel_month, sel_year)
+        max_cap_ob = sum(capacity_map.get(bc, {}).get('capacity', 0) for bc in ob_branches)
+        options_ob = build_calendar_options(cal_ob, sel_month, sel_year, max_cap=max_cap_ob)
+        st_echarts(options=options_ob, height="280px", key="cal_ob")
+    else:
+        st.info("ไม่พบข้อมูลศูนย์ OB")
 
     # คำอธิบายสี
     st.markdown("""
