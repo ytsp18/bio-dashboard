@@ -112,6 +112,106 @@ def get_region_stats_cached(start_date, end_date):
     finally:
         _session.close()
 
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_service_funnel_by_branch_cached(start_date, end_date):
+    """Get appointment service funnel (appointments, check-in, skip_queue, no_show) per branch."""
+    from database.connection import get_session as _get_session
+    from database.models import Appointment as _Appt, QLog as _QLog, BioRecord as _Bio
+    from sqlalchemy import func as _func, and_ as _and
+
+    _session = _get_session()
+    try:
+        # 1. Appointments per branch (exclude CANCEL/EXPIRED)
+        appt_rows = _session.query(
+            _Appt.branch_code,
+            _func.count(_func.distinct(_Appt.appointment_id)).label('total')
+        ).filter(
+            _and(
+                _Appt.appt_date >= start_date,
+                _Appt.appt_date <= end_date,
+                ~_Appt.appt_status.in_(['CANCEL', 'EXPIRED'])
+            )
+        ).group_by(_Appt.branch_code).all()
+        appt_map = {r.branch_code: r.total for r in appt_rows}
+
+        if not appt_map:
+            return {}
+
+        # 2. QLog check-in per branch
+        qlog_rows = _session.query(
+            _QLog.branch_code,
+            _func.count(_func.distinct(_QLog.appointment_code)).label('checkin')
+        ).filter(
+            _and(
+                _QLog.qlog_date >= start_date,
+                _QLog.qlog_date <= end_date,
+                _QLog.qlog_num.isnot(None),
+            )
+        ).group_by(_QLog.branch_code).all()
+        qlog_map = {r.branch_code: r.checkin for r in qlog_rows}
+
+        # 3. Bio served per branch (unique appointment_ids that got cards)
+        bio_rows = _session.query(
+            _Bio.branch_code,
+            _func.count(_func.distinct(_Bio.appointment_id)).label('served')
+        ).filter(
+            _and(
+                _Bio.print_date >= start_date,
+                _Bio.print_date <= end_date,
+            )
+        ).group_by(_Bio.branch_code).all()
+        bio_map = {r.branch_code: r.served for r in bio_rows}
+
+        # 4. Skip queue per branch: Bio appointment_ids NOT in QLog
+        # Get all QLog appointment_codes as a set per branch
+        qlog_detail = _session.query(
+            _QLog.branch_code, _QLog.appointment_code
+        ).filter(
+            _and(
+                _QLog.qlog_date >= start_date,
+                _QLog.qlog_date <= end_date,
+                _QLog.qlog_num.isnot(None),
+            )
+        ).all()
+        qlog_sets = {}
+        for row in qlog_detail:
+            qlog_sets.setdefault(row.branch_code, set()).add(row.appointment_code)
+
+        bio_detail = _session.query(
+            _Bio.branch_code, _Bio.appointment_id
+        ).filter(
+            _and(
+                _Bio.print_date >= start_date,
+                _Bio.print_date <= end_date,
+            )
+        ).all()
+        bio_sets = {}
+        for row in bio_detail:
+            bio_sets.setdefault(row.branch_code, set()).add(row.appointment_id)
+
+        # Compute skip_queue per branch
+        all_branches = set(appt_map.keys()) | set(bio_map.keys())
+        result = {}
+        for bc in all_branches:
+            total = appt_map.get(bc, 0)
+            checkin = qlog_map.get(bc, 0)
+            bio_appts = bio_sets.get(bc, set())
+            qlog_appts = qlog_sets.get(bc, set())
+            skip_queue = len(bio_appts - qlog_appts)
+            no_show = max(0, total - checkin - skip_queue)
+            result[bc] = {
+                'total_appts': total,
+                'checked_in': checkin,
+                'skip_queue': skip_queue,
+                'no_show': no_show,
+                'bio_served': bio_map.get(bc, 0),
+            }
+        return result
+    finally:
+        _session.close()
+
+
 # Check authentication
 require_login()
 
@@ -328,6 +428,8 @@ try:
 
             # Get center statistics (cached)
             center_stats = get_center_stats_cached(start_date, end_date)
+            # Get appointment service funnel per branch (skip_queue, no_show)
+            service_funnel = get_service_funnel_by_branch_cached(start_date, end_date)
 
             if center_stats:
                 # Get branch name mapping from BranchMaster
@@ -412,6 +514,13 @@ try:
                 total_good = sum(cs.good_count or 0 for cs in filtered_center_stats)
                 avg_sla_all = sum((cs.avg_sla or 0) * cs.total for cs in filtered_center_stats) / total_cards if total_cards > 0 else 0
 
+                # Aggregate funnel metrics for filtered centers
+                filtered_codes = [cs.branch_code for cs in filtered_center_stats]
+                total_appts_sum = sum(service_funnel.get(bc, {}).get('total_appts', 0) for bc in filtered_codes)
+                total_checkin_sum = sum(service_funnel.get(bc, {}).get('checked_in', 0) for bc in filtered_codes)
+                total_skip_queue_sum = sum(service_funnel.get(bc, {}).get('skip_queue', 0) for bc in filtered_codes)
+                total_noshow_sum = sum(service_funnel.get(bc, {}).get('no_show', 0) for bc in filtered_codes)
+
                 filter_text = f" (กรอง: {selected_filter})" if selected_filter != 'ทั้งหมด' else ""
 
                 col1, col2, col3, col4 = st.columns(4)
@@ -424,6 +533,21 @@ try:
                     st.metric("✅ อัตราบัตรดีรวม", f"{good_rate:.1f}%")
                 with col4:
                     st.metric("⏱️ SLA เฉลี่ยรวม", f"{avg_sla_all:.2f} นาที")
+
+                # Appointment funnel metrics row
+                if total_appts_sum > 0:
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("📅 นัดหมาย", f"{total_appts_sum:,}")
+                    with col2:
+                        checkin_pct = (total_checkin_sum / total_appts_sum * 100) if total_appts_sum > 0 else 0
+                        st.metric("🏢 มา Check-in", f"{total_checkin_sum:,}", f"{checkin_pct:.1f}%")
+                    with col3:
+                        skip_pct = (total_skip_queue_sum / total_appts_sum * 100) if total_appts_sum > 0 else 0
+                        st.metric("⚠️ ไม่ผ่านตู้คิว", f"{total_skip_queue_sum:,}", f"{skip_pct:.1f}%")
+                    with col4:
+                        noshow_pct = (total_noshow_sum / total_appts_sum * 100) if total_appts_sum > 0 else 0
+                        st.metric("❌ ไม่มา (No-Show)", f"{total_noshow_sum:,}", f"{noshow_pct:.1f}%")
 
                 # Tabs for different views
                 tab1, tab2, tab3, tab4 = st.tabs([
@@ -444,6 +568,7 @@ try:
                         province = center_to_province.get(cs.branch_code, '-')
                         # Get branch name from BranchMaster
                         branch_name = branch_name_map.get(cs.branch_code, cs.branch_name or '-')
+                        funnel = service_funnel.get(cs.branch_code, {})
                         center_data.append({
                             'ศูนย์บริการ': short_name_map.get(cs.branch_code, branch_name or '-'),
                             'จังหวัด': province,
@@ -451,6 +576,10 @@ try:
                             'บัตรดี': cs.good_count or 0,
                             'บัตรเสีย': cs.bad_count or 0,
                             'อัตราบัตรดี (%)': round(good_rate, 1),
+                            'นัดหมาย': funnel.get('total_appts', 0),
+                            'Check-in': funnel.get('checked_in', 0),
+                            'ไม่ผ่านตู้คิว': funnel.get('skip_queue', 0),
+                            'ไม่มา': funnel.get('no_show', 0),
                             'SLA เฉลี่ย': round(cs.avg_sla, 2) if cs.avg_sla else 0,
                             'SLA สูงสุด': round(cs.max_sla, 2) if cs.max_sla else 0,
                             'SLA เกิน': cs.sla_over_count or 0,
@@ -467,6 +596,9 @@ try:
                             'จำนวนทั้งหมด': 'จำนวนบัตรทั้งหมด',
                             'บัตรดี': 'จำนวนบัตรดี',
                             'อัตราบัตรดี (%)': 'อัตราบัตรดี',
+                            'นัดหมาย': 'จำนวนนัดหมาย',
+                            'ไม่ผ่านตู้คิว': 'ไม่ผ่านตู้คิว',
+                            'ไม่มา': 'ไม่มา (No-Show)',
                             'SLA เฉลี่ย': 'SLA เฉลี่ย',
                             'SLA สูงสุด': 'SLA สูงสุด',
                             'จังหวัด': 'จังหวัด'
@@ -798,6 +930,24 @@ try:
                                 st.metric("🏢 ออกบัตรผิดศูนย์", f"{center_info.wrong_branch_count or 0:,}")
                             with col4:
                                 st.metric("📅 นัดหมายผิดวัน", f"{center_info.wrong_date_count or 0:,}")
+
+                            # Appointment funnel for this center
+                            center_funnel = service_funnel.get(selected_center_code, {})
+                            if center_funnel.get('total_appts', 0) > 0:
+                                st.markdown("---")
+                                st.markdown("##### 📅 สถิติบริการ (Appointment Funnel)")
+                                col1, col2, col3, col4 = st.columns(4)
+                                with col1:
+                                    st.metric("📅 นัดหมาย", f"{center_funnel['total_appts']:,}")
+                                with col2:
+                                    ci_pct = (center_funnel['checked_in'] / center_funnel['total_appts'] * 100)
+                                    st.metric("🏢 มา Check-in", f"{center_funnel['checked_in']:,}", f"{ci_pct:.1f}%")
+                                with col3:
+                                    sq_pct = (center_funnel['skip_queue'] / center_funnel['total_appts'] * 100)
+                                    st.metric("⚠️ ไม่ผ่านตู้คิว", f"{center_funnel['skip_queue']:,}", f"{sq_pct:.1f}%")
+                                with col4:
+                                    ns_pct = (center_funnel['no_show'] / center_funnel['total_appts'] * 100)
+                                    st.metric("❌ ไม่มา", f"{center_funnel['no_show']:,}", f"{ns_pct:.1f}%")
 
                             # Daily trend for this center
                             st.markdown("---")

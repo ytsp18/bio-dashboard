@@ -366,46 +366,66 @@ with tab2:
         st.success(f"เลือกไฟล์: **{uploaded_appt.name}**")
 
         try:
+            # --- Step 1: Read file (chunked for large CSV) ---
+            CHUNK_SIZE = 50_000
+
             if uploaded_appt.name.endswith('.csv'):
-                # Try Thai encodings first (windows-874/tis-620), then others
+                # Detect encoding first
                 encodings = ['utf-8', 'utf-8-sig', 'windows-874', 'tis-620', 'cp874', 'cp1252', 'latin1']
-                df = None
+                detected_enc = None
                 for enc in encodings:
                     try:
                         uploaded_appt.seek(0)
-                        # Read header first to get expected column count
                         header_line = uploaded_appt.readline().decode(enc).strip()
-                        expected_cols = len(header_line.split(','))
+                        # Quick validation with small sample
                         uploaded_appt.seek(0)
-
-                        # Read CSV with index_col=False to prevent pandas from using first column as index
-                        # low_memory=False for large files to ensure consistent dtype inference
-                        import warnings
-                        with warnings.catch_warnings():
-                            warnings.filterwarnings('ignore', message='Length of header or names does not match')
-                            df = pd.read_csv(uploaded_appt, index_col=False, encoding=enc, low_memory=False)
-
-                        # Verify columns are correct - if APPOINTMENT_CODE is not first column, there's a problem
-                        if len(df.columns) > 0 and df.columns[0] != 'APPOINTMENT_CODE':
-                            uploaded_appt.seek(0)
-                            df = pd.read_csv(uploaded_appt, encoding=enc, low_memory=False)
-                            if df.index.dtype == 'object':
-                                df = df.reset_index()
-                                df.columns = header_line.split(',') + ['_extra'] if len(df.columns) > expected_cols else df.columns
-
-                        # Verify encoding by checking for valid Thai characters
-                        sample_text = df.astype(str).values.flatten()[:100]
+                        sample = pd.read_csv(uploaded_appt, encoding=enc, nrows=5, index_col=False)
+                        sample_text = sample.astype(str).values.flatten()[:50]
                         sample_str = ' '.join(str(x) for x in sample_text)
                         has_thai = any('\u0e00' <= c <= '\u0e7f' for c in sample_str)
                         has_garbage = any(ord(c) > 127 and not ('\u0e00' <= c <= '\u0e7f') for c in sample_str if c not in ' \n\t')
                         if has_thai or not has_garbage:
+                            detected_enc = enc
                             break
-                        df = None
                     except (UnicodeDecodeError, LookupError):
                         continue
-                if df is None:
+
+                if detected_enc is None:
                     st.error("ไม่สามารถอ่านไฟล์ได้ - กรุณาตรวจสอบ encoding ของไฟล์")
                     st.stop()
+
+                # Count total rows for progress (fast line count)
+                uploaded_appt.seek(0)
+                total_lines = sum(1 for _ in uploaded_appt) - 1  # minus header
+                uploaded_appt.seek(0)
+
+                # Read in chunks with progress
+                if total_lines > CHUNK_SIZE:
+                    st.info(f"ไฟล์ขนาดใหญ่ ({total_lines:,} rows) — กำลังอ่านเป็นส่วนๆ...")
+                    read_progress = st.progress(0, text="กำลังอ่านไฟล์...")
+                    chunks = []
+                    for i, chunk in enumerate(pd.read_csv(uploaded_appt, encoding=detected_enc, index_col=False, chunksize=CHUNK_SIZE)):
+                        chunks.append(chunk)
+                        pct = min(95, int((i + 1) * CHUNK_SIZE / total_lines * 100))
+                        read_progress.progress(pct, text=f"อ่านแล้ว {min((i+1)*CHUNK_SIZE, total_lines):,}/{total_lines:,} rows...")
+                    df = pd.concat(chunks, ignore_index=True)
+                    del chunks
+                    read_progress.progress(100, text="อ่านเสร็จ!")
+                else:
+                    uploaded_appt.seek(0)
+                    import warnings
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings('ignore', message='Length of header or names does not match')
+                        df = pd.read_csv(uploaded_appt, index_col=False, encoding=detected_enc, low_memory=False)
+
+                # Fix column alignment if needed
+                if len(df.columns) > 0 and df.columns[0] != 'APPOINTMENT_CODE':
+                    uploaded_appt.seek(0)
+                    df = pd.read_csv(uploaded_appt, encoding=detected_enc, low_memory=False)
+                    if df.index.dtype == 'object':
+                        expected_cols = len(header_line.split(','))
+                        df = df.reset_index()
+                        df.columns = header_line.split(',') + ['_extra'] if len(df.columns) > expected_cols else df.columns
             else:
                 df = pd.read_excel(uploaded_appt)
 
@@ -427,7 +447,6 @@ with tab2:
                 valid_dates = df['_date'].dropna()
                 min_date = valid_dates.min() if len(valid_dates) > 0 else None
                 max_date = valid_dates.max() if len(valid_dates) > 0 else None
-                # Convert pandas NaT to None
                 if pd.isna(min_date):
                     min_date = None
                 if pd.isna(max_date):
@@ -446,7 +465,7 @@ with tab2:
             # Preview
             st.dataframe(df.head(5), use_container_width=True, hide_index=True)
 
-            # Smart duplicate check - classify into new/changed/skip
+            # --- Step 2: Smart duplicate check (chunked for large datasets) ---
             session = get_session()
             new_count = 0
             changed_count = 0
@@ -457,16 +476,22 @@ with tab2:
                 if col_map.get('appointment_id'):
                     from sqlalchemy import text
 
-                    # Extract file data for comparison
                     file_appt_ids_col = df[col_map['appointment_id']].astype(str).str.strip()
                     file_appt_ids_unique = file_appt_ids_col.unique().tolist()
 
-                    # Query DB for existing (appointment_id, appt_date, branch_code)
+                    # Chunked DB query (10K per batch for speed)
                     existing_appt_ids = set()
                     existing_composites = set()
-                    batch_size = 1000
-                    for i in range(0, len(file_appt_ids_unique), batch_size):
-                        batch = file_appt_ids_unique[i:i+batch_size]
+                    dedup_batch_size = 10_000
+                    total_batches = (len(file_appt_ids_unique) + dedup_batch_size - 1) // dedup_batch_size
+
+                    if total_batches > 5:
+                        dedup_progress = st.progress(0, text="กำลังตรวจสอบข้อมูลซ้ำ...")
+                    else:
+                        dedup_progress = None
+
+                    for i in range(0, len(file_appt_ids_unique), dedup_batch_size):
+                        batch = file_appt_ids_unique[i:i+dedup_batch_size]
                         result = session.execute(
                             text("SELECT appointment_id, appt_date, branch_code FROM appointments WHERE appointment_id IN :appts"),
                             {"appts": tuple(batch) if len(batch) > 1 else (batch[0], batch[0])}
@@ -477,6 +502,14 @@ with tab2:
                             date_str = str(row[1]) if row[1] else 'None'
                             bc_str = str(row[2]).strip() if row[2] else 'None'
                             existing_composites.add(f"{appt_id}|{date_str}|{bc_str}")
+
+                        if dedup_progress:
+                            batch_num = i // dedup_batch_size + 1
+                            dedup_progress.progress(min(95, int(batch_num / total_batches * 100)),
+                                                    text=f"ตรวจสอบซ้ำ {min(i+dedup_batch_size, len(file_appt_ids_unique)):,}/{len(file_appt_ids_unique):,}...")
+
+                    if dedup_progress:
+                        dedup_progress.progress(100, text="ตรวจสอบเสร็จ!")
 
                     # Vectorized classification
                     can_compare = col_map.get('appt_date') and col_map.get('branch_code')
@@ -493,7 +526,6 @@ with tab2:
                         df.loc[is_new, '_class'] = 'new'
                         df.loc[is_exact_match, '_class'] = 'skip'
                     else:
-                        # Fallback: no date/branch columns -> skip all duplicates
                         is_new = ~file_appt_ids_col.isin(existing_appt_ids)
                         df['_class'] = 'skip'
                         df.loc[is_new, '_class'] = 'new'
@@ -527,7 +559,7 @@ with tab2:
             finally:
                 session.close()
 
-            # Import
+            # --- Step 3: Chunked import ---
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
                 no_importable = has_classification and importable_count == 0
@@ -536,7 +568,7 @@ with tab2:
                     status_text = st.empty()
                     session = get_session()
                     try:
-                        # Filter out skip rows if classification was done
+                        # Filter out skip rows
                         if has_classification and '_class' in df.columns:
                             df_to_import = df[df['_class'].isin(['new', 'changed'])].copy()
                         else:
@@ -554,9 +586,9 @@ with tab2:
                         session.add(upload)
                         session.flush()
                         upload_id = upload.id
-                        progress.progress(10)
+                        progress.progress(5)
 
-                        # Prepare data from filtered rows
+                        # Prepare data
                         status_text.text("กำลังเตรียมข้อมูล...")
                         import_df = pd.DataFrame({
                             'upload_id': upload_id,
@@ -569,40 +601,43 @@ with tab2:
                             'work_permit_no': df_to_import[col_map['work_permit_no']].astype(str).str.strip() if col_map.get('work_permit_no') else None,
                         })
                         import_df = import_df.replace({'nan': None, 'None': None, '': None})
-                        progress.progress(30)
+                        progress.progress(10)
 
-                        # Use PostgreSQL COPY for maximum speed (fastest method)
-                        status_text.text("กำลังนำเข้าข้อมูล...")
                         from database.connection import is_sqlite
                         from io import StringIO
 
                         total_records = len(import_df)
+                        columns = ['upload_id', 'appointment_id', 'appt_date', 'branch_code', 'appt_status', 'form_id', 'form_type', 'work_permit_no']
 
                         if is_sqlite:
-                            # SQLite: use pandas to_sql (fast enough for local)
                             import_df.to_sql('appointments', session.bind, if_exists='append', index=False, method='multi', chunksize=5000)
                             progress.progress(95)
                         else:
-                            # PostgreSQL: use COPY protocol (fastest possible method)
+                            # Chunked COPY for large datasets (50K per chunk)
                             conn = session.connection().connection
                             cursor = conn.cursor()
+                            import_chunk_size = CHUNK_SIZE
+                            total_chunks = (total_records + import_chunk_size - 1) // import_chunk_size
+                            rows_done = 0
 
-                            columns = ['upload_id', 'appointment_id', 'appt_date', 'branch_code', 'appt_status', 'form_id', 'form_type', 'work_permit_no']
+                            for chunk_idx in range(total_chunks):
+                                start = chunk_idx * import_chunk_size
+                                end = min(start + import_chunk_size, total_records)
+                                chunk_df = import_df.iloc[start:end]
 
-                            # Convert DataFrame to CSV string buffer
-                            status_text.text("กำลังเตรียมข้อมูลสำหรับ COPY...")
-                            buffer = StringIO()
-                            import_df[columns].to_csv(buffer, index=False, header=False, na_rep='\\N')
-                            buffer.seek(0)
-                            progress.progress(50)
+                                buffer = StringIO()
+                                chunk_df[columns].to_csv(buffer, index=False, header=False, na_rep='\\N')
+                                buffer.seek(0)
 
-                            # Use COPY command (2-5x faster than execute_values)
-                            status_text.text(f"กำลังนำเข้า {total_records:,} รายการด้วย COPY...")
-                            cursor.copy_expert("""
-                                COPY appointments (upload_id, appointment_id, appt_date, branch_code, appt_status, form_id, form_type, work_permit_no)
-                                FROM STDIN WITH (FORMAT CSV, NULL '\\N')
-                            """, buffer)
-                            progress.progress(95)
+                                cursor.copy_expert("""
+                                    COPY appointments (upload_id, appointment_id, appt_date, branch_code, appt_status, form_id, form_type, work_permit_no)
+                                    FROM STDIN WITH (FORMAT CSV, NULL '\\N')
+                                """, buffer)
+
+                                rows_done += len(chunk_df)
+                                pct = 10 + int(rows_done / total_records * 85)
+                                status_text.text(f"นำเข้า {rows_done:,}/{total_records:,} rows (chunk {chunk_idx+1}/{total_chunks})...")
+                                progress.progress(min(95, pct))
 
                         session.commit()
 
@@ -612,7 +647,7 @@ with tab2:
                         progress.progress(100)
                         status_text.empty()
 
-                        # Summary success message
+                        # Summary
                         msg_parts = []
                         if new_count > 0:
                             msg_parts.append(f"ใหม่ {new_count:,}")

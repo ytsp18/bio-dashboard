@@ -659,6 +659,8 @@ def get_appointment_service_stats(start_date, end_date, selected_branches=None):
     นัดหมาย = Appointment (ทุก status ยกเว้น CANCEL, EXPIRED)
     มา Check-in = QLog ที่มี qlog_num (มาถึงศูนย์ รับบัตรคิวแล้ว)
     ออกบัตร = BioRecord unique appointment_id (มีการพิมพ์บัตรจริง)
+    ไม่ผ่านตู้คิว = มี BioRecord แต่ไม่มี QLog (ข้ามตู้คิว/ระบบขัดข้อง)
+    No-Show = ไม่มีทั้ง QLog และ BioRecord
     """
     start_time = time.perf_counter()
     session = get_session()
@@ -675,6 +677,7 @@ def get_appointment_service_stats(start_date, end_date, selected_branches=None):
                 'total_appointments': 0,
                 'checked_in': 0,
                 'card_issued': 0,
+                'skip_queue': 0,
                 'no_show': 0,
                 'daily_data': []
             }
@@ -712,6 +715,7 @@ def get_appointment_service_stats(start_date, end_date, selected_branches=None):
 
         # 3. Card issued count from BioRecord (actual card printing)
         card_issued = 0
+        bio_served = 0
         if has_bio_data:
             bio_filters = [
                 BioRecord.print_date >= start_date,
@@ -723,8 +727,41 @@ def get_appointment_service_stats(start_date, end_date, selected_branches=None):
             card_issued = session.query(func.count(func.distinct(BioRecord.appointment_id))).filter(
                 and_(*bio_filters)
             ).scalar() or 0
+            bio_served = card_issued  # same count — unique appt_ids that got cards
 
-        no_show = max(0, total_appts - checked_in)
+        # 4. Skip queue = served by Bio but no QLog check-in
+        # skip_queue = bio_served - overlap(bio, qlog)
+        # no_show = total - checked_in - skip_queue
+        skip_queue = max(0, bio_served - min(bio_served, checked_in))
+        # More precise: count appt_ids in Bio that are NOT in QLog
+        if has_bio_data:
+            bio_appt_subq = session.query(func.distinct(BioRecord.appointment_id)).filter(
+                BioRecord.print_date >= start_date,
+                BioRecord.print_date <= end_date,
+            )
+            if selected_branches and len(selected_branches) > 0:
+                bio_appt_subq = bio_appt_subq.filter(BioRecord.branch_code.in_(selected_branches))
+
+            if has_qlog_data:
+                qlog_appt_subq = session.query(func.distinct(QLog.appointment_code)).filter(
+                    QLog.qlog_date >= start_date,
+                    QLog.qlog_date <= end_date,
+                    QLog.qlog_num.isnot(None),
+                )
+                if selected_branches and len(selected_branches) > 0:
+                    qlog_appt_subq = qlog_appt_subq.filter(QLog.branch_code.in_(selected_branches))
+
+                # Bio appt_ids NOT IN QLog appt_codes = skip queue
+                skip_queue = session.query(func.count()).select_from(
+                    bio_appt_subq.filter(
+                        ~BioRecord.appointment_id.in_(qlog_appt_subq)
+                    ).subquery()
+                ).scalar() or 0
+            else:
+                # No QLog data at all — all bio_served skipped queue
+                skip_queue = bio_served
+
+        no_show = max(0, total_appts - checked_in - skip_queue)
 
         # Daily breakdown for chart
         daily_data = []
@@ -768,16 +805,54 @@ def get_appointment_service_stats(start_date, end_date, selected_branches=None):
             daily_bio = daily_bio.group_by(BioRecord.print_date).all()
             bio_map = {d.print_date: d.issued for d in daily_bio}
 
+        # Get daily skip-queue counts (Bio appt_ids NOT in QLog per day)
+        skip_queue_map = {}
+        if has_bio_data:
+            # Build set of QLog appointment_codes per day
+            qlog_daily_sets = {}
+            if has_qlog_data:
+                qlog_rows = session.query(
+                    QLog.qlog_date, QLog.appointment_code
+                ).filter(
+                    QLog.qlog_date >= start_date,
+                    QLog.qlog_date <= end_date,
+                    QLog.qlog_num.isnot(None),
+                )
+                if selected_branches and len(selected_branches) > 0:
+                    qlog_rows = qlog_rows.filter(QLog.branch_code.in_(selected_branches))
+                for row in qlog_rows:
+                    qlog_daily_sets.setdefault(row.qlog_date, set()).add(row.appointment_code)
+
+            # Build set of Bio appointment_ids per day
+            bio_rows = session.query(
+                BioRecord.print_date, BioRecord.appointment_id
+            ).filter(
+                BioRecord.print_date >= start_date,
+                BioRecord.print_date <= end_date,
+            )
+            if selected_branches and len(selected_branches) > 0:
+                bio_rows = bio_rows.filter(BioRecord.branch_code.in_(selected_branches))
+
+            bio_daily_sets = {}
+            for row in bio_rows:
+                bio_daily_sets.setdefault(row.print_date, set()).add(row.appointment_id)
+
+            for dt, bio_ids in bio_daily_sets.items():
+                qlog_ids = qlog_daily_sets.get(dt, set())
+                skip_queue_map[dt] = len(bio_ids - qlog_ids)
+
         # Combine into daily_data
         for d in daily_appts:
             checkin = checkin_map.get(d.appt_date, 0)
             issued = bio_map.get(d.appt_date, 0)
+            sq = skip_queue_map.get(d.appt_date, 0)
             daily_data.append({
                 'date': d.appt_date,
                 'total_appt': d.total,
                 'checked_in': checkin,
                 'card_issued': issued,
-                'no_show': max(0, d.total - checkin)
+                'skip_queue': sq,
+                'no_show': max(0, d.total - checkin - sq)
             })
 
         # Sort by date
@@ -788,6 +863,7 @@ def get_appointment_service_stats(start_date, end_date, selected_branches=None):
             'total_appointments': total_appts,
             'checked_in': checked_in,
             'card_issued': card_issued,
+            'skip_queue': skip_queue,
             'no_show': no_show,
             'daily_data': daily_data
         }
@@ -1223,25 +1299,29 @@ else:
         st.markdown("### 📅 ข้อมูลการนัดหมาย → Check-in → ออกบัตร")
         st.caption("📌 Funnel: นัดหมาย (Appointment) → มา Check-in (QLog) → ออกบัตรจริง (Bio Record)")
 
-        # Metrics row - 5 columns for funnel
-        col1, col2, col3, col4, col5 = st.columns(5)
+        # Metrics row - 6 columns for funnel
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
         with col1:
             st.metric("📋 นัดหมายทั้งหมด", f"{service_stats['total_appointments']:,}")
         with col2:
             checkin_pct = (service_stats['checked_in'] / service_stats['total_appointments'] * 100) if service_stats['total_appointments'] > 0 else 0
             st.metric("🏢 มา Check-in", f"{service_stats['checked_in']:,}", f"{checkin_pct:.1f}%")
         with col3:
+            skip_q = service_stats.get('skip_queue', 0)
+            skip_pct = (skip_q / service_stats['total_appointments'] * 100) if service_stats['total_appointments'] > 0 else 0
+            st.metric("⚠️ ไม่ผ่านตู้คิว", f"{skip_q:,}", f"{skip_pct:.1f}%")
+        with col4:
             issued_pct = (service_stats['card_issued'] / service_stats['total_appointments'] * 100) if service_stats['total_appointments'] > 0 else 0
             st.metric("✅ ออกบัตรแล้ว", f"{service_stats['card_issued']:,}", f"{issued_pct:.1f}%")
-        with col4:
-            noshow_pct = (service_stats['no_show'] / service_stats['total_appointments'] * 100) if service_stats['total_appointments'] > 0 else 0
-            st.metric("❌ ไม่มา Check-in", f"{service_stats['no_show']:,}", f"{noshow_pct:.1f}%")
         with col5:
+            noshow_pct = (service_stats['no_show'] / service_stats['total_appointments'] * 100) if service_stats['total_appointments'] > 0 else 0
+            st.metric("❌ ไม่มา", f"{service_stats['no_show']:,}", f"{noshow_pct:.1f}%")
+        with col6:
             # Conversion rate: checked_in → card_issued
             conversion = (service_stats['card_issued'] / service_stats['checked_in'] * 100) if service_stats['checked_in'] > 0 else 0
             st.metric("📊 อัตราออกบัตร", f"{conversion:.1f}%")
 
-        # Daily Chart - 4 series
+        # Daily Chart - 5 series
         if service_stats['daily_data']:
             svc_df = pd.DataFrame(service_stats['daily_data'])
             svc_dates = [d.strftime('%d/%m') if hasattr(d, 'strftime') else str(d) for d in svc_df['date']]
@@ -1258,7 +1338,7 @@ else:
                     "textStyle": {"color": "#374151"},
                 },
                 "legend": {
-                    "data": ["นัดหมาย", "มา Check-in", "ออกบัตร", "ไม่มา"],
+                    "data": ["นัดหมาย", "มา Check-in", "ออกบัตร", "ไม่ผ่านตู้คิว", "ไม่มา"],
                     "bottom": 0,
                     "textStyle": {"color": "#6b7280"},
                 },
@@ -1296,6 +1376,16 @@ else:
                         "data": svc_df['card_issued'].tolist(),
                         "itemStyle": {"color": "#10B981"},
                         "barMaxWidth": 35,
+                    },
+                    {
+                        "name": "ไม่ผ่านตู้คิว",
+                        "type": "line",
+                        "data": svc_df['skip_queue'].tolist(),
+                        "itemStyle": {"color": "#F59E0B"},
+                        "lineStyle": {"width": 2, "type": "dotted"},
+                        "symbol": "diamond",
+                        "symbolSize": 7,
+                        "smooth": True,
                     },
                     {
                         "name": "ไม่มา",
@@ -1354,8 +1444,9 @@ else:
                         },
                         "data": [
                             {"value": service_stats['card_issued'], "name": "ออกบัตรแล้ว", "itemStyle": {"color": "#10B981"}},
-                            {"value": max(0, service_stats['checked_in'] - service_stats['card_issued']), "name": "Check-in แต่ยังไม่ออกบัตร", "itemStyle": {"color": "#F59E0B"}},
-                            {"value": service_stats['no_show'], "name": "ไม่มา Check-in", "itemStyle": {"color": "#EF4444"}}
+                            {"value": max(0, service_stats['checked_in'] - service_stats['card_issued']), "name": "Check-in แต่ยังไม่ออกบัตร", "itemStyle": {"color": "#8B5CF6"}},
+                            {"value": service_stats.get('skip_queue', 0), "name": "ไม่ผ่านตู้คิว", "itemStyle": {"color": "#F59E0B"}},
+                            {"value": service_stats['no_show'], "name": "ไม่มา", "itemStyle": {"color": "#EF4444"}}
                         ]
                     }]
                 }
@@ -1370,8 +1461,9 @@ else:
                     <ul style="color: #6b7280; margin: 0; padding-left: 20px;">
                         <li><b style="color: #3B82F6;">นัดหมาย</b> — จำนวนคนนัดหมายทั้งหมด (ไม่นับ CANCEL/EXPIRED)</li>
                         <li><b style="color: #8B5CF6;">มา Check-in</b> — คนที่มาถึงศูนย์และรับบัตรคิว (มี QLOG_NUM)</li>
+                        <li><b style="color: #F59E0B;">ไม่ผ่านตู้คิว</b> — ออกบัตรได้แต่ไม่มี QLog (ข้ามตู้คิว/ระบบขัดข้อง)</li>
                         <li><b style="color: #10B981;">ออกบัตร</b> — คนที่มีการพิมพ์บัตรจริง (จาก Bio Record)</li>
-                        <li><b style="color: #EF4444;">ไม่มา</b> — นัดหมายแล้วไม่มา Check-in</li>
+                        <li><b style="color: #EF4444;">ไม่มา</b> — นัดหมายแล้วไม่มา ไม่มีทั้ง QLog และ Bio Record</li>
                     </ul>
                     <hr style="border-color: #e5e7eb; margin: 16px 0;">
                     <p style="color: #6b7280; font-size: 0.85rem; margin: 0;">

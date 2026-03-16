@@ -2,6 +2,19 @@
 
 All notable changes to Bio Dashboard project are documented in this file.
 
+## [2.4.0] - 2026-03-16
+
+### Added
+- **Skip Queue metric (ไม่ผ่านตู้คิว)** — New metric showing people who got cards (BioRecord) without going through queue system (QLog). Causes: queue system outage, operator bypass for urgent cases.
+- **Overview page** — Add "ไม่ผ่านตู้คิว" metric card, daily chart series (orange dotted line), pie chart slice, and info legend. Fix No-Show formula: `no_show = appointments - checked_in - skip_queue`.
+- **By Center page** — Add `get_service_funnel_by_branch_cached()` query for Appointment/QLog/BioRecord per branch. Add appointment funnel metrics row, table columns (นัดหมาย/Check-in/ไม่ผ่านตู้คิว/ไม่มา), and center detail section.
+
+### Changed
+- **Upload page** — Chunked import for large Appointment CSV (579K+ rows). Read CSV in 50K-row chunks with progress bar. Increase dedup batch 1K→10K. COPY import in 50K chunks with per-chunk progress.
+
+### Fixed
+- **No-Show overcounting** — Previous formula `Appointment - QLog` missed people who got cards without QLog check-in. New formula correctly subtracts skip_queue count.
+
 ## [2.3.9] - 2026-03-10
 
 ### Performance
